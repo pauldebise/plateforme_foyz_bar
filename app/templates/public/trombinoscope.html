@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-people"></i> Trombinoscopes des équipes de mandat</h1>
+{% for campus, members in by_campus.items() %}
+  <h2 class="h4 mt-4">{{ CAMPUSSES[campus] }}</h2>
+  {% if members %}
+  <div class="row g-4">
+    {% for m in members %}
+    <div class="col-6 col-md-3 col-lg-2">
+      <div class="text-center">
+        {% if m.photo %}
+          <img class="trombi-photo" src="/uploads/{{ m.photo }}" alt="{{ m.full_name }}">
+        {% else %}
+          <div class="trombi-placeholder"><i class="bi bi-person"></i></div>
+        {% endif %}
+        <div class="fw-semibold mt-2">{{ m.full_name }}</div>
+        {% if m.team_title %}<div class="small text-primary">{{ m.team_title }}</div>{% endif %}
+        <div class="small text-muted">Promo {{ m.promotion if m.promotion else "—" }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-muted">Aucun membre de mandat référencé.</p>
+  {% endif %}
+{% endfor %}
+{% endblock %}

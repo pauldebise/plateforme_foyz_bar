@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Suivi trésorerie{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h1 class="h3 mb-0"><i class="bi bi-cash-stack"></i> Suivi trésorerie — {{ CAMPUSSES[campus] }}</h1>
+  <div class="btn-group">
+    {% for key, label in CAMPUSSES.items() %}
+    <a class="btn {% if campus == key %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('team.tresorerie', campus=key) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>Douze mois glissants</span>
+    <span class="small text-muted fw-normal">Barres = entrées réelles de trésorerie · Courbe = consommation de la monnaie virtuelle (déjà encaissée lors des rechargements)</span>
+  </div>
+  <div class="card-body"><canvas id="chart-treasury" height="110"></canvas></div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>Bilans mensuels</span>
+    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('team.tresorerie_export_annuel', campus=campus) }}">
+      <i class="bi bi-download"></i> Rapport annuel (12 mois, CSV)
+    </a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th rowspan="2">Mois</th>
+          <th colspan="5" class="text-center border-start">Rechargements</th>
+          <th colspan="{{ ARTICLE_TYPES|length }}" class="text-center border-start">Ventes (détail par type)</th>
+          <th rowspan="2" class="text-end border-start">Événements</th>
+          <th rowspan="2" class="text-end">Total entrées</th>
+          <th rowspan="2" class="text-center">Rapport</th>
+        </tr>
+        <tr class="small text-muted">
+          {% for m in PAYMENT_METHODS.values() %}<th class="border-start">{{ m }}</th>{% endfor %}
+          {% for t in ARTICLE_TYPES.values() %}<th class="border-start">{{ t }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in report %}
+        <tr>
+          <td class="fw-semibold">{{ e.label }}</td>
+          {% for key in PAYMENT_METHODS %}<td class="text-end border-start">{{ e.reloads_by_method[key]|eur }}</td>{% endfor %}
+          {% for key in ARTICLE_TYPES %}<td class="text-end border-start">{{ e.sales_by_type[key]|eur }}</td>{% endfor %}
+          <td class="text-end border-start fw-semibold">{{ e.events_total|eur }}</td>
+          <td class="text-end fw-bold">{{ e.grand_total|eur }}</td>
+          <td class="text-center">
+            <a class="btn btn-sm btn-outline-secondary" title="Télécharger le rapport mensuel (CSV)"
+               href="{{ url_for('team.tresorerie_export_mensuel', campus=campus, year=e.year, month=e.month) }}">
+              <i class="bi bi-download"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer small text-muted">
+    Total entrées = rechargements + recettes d'événements. Les ventes bar détaillées ci-dessus correspondent à la
+    consommation de la monnaie virtuelle : cette somme a déjà été encaissée lors des rechargements et n'est pas
+    comptée une seconde fois dans le total.
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const TREASURY = {{ report|tojson }};
+const reloadsById = TREASURY.map(e => e.reloads_total / 100);
+const sales = TREASURY.map(e => e.sales_total / 100);
+const events = TREASURY.map(e => e.events_total / 100);
+
+new Chart(document.getElementById('chart-treasury'), {
+  data: {
+    labels: TREASURY.map(e => e.label),
+    datasets: [
+      { type: 'bar', label: 'Rechargements (entrée réelle)', data: reloadsById, backgroundColor: 'rgba(0,82,156,.85)', stack: 'entrees' },
+      { type: 'bar', label: 'Recettes événements (entrée réelle)', data: events, backgroundColor: 'rgba(255,193,7,.9)', stack: 'entrees' },
+      { type: 'line', label: 'Ventes bar (consommation virtuelle)', data: sales, borderColor: 'rgba(25,135,84,.9)', backgroundColor: 'rgba(25,135,84,.12)', tension: .3, yAxisID: 'y2' }
+    ]
+  },
+  options: {
+    scales: {
+      x: { stacked: true },
+      y: { stacked: true, beginAtZero: true, ticks: { callback: v => v + ' €' } },
+      y2: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { callback: v => v + ' €' } }
+    }
+  }
+});
+</script>
+{% endblock %}

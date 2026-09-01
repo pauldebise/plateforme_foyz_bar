@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Prix — {{ site_name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h1 class="h3 mb-0"><i class="bi bi-tags"></i> Prix standards — {{ CAMPUSSES[campus] }}</h1>
+  <div class="btn-group">
+    {% for key, label in CAMPUSSES.items() %}
+    <a class="btn {% if campus == key %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('public.catalogue', campus=key) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% for type, items in grouped %}
+  <div class="card mb-4">
+    <div class="card-header">{{ ARTICLE_TYPES[type] }}</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>Article</th><th>Volume</th><th class="text-end">Prix</th></tr>
+          </thead>
+          <tbody>
+            {% for a in items %}
+            <tr>
+              <td>{{ a.name }}</td>
+              <td class="text-muted">{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
+              <td class="text-end fw-bold">{{ a.price_for(campus)|eur }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% else %}
+  <p class="text-muted">Le catalogue est vide pour le moment.</p>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ {'rechargement': 'Rechargement', 'retrait': 'Retrait', 'transfert': 'Transfert'}[op] }} — Interface équipe{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">
+  {% if op == 'rechargement' %}<i class="bi bi-plus-circle"></i> Recharger un compte
+  {% elif op == 'retrait' %}<i class="bi bi-dash-circle"></i> Retrait (récupération d'espèces)
+  {% else %}<i class="bi bi-arrow-left-right"></i> Transfert entre étudiants{% endif %}
+  <span class="badge" style="background: var(--primary);">{{ CAMPUSSES[current_campus] }}</span>
+</h1>
+
+<div class="card" style="max-width: 640px;">
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+
+      {% if op == 'transfert' %}
+      <div class="mb-3">
+        <label class="form-label">Compte donneur</label>
+        <input class="form-control op-search" id="from-search" data-target="from_id" placeholder="Rechercher…" autocomplete="off" required>
+        <div class="border rounded bg-white shadow-sm position-absolute d-none op-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
+        <input type="hidden" name="from_id" id="from_id">
+        <div class="form-text op-info" id="from-info"></div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Compte receveur</label>
+        <input class="form-control op-search" id="to-search" data-target="to_id" placeholder="Rechercher…" autocomplete="off" required>
+        <div class="border rounded bg-white shadow-sm position-absolute d-none op-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
+        <input type="hidden" name="to_id" id="to_id">
+        <div class="form-text op-info" id="to-info"></div>
+      </div>
+      {% else %}
+      <div class="mb-3">
+        <label class="form-label">Étudiant</label>
+        <input class="form-control op-search" id="user-search" data-target="user_id" placeholder="Rechercher…" autocomplete="off" required>
+        <div class="border rounded bg-white shadow-sm position-absolute d-none op-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
+        <input type="hidden" name="user_id" id="user_id">
+        <div class="form-text op-info" id="user-info"></div>
+      </div>
+      {% endif %}
+
+      <div class="mb-3">
+        <label class="form-label">Montant (€)</label>
+        <input class="form-control" type="number" step="0.01" min="0.01" name="amount" required>
+      </div>
+
+      {% if op == 'rechargement' %}
+      <div class="mb-3">
+        <label class="form-label">Moyen de paiement</label>
+        <select class="form-select" name="method" required>
+          {% for key, label in PAYMENT_METHODS.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+
+      <button class="btn btn-primary">Valider</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/operation.js') }}"></script>
+{% endblock %}

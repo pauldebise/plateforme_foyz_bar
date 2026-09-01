@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Statistiques de consommation{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-bar-chart"></i> Statistiques de consommation</h1>
+
+<form class="card mb-4">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-md-2">
+      <label class="form-label small">Du</label>
+      <input class="form-control form-control-sm" type="date" name="date_from" value="{{ filters.date_from }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Au</label>
+      <input class="form-control form-control-sm" type="date" name="date_to" value="{{ filters.date_to }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Catégorie</label>
+      <select class="form-select form-select-sm" name="category">
+        <option value="">Toutes</option>
+        {% for key, label in ARTICLE_TYPES.items() %}
+        <option value="{{ key }}" {% if filters.category == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Promotion</label>
+      <input class="form-control form-control-sm" name="promotion" value="{{ filters.promotion }}" placeholder="ex : 2027">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Campus</label>
+      <select class="form-select form-select-sm" name="campus">
+        <option value="">Tous</option>
+        {% for key, label in CAMPUSSES.items() %}
+        <option value="{{ key }}" {% if filters.campus == key %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Acheteur</label>
+      <select class="form-select form-select-sm" name="team_only">
+        <option value="">Tous</option>
+        <option value="team" {% if filters.team_only == 'team' %}selected{% endif %}>Équipe Foy'z/Bar</option>
+        <option value="non_team" {% if filters.team_only == 'non_team' %}selected{% endif %}>Non-équipe</option>
+      </select>
+    </div>
+    <div class="col-12 d-grid">
+      <button class="btn btn-primary btn-sm"><i class="bi bi-funnel"></i> Appliquer les filtres</button>
+    </div>
+  </div>
+</form>
+
+<div class="row g-4 mb-4">
+  <div class="col-md-4">
+    <div class="card stat-card"><div class="card-body">
+      <div class="text-muted small">Volume total vendu</div>
+      <h2>{{ stats.grand_total.qty }}</h2><span class="text-muted small">articles</span>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card"><div class="card-body">
+      <div class="text-muted small">Chiffre d'affaires (hors consignes)</div>
+      <h2>{{ stats.grand_total.revenue|eur }}</h2>
+    </div></div>
+  </div>
+  <div class="col-md-4">
+    <div class="card stat-card"><div class="card-body">
+      <div class="text-muted small">Catégories actives</div>
+      <h2>{{ stats.by_category|length }}</h2>
+    </div></div>
+  </div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">Ventes par catégorie</div>
+      <div class="card-body">
+        <canvas id="chart-categories" height="260"></canvas>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">Tendance des ventes</div>
+      <div class="card-body">
+        <canvas id="chart-trend" height="140"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-4">
+  <div class="card-header">Détail par catégorie</div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead class="table-light"><tr><th>Catégorie</th><th class="text-end">Volume</th><th class="text-end">Recettes</th></tr></thead>
+      <tbody>
+        {% for type, data in stats.by_category.items() %}
+        <tr>
+          <td>{{ ARTICLE_TYPES.get(type, type) }}</td>
+          <td class="text-end">{{ data.qty }}</td>
+          <td class="text-end fw-bold">{{ data.revenue|eur }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-center text-muted py-3">Aucune vente sur la période sélectionnée.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mt-4">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-person"></i> Consommation par étudiant</span>
+    <span class="small text-muted">Les commandes partagées sont réparties entre les participants · hors consignes</span>
+  </div>
+  <div class="card-body pb-0">
+    {% if students %}
+    <canvas id="chart-students" height="{{ 40 + students|length * 22 if students|length <= 10 else 260 }}"></canvas>
+    {% else %}
+    <p class="text-muted">Aucune consommation sur la période sélectionnée.</p>
+    {% endif %}
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr><th>Étudiant</th><th>Promo</th><th>Profil</th><th class="text-end">Achats</th><th class="text-end">Articles</th><th class="text-end">Total dépensé</th></tr>
+      </thead>
+      <tbody>
+        {% for s in students %}
+        <tr>
+          <td class="fw-semibold">{{ s.name }}</td>
+          <td>{{ s.promotion if s.promotion else '—' }}</td>
+          <td>{% if s.is_team %}<span class="badge bg-secondary">équipe</span>{% else %}<span class="text-muted">étudiant</span>{% endif %}</td>
+          <td class="text-end">{{ s.nb }}</td>
+          <td class="text-end">{{ s.articles }}</td>
+          <td class="text-end fw-bold">{{ s.spent|eur }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-3">Aucun consommateur sur la période sélectionnée.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const STATS = {{ stats|tojson }};
+const CAT_LABELS = {{ ARTICLE_TYPES|tojson }};
+
+new Chart(document.getElementById('chart-categories'), {
+  type: 'bar',
+  data: {
+    labels: Object.keys(STATS.by_category).map(k => CAT_LABELS[k] || k),
+    datasets: [
+      { label: 'Volume', data: Object.values(STATS.by_category).map(v => v.qty), backgroundColor: 'rgba(0,82,156,.7)', yAxisID: 'y' },
+      { label: 'Recettes (€)', data: Object.values(STATS.by_category).map(v => v.revenue / 100), type: 'line', yAxisID: 'y1', tension: .3 }
+    ]
+  },
+  options: { scales: { y: { beginAtZero: true }, y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } } } }
+});
+
+new Chart(document.getElementById('chart-trend'), {
+  type: 'line',
+  data: {
+    labels: Object.keys(STATS.series),
+    datasets: [{ label: 'Recettes par jour (€)', data: Object.values(STATS.series).map(v => v / 100), tension: .3, fill: true, backgroundColor: 'rgba(0,82,156,.12)', borderColor: 'rgba(0,82,156,.9)' }]
+  },
+  options: { scales: { y: { beginAtZero: true } } }
+});
+
+const STUDENTS = {{ students|tojson }};
+const topStudents = STUDENTS.slice(0, 10);
+if (topStudents.length) {
+  new Chart(document.getElementById('chart-students'), {
+    type: 'bar',
+    data: {
+      labels: topStudents.map(s => s.name),
+      datasets: [{ label: 'Total dépensé (€)', data: topStudents.map(s => s.spent / 100), backgroundColor: 'rgba(0,82,156,.75)', borderRadius: 4 }]
+    },
+    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+  });
+}
+</script>
+{% endblock %}

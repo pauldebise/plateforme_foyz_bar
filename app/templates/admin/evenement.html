@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Événement — {{ ev.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h1 class="h3 mb-0"><i class="bi bi-star"></i> {{ ev.name }}</h1>
+  {% if ev.closed %}<span class="badge bg-secondary">clôturé</span>
+  {% elif ev.is_running %}<span class="badge bg-success">en cours</span>
+  {% else %}<span class="badge bg-info text-dark">à venir / terminé</span>{% endif %}
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card mb-4">
+      <div class="card-header">Informations</div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="edit">
+          <div class="mb-3"><label class="form-label">Nom</label><input class="form-control" name="name" value="{{ ev.name }}"></div>
+          <div class="mb-3">
+            <label class="form-label">Campus</label>
+            <select class="form-select" name="campus">
+              {% for key, label in CAMPUSSES.items() %}
+              <option value="{{ key }}" {% if ev.campus == key %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6"><label class="form-label">Début</label><input class="form-control" type="datetime-local" name="starts_at" value="{{ ev.starts_at|dt('%Y-%m-%dT%H:%M') }}"></div>
+            <div class="col-6"><label class="form-label">Fin</label><input class="form-control" type="datetime-local" name="ends_at" value="{{ ev.ends_at|dt('%Y-%m-%dT%H:%M') }}"></div>
+          </div>
+          {% if ev.poster %}<img class="event-poster mb-2" style="height: 140px;" src="/uploads/{{ ev.poster }}">{% endif %}
+          <div class="mb-3"><label class="form-label">Affiche</label><input class="form-control" type="file" name="poster" accept=".jpg,.jpeg,.png,.webp"></div>
+          <button class="btn btn-primary btn-sm">Enregistrer</button>
+        </form>
+        <hr>
+        <form class="d-flex gap-2 flex-wrap" method="post">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button class="btn btn-outline-secondary btn-sm" name="action" value="regenerate_token"><i class="bi bi-arrow-repeat"></i> Régénérer le lien passerelle</button>
+          <button class="btn btn-outline-{{ 'success' if ev.closed else 'danger' }} btn-sm" name="action" value="toggle_closed">
+            {{ 'Réouvrir' if ev.closed else 'Clôturer' }} l'événement
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><i class="bi bi-door-open"></i> Passerelle organisateurs (accès encaissement simplifié)</div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">
+          Lien à sens unique à transmettre à l'association organisatrice (ex : BDE).
+          La page se limite à l'encaissement des articles temporaires de l'événement.
+          Revenir à l'interface équipe exige une nouvelle authentification.
+        </p>
+        <div class="input-group input-group-sm">
+          <input class="form-control" readonly value="{{ request.host_url }}passerelle/{{ ev.token }}">
+          <button class="btn btn-outline-primary" onclick="navigator.clipboard.writeText('{{ request.host_url }}passerelle/{{ ev.token }}')"><i class="bi bi-clipboard"></i></button>
+        </div>
+        <p class="small text-muted mt-2 mb-0">La passerelle est active à partir de 12 h avant le début et jusqu'à la fin (ou clôture manuelle).</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card mb-4">
+      <div class="card-header">Articles temporaires de l'événement</div>
+      <div class="card-body">
+        {% for a in temp_articles %}
+        <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+          <div>
+            {{ a.name }}
+            <span class="small text-muted">std {{ a.price_std_brest|eur }} / {{ a.price_std_paris|eur }} · équipe {{ a.price_team_brest|eur }} / {{ a.price_team_paris|eur }}</span>
+          </div>
+          <form method="post" onsubmit="return confirm('Supprimer cet article ?')">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="del_article">
+            <input type="hidden" name="article_id" value="{{ a.id }}">
+            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+          </form>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Aucun article temporaire.</p>
+        {% endfor %}
+        <form class="row g-2 mt-3 align-items-end" method="post">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="add_article">
+          <div class="col-12"><label class="form-label small">Nom</label><input class="form-control form-control-sm" name="name" required placeholder="ex : Coupe Spéciale Soirée"></div>
+          <div class="col-md-3"><label class="form-label small">Std Brest (€)</label><input class="form-control form-control-sm" name="price_std_brest" value="0.00"></div>
+          <div class="col-md-3"><label class="form-label small">Std Paris (€)</label><input class="form-control form-control-sm" name="price_std_paris" value="0.00"></div>
+          <div class="col-md-3"><label class="form-label small">Équipe Brest (€)</label><input class="form-control form-control-sm" name="price_team_brest" value="0.00"></div>
+          <div class="col-md-3"><label class="form-label small">Équipe Paris (€)</label><input class="form-control form-control-sm" name="price_team_paris" value="0.00"></div>
+          <div class="col-md-6"><label class="form-label small">Volume (cl)</label><input class="form-control form-control-sm" name="volume_cl" type="number"></div>
+          <div class="col-md-6 d-flex align-items-center">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="is_alcohol" id="ev-alcohol" checked>
+              <label class="form-check-label small" for="ev-alcohol">Alcoolisé</label>
+            </div>
+          </div>
+          <div class="col-12 d-grid"><button class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-lg"></i> Ajouter l'article temporaire</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

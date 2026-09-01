@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Modifier' if a else 'Nouvel article' }}{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-box"></i> {{ 'Modifier « ' + a.name + ' »' if a else 'Nouvel article' }}</h1>
+
+<div class="card" style="max-width: 760px;">
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label">Nom</label>
+          <input class="form-control" name="name" value="{{ a.name if a else '' }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Type d'article</label>
+          <select class="form-select" name="article_type">
+            {% for key, label in ARTICLE_TYPES.items() %}
+            <option value="{{ key }}" {% if a and a.article_type == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Volume (cl, boissons)</label>
+          <input class="form-control" name="volume_cl" type="number" min="0" value="{{ a.volume_cl if a and a.volume_cl else '' }}">
+        </div>
+        <div class="col-md-8 d-flex align-items-end">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="is_alcohol" id="alcohol" {% if not a or a.is_alcohol %}checked{% endif %}>
+            <label class="form-check-label" for="alcohol">Article alcoolisé (contrôle « blacklist alcool »)</label>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Prix standard Brest (€)</label>
+          <input class="form-control" name="price_std_brest" value="{{ '%.2f'|format(a.price_std_brest / 100) if a else '0.00' }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Prix standard Paris (€)</label>
+          <input class="form-control" name="price_std_paris" value="{{ '%.2f'|format(a.price_std_paris / 100) if a else '0.00' }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Prix équipe Brest (€)</label>
+          <input class="form-control" name="price_team_brest" value="{{ '%.2f'|format(a.price_team_brest / 100) if a else '0.00' }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Prix équipe Paris (€)</label>
+          <input class="form-control" name="price_team_paris" value="{{ '%.2f'|format(a.price_team_paris / 100) if a else '0.00' }}" required>
+        </div>
+        <div class="col-12">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="active" {% if not a or a.active %}checked{% endif %}>
+            <label class="form-check-label">Article actif (visible et vendable)</label>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary mt-4">Enregistrer</button>
+      <a class="btn btn-outline-secondary mt-4" href="{{ url_for('admin.articles') }}">Retour</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

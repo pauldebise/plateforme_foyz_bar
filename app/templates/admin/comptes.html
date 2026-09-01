@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Gestion des comptes{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h1 class="h3 mb-0"><i class="bi bi-person-lines-fill"></i> Gestion des comptes</h1>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#new-account-modal"><i class="bi bi-person-plus"></i> Nouveau compte</button>
+</div>
+
+<form class="card mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-md-8">
+      <label class="form-label small">Recherche globale (nom, identifiant)</label>
+      <input class="form-control" name="q" value="{{ q }}" placeholder="Ex : Dupont, paul.dupont…">
+    </div>
+    <div class="col-md-2 d-grid"><button class="btn btn-primary"><i class="bi bi-search"></i> Rechercher</button></div>
+    <div class="col-md-2 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.comptes') }}">Réinitialiser</a></div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Étudiant</th><th>Promo</th><th>Solde Brest</th><th>Solde Paris</th><th>Restrictions</th><th>Équipe</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td><strong>{{ u.full_name }}</strong>{% if u.username %}<div class="small text-muted">@{{ u.username }}</div>{% endif %}</td>
+          <td>{{ u.promotion if u.promotion else '—' }}</td>
+          <td>{{ u.wallet('brest').balance|eur }}</td>
+          <td>{{ u.wallet('paris').balance|eur }}</td>
+          <td>
+            {% if u.blacklist %}<span class="badge badge-blacklist">blacklist</span>{% endif %}
+            {% if u.blacklist_alcohol %}<span class="badge badge-alcool">blacklist alcool</span>{% endif %}
+            {% if not u.blacklist and not u.blacklist_alcohol %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td>
+            {% if u.team_status == 'mandat' %}<span class="badge bg-success">mandat ({{ u.team_campus }})</span>
+            {% elif u.team_status == 'ancien' %}<span class="badge bg-secondary">ancien</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.compte', user_id=u.id) }}">Modifier</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">Aucun compte trouvé.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal fade" id="new-account-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="post" action="{{ url_for('admin.comptes_nouveau') }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Créer un compte étudiant</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <div class="mb-3"><label class="form-label">Prénom</label><input class="form-control" name="first_name" required></div>
+        <div class="mb-3"><label class="form-label">Nom</label><input class="form-control" name="last_name" required></div>
+        <div class="mb-3"><label class="form-label">Promotion (année de sortie)</label><input class="form-control" name="promotion" type="number"></div>
+        <p class="form-text mb-0">Deux portefeuilles (Brest &amp; Paris) sont automatiquement créés à 0,00 €.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary">Créer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

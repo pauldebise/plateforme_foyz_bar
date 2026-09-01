@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Gestion des articles{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h1 class="h3 mb-0"><i class="bi bi-box-seam"></i> Gestion des articles</h1>
+  <a class="btn btn-primary" href="{{ url_for('admin.article_nouveau') }}"><i class="bi bi-plus-lg"></i> Nouvel article</a>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Article</th><th>Type</th><th>Volume</th>
+          <th class="text-end">Std Brest</th><th class="text-end">Std Paris</th>
+          <th class="text-end">Équipe Brest</th><th class="text-end">Équipe Paris</th>
+          <th>Statut</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in articles %}
+        <tr class="{{ 'table-secondary' if not a.active }}">
+          <td>{{ a.name }}{% if a.is_tap %} <span class="badge bg-dark">tireuse</span>{% endif %}</td>
+          <td>{{ ARTICLE_TYPES.get(a.article_type, a.article_type) }}</td>
+          <td>{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
+          <td class="text-end">{{ a.price_std_brest|eur }}</td>
+          <td class="text-end">{{ a.price_std_paris|eur }}</td>
+          <td class="text-end text-muted">{{ a.price_team_brest|eur }}</td>
+          <td class="text-end text-muted">{{ a.price_team_paris|eur }}</td>
+          <td>{% if a.active %}<span class="badge bg-success">actif</span>{% else %}<span class="badge bg-secondary">inactif</span>{% endif %}</td>
+          <td class="text-end text-nowrap">
+            {% if a.is_tap %}
+              <span class="small text-muted">géré dans Tireuses</span>
+            {% else %}
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.article', article_id=a.id) }}">Modifier</a>
+              {% if a.active %}
+              <form class="d-inline" method="post" action="{{ url_for('admin.article_supprimer', article_id=a.id) }}"
+                    onsubmit="return confirm('Désactiver cet article ?')">
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted py-4">Aucun article.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

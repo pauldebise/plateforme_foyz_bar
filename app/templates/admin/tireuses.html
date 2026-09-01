@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Bières pression &amp; tireuses{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-beaker"></i> Bières pression &amp; tireuses</h1>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Fûts enregistrés</span>
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#new-keg-modal"><i class="bi bi-plus-lg"></i> Nouveau fût</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>Fût</th><th>Degré</th><th>Restant</th><th>En service</th><th></th></tr></thead>
+          <tbody>
+            {% for k in kegs %}
+            <tr>
+              <td><strong>{{ k.name }}</strong></td>
+              <td>{{ '%.1f'|format(k.alcohol_degree) }}°</td>
+              <td>{{ '%.1f'|format(k.remaining_l) }} L / {{ '%.0f'|format(k.volume_l) }} L</td>
+              <td>{% if k.taps|length %}{% for t in k.taps %}<span class="badge bg-primary">tireuse {{ t.number }} ({{ CAMPUSSES[t.campus] }})</span> {% endfor %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+              <td class="text-end text-nowrap">
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.keg', keg_id=k.id) }}">Modifier</a>
+                <form class="d-inline" method="post" action="{{ url_for('admin.keg_supprimer', keg_id=k.id) }}" onsubmit="return confirm('Supprimer ce fût et désactiver ses articles tireuse ?')">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-4">Aucun fût enregistré.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Tireuses</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>Tireuse</th><th>Campus</th><th>Fût monté</th><th>Assigner un fût</th><th></th></tr></thead>
+          <tbody>
+            {% for t in taps %}
+            <tr>
+              <td><strong>Tireuse {{ t.number }}</strong></td>
+              <td>{{ CAMPUSSES[t.campus] }}</td>
+              <td>{% if t.keg %}{{ t.keg.name }}{% else %}<span class="text-muted">vide</span>{% endif %}</td>
+              <td>
+                <form class="d-flex gap-2" method="post" action="{{ url_for('admin.tap_assigner', tap_id=t.id) }}">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                  <select class="form-select form-select-sm" name="keg_id" required>
+                    <option value="">Choisir un fût…</option>
+                    {% for k in free_kegs if not t.keg %}
+                    <option value="{{ k.id }}">{{ k.name }} ({{ '%.1f'|format(k.remaining_l) }} L)</option>
+                    {% endfor %}
+                  </select>
+                  <button class="btn btn-sm btn-outline-primary">Assigner</button>
+                </form>
+              </td>
+              <td class="text-end">
+                {% if t.keg %}
+                <form method="post" action="{{ url_for('admin.tap_detacher', tap_id=t.id) }}">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-outline-secondary">Détacher</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            <tr>
+              <td colspan="5">
+                <form class="row g-2 align-items-end" method="post" action="{{ url_for('admin.tap_nouveau') }}">
+                  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                  <div class="col-3"><label class="form-label small">N° tireuse</label><input class="form-control form-control-sm" name="number" type="number" min="1" required></div>
+                  <div class="col-4">
+                    <label class="form-label small">Campus</label>
+                    <select class="form-select form-select-sm" name="campus">
+                      {% for key, label in CAMPUSSES.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-5 d-grid"><button class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-lg"></i> Ajouter la tireuse</button></div>
+                </form>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><i class="bi bi-info-circle"></i> Fonctionnement</div>
+      <div class="card-body small text-muted">
+        <p>Chaque fût porte son degré d'alcool, son volume total et ses prix au <strong>demi / pinte / pot</strong> (standard et équipe, par campus).</p>
+        <p><strong>Assigner un fût à une tireuse</strong> génère automatiquement trois articles au catalogue au format
+        <code>[Demi/Pinte/Pot] de tireuse [Numéro] ["Nom du Fût"]</code>.</p>
+        <p>Les ventes décrémentent le volume restant du fût ; à sec, les articles sont automatiquement désactivés et la tireuse libérée.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="new-keg-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <form class="modal-content" method="post" action="{{ url_for('admin.keg_nouveau') }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Nouveau fût</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body row g-3">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <div class="col-md-6"><label class="form-label">Nom du fût</label><input class="form-control" name="name" required></div>
+        <div class="col-md-2"><label class="form-label">Degré (°)</label><input class="form-control" name="alcohol_degree" type="number" step="0.1" value="5.0"></div>
+        <div class="col-md-2"><label class="form-label">Volume (L)</label><input class="form-control" name="volume_l" type="number" step="0.5" value="30"></div>
+        <div class="col-md-2"><label class="form-label">Restant (L)</label><input class="form-control" name="remaining_l" type="number" step="0.5" value="30"></div>
+        {% for c, label in [('brest','Brest'), ('paris','Paris')] %}
+        <div class="col-12"><strong>{{ label }}</strong></div>
+        {% for size, slabel in [('half','Demi'), ('pint','Pinte'), ('pot','Pot')] %}
+        <div class="col-md-3"><label class="form-label small">{{ slabel }} standard (€)</label><input class="form-control form-control-sm" name="{{ c }}_{{ size }}_std" value="0.00"></div>
+        <div class="col-md-3"><label class="form-label small">{{ slabel }} équipe (€)</label><input class="form-control form-control-sm" name="{{ c }}_{{ size }}_team" value="0.00"></div>
+        {% endfor %}
+        {% endfor %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary">Enregistrer le fût</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Compte de {{ u.full_name }}{% endblock %}
+{% block content %}
+<h1 class="h3 mb-1"><i class="bi bi-person"></i> {{ u.full_name }}</h1>
+<p class="text-muted">
+  {% if u.username %}@{{ u.username }} ·{% endif %}
+  Solde Brest : <strong>{{ u.wallet('brest').balance|eur }}</strong> ·
+  Solde Paris : <strong>{{ u.wallet('paris').balance|eur }}</strong> ·
+  Verres consignés : Brest {{ u.wallet('brest').glasses_outstanding }} / Paris {{ u.wallet('paris').glasses_outstanding }}
+</p>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">Profil &amp; restrictions</div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <div class="mb-3"><label class="form-label">Prénom</label><input class="form-control" name="first_name" value="{{ u.first_name }}"></div>
+          <div class="mb-3"><label class="form-label">Nom</label><input class="form-control" name="last_name" value="{{ u.last_name }}"></div>
+          <div class="mb-3"><label class="form-label">Promotion</label><input class="form-control" name="promotion" type="number" value="{{ u.promotion if u.promotion else '' }}"></div>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" name="blacklist" id="bl" {% if u.blacklist %}checked{% endif %}>
+            <label class="form-check-label text-danger" for="bl"><strong>Blacklist</strong> — bloque tout achat et retire tous les accès équipe</label>
+          </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" name="blacklist_alcohol" id="bla" {% if u.blacklist_alcohol %}checked{% endif %}>
+            <label class="form-check-label text-warning" for="bla"><strong>Blacklist alcool</strong> — interdit l'achat d'alcool (mutualisé entre campus)</label>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Mot de passe administrateur <span class="text-muted small">(requis uniquement pour retirer le statut blacklist alcool)</span></label>
+            <input class="form-control" type="password" name="admin_password">
+          </div>
+          <button class="btn btn-primary">Enregistrer</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card mb-4">
+      <div class="card-header">Accès équipe</div>
+      <div class="card-body">
+        {% if u.team_status %}
+          <p>Statut : <span class="badge bg-success">{{ u.team_status }}</span>{% if u.team_campus %} · campus {{ CAMPUSSES[u.team_campus] }}{% endif %}</p>
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.membre', user_id=u.id) }}">Gérer dans l'onglet Équipe</a>
+        {% else %}
+          <p class="text-muted mb-2">Ce compte n'a pas d'accès équipe.</p>
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.membre', user_id=u.id) }}">Attribuer un accès</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Opérations rapides ({{ CAMPUSSES[current_campus] if current_campus else 'campus de connexion' }})</div>
+      <div class="card-body d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-success btn-sm" href="{{ url_for('team.rechargement') }}">Rechargement</a>
+        <a class="btn btn-outline-warning btn-sm" href="{{ url_for('team.retrait') }}">Retrait</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('team.transfert') }}">Transfert</a>
+        <a class="btn btn-outline-dark btn-sm" href="{{ url_for('team.historique', user=u.full_name) }}">Historique</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

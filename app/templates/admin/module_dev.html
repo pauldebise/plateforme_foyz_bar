@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+{% block title %}Module développement{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-sliders"></i> Module développement</h1>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card mb-4">
+      <div class="card-header">Paramètres globaux</div>
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="settings">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Nom du site</label>
+              <input class="form-control" name="site_name" value="{{ values['site_name'] }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Découvert autorisé (€)</label>
+              <input class="form-control" name="overdraft_limit_cents" value="{{ '%.2f'|format(values['overdraft_limit_cents']|int / 100) }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Valeur consigne (€)</label>
+              <input class="form-control" name="deposit_value_cents" value="{{ '%.2f'|format(values['deposit_value_cents']|int / 100) }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Mécanisme de consigne</label>
+              <select class="form-select" name="deposit_enabled">
+                <option value="1" {% if values['deposit_enabled'] == '1' %}selected{% endif %}>Activé</option>
+                <option value="0" {% if values['deposit_enabled'] != '1' %}selected{% endif %}>Désactivé</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Durée d'accès aux transactions (jours)</label>
+              <input class="form-control" type="number" name="max_history_days" value="{{ values['max_history_days'] }}">
+              <div class="form-text">Les données restent en base mais ne sont plus visibles sur le site après ce délai.</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Conservation des journaux de connexion (jours)</label>
+              <input class="form-control" type="number" name="login_logs_retention_days" value="{{ values['login_logs_retention_days'] }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Déconnexion pour inactivité (minutes)</label>
+              <input class="form-control" type="number" name="session_timeout_minutes" value="{{ values['session_timeout_minutes'] }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Post-it privés max</label>
+              <input class="form-control" type="number" name="max_postits_private" value="{{ values['max_postits_private'] }}">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Post-it publics max</label>
+              <input class="form-control" type="number" name="max_postits_public" value="{{ values['max_postits_public'] }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Thème de couleur — Brest</label>
+              <input class="form-control form-control-color w-100" type="color" name="theme_color_brest" value="{{ values['theme_color_brest'] }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Thème de couleur — Paris</label>
+              <input class="form-control form-control-color w-100" type="color" name="theme_color_paris" value="{{ values['theme_color_paris'] }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Logo — Brest</label>
+              {% if values['logo_brest'] %}<img src="/uploads/{{ values['logo_brest'] }}" class="brand-logo d-block mb-1">{% endif %}
+              <input class="form-control" type="file" name="logo_brest" accept=".jpg,.jpeg,.png,.webp,.svg">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Logo — Paris</label>
+              {% if values['logo_paris'] %}<img src="/uploads/{{ values['logo_paris'] }}" class="brand-logo d-block mb-1">{% endif %}
+              <input class="form-control" type="file" name="logo_paris" accept=".jpg,.jpeg,.png,.webp,.svg">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Règlement intérieur — Brest (PDF)</label>
+              {% if values['regulation_pdf_brest'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
+              <input class="form-control" type="file" name="regulation_pdf_brest" accept=".pdf">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Règlement intérieur — Paris (PDF)</label>
+              {% if values['regulation_pdf_paris'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
+              <input class="form-control" type="file" name="regulation_pdf_paris" accept=".pdf">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Édition de la page d'accueil (interface publique)</label>
+              <textarea class="form-control" name="homepage_text" rows="4">{{ values['homepage_text'] }}</textarea>
+            </div>
+            <div class="col-12 d-flex gap-2 flex-wrap">
+              <button class="btn btn-primary"><i class="bi bi-save"></i> Enregistrer les paramètres</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">Liens utiles (interface publique)</div>
+      <div class="card-body">
+        <form class="row g-2 align-items-end mb-2" method="post">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="add_link">
+          <div class="col-md-4"><label class="form-label small">Libellé</label><input class="form-control form-control-sm" name="label" required placeholder="ex : Plateforme VSS"></div>
+          <div class="col-md-6"><label class="form-label small">URL (https://…)</label><input class="form-control form-control-sm" name="url" required placeholder="https://"></div>
+          <div class="col-md-2"><label class="form-label small">Ordre</label><input class="form-control form-control-sm" name="position" type="number" value="0"></div>
+          <div class="col-12 d-grid"><button class="btn btn-outline-primary btn-sm">Ajouter le lien</button></div>
+        </form>
+        {% for l in links %}
+        <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+          <div><strong>{{ l.label }}</strong> <span class="small text-muted">{{ l.url }}</span></div>
+          <form method="post">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="del_link">
+            <input type="hidden" name="link_id" value="{{ l.id }}">
+            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-shield-lock"></i> Mot de passe administrateur</div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="password">
+          <div class="mb-3"><label class="form-label">Mot de passe actuel</label><input class="form-control" type="password" name="current_password" required></div>
+          <div class="mb-3"><label class="form-label">Nouveau mot de passe</label><input class="form-control" type="password" name="new_password" required></div>
+          <button class="btn btn-warning">Modifier</button>
+        </form>
+        <p class="small text-muted mt-3 mb-0">
+          Ce mot de passe sert à confirmer les opérations sensibles : commandes en découvert,
+          annulations de transactions et retrait du statut « blacklist alcool ».
+        </p>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-people"></i> Trombinoscopes</div>
+      <div class="card-body">
+        <p class="small text-muted">Photos et fonctions des membres de mandat :</p>
+        <div class="d-flex flex-wrap gap-2">
+          {% for m in members %}
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.membre', user_id=m.id) }}">
+            <i class="bi bi-person"></i> {{ m.full_name }}{% if m.team_campus %} · {{ CAMPUSSES[m.team_campus] }}{% endif %}
+          </a>
+          {% else %}
+          <span class="text-muted small">Aucun membre de mandat.</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-server"></i> Accès infrastructure</div>
+      <div class="card-body">
+        <form method="post">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="settings">
+          <div class="mb-3">
+            <label class="form-label">Hébergeur</label>
+            <input class="form-control form-control-sm" name="link_hosting" value="{{ values['link_hosting'] }}" placeholder="https://…">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Serveur de base de données</label>
+            <input class="form-control form-control-sm" name="link_database" value="{{ values['link_database'] }}" placeholder="https://…">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Dépôt du code source</label>
+            <input class="form-control form-control-sm" name="link_repository" value="{{ values['link_repository'] }}" placeholder="https://…">
+          </div>
+          <button class="btn btn-outline-primary btn-sm">Enregistrer</button>
+        </form>
+        <div class="mt-3 d-flex flex-wrap gap-2">
+          {% if values['link_hosting'] %}<a class="btn btn-sm btn-dark" href="{{ values['link_hosting'] }}" target="_blank" rel="noopener"><i class="bi bi-cloud"></i> Hébergeur</a>{% endif %}
+          {% if values['link_database'] %}<a class="btn btn-sm btn-dark" href="{{ values['link_database'] }}" target="_blank" rel="noopener"><i class="bi bi-database"></i> Base de données</a>{% endif %}
+          {% if values['link_repository'] %}<a class="btn btn-sm btn-dark" href="{{ values['link_repository'] }}" target="_blank" rel="noopener"><i class="bi bi-github"></i> Code source</a>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Règlement intérieur — {{ site_name }}{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-journal-text"></i> Règlements intérieurs</h1>
+<div class="row g-4">
+  {% for key, label in [("brest", "Brest"), ("paris", "Paris")] %}
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header">{{ label }}</div>
+      <div class="card-body">
+        {% set pdfname = pdfs[key] %}
+        {% if pdfname %}
+          <p>Dernière version du règlement intérieur du Foy'z/Bar de {{ label }} :</p>
+          <a class="btn btn-primary mb-3" href="/uploads/{{ pdfname }}" target="_blank" rel="noopener"><i class="bi bi-file-earmark-pdf"></i> Télécharger / consulter</a>
+          <iframe src="/uploads/{{ pdfname }}" class="w-100 border rounded" style="height: 420px;" title="Règlement {{ label }}"></iframe>
+        {% else %}
+          <p class="text-muted">Le règlement n'a pas encore été publié.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

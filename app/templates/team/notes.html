@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Notes (Post-it){% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-sticky"></i> Systèmes de notes</h1>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-lock"></i> Tableau privé de l'équipe</span>
+        <span class="badge bg-secondary">max {{ private|length }} affichées</span>
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('team.notes_action') }}" class="mb-3">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="create">
+          <input type="hidden" name="scope" value="private">
+          <textarea class="form-control" name="content" rows="2" placeholder="Nouvelle note privée…" required></textarea>
+          <button class="btn btn-primary btn-sm mt-2"><i class="bi bi-plus-lg"></i> Publier</button>
+        </form>
+        <div class="d-flex flex-wrap gap-3">
+          {% for n in private %}
+          <div class="postit" style="max-width: 280px;">
+            <form method="post" action="{{ url_for('team.notes_action') }}">
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="update">
+              <input type="hidden" name="note_id" value="{{ n.id }}">
+              <textarea name="content" class="form-control form-control-sm border-0 bg-transparent p-0" rows="4" style="white-space: pre-line; resize: none;">{{ n.content }}</textarea>
+              <div class="d-flex justify-content-between align-items-center mt-2">
+                <span class="small text-muted">{{ n.author_name }} · {{ n.updated_at|dt }}</span>
+                <span>
+                  <button class="btn btn-sm" title="Enregistrer"><i class="bi bi-check2"></i></button>
+                  <button type="button" class="btn btn-sm" data-bs-toggle="modal" data-bs-target="#del-modal" data-nid="{{ n.id }}" title="Supprimer"><i class="bi bi-trash text-danger"></i></button>
+                </span>
+              </div>
+            </form>
+          </div>
+          {% else %}
+          <p class="text-muted">Aucune note privée.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between">
+        <span><i class="bi bi-globe"></i> Notes publiques (page d'accueil)</span>
+        <span class="badge bg-secondary">max {{ public|length }} affichées</span>
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('team.notes_action') }}" class="mb-3">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="create">
+          <input type="hidden" name="scope" value="public">
+          <textarea class="form-control" name="content" rows="2" placeholder="Information à l'attention des visiteurs…" required></textarea>
+          <button class="btn btn-primary btn-sm mt-2"><i class="bi bi-plus-lg"></i> Publier</button>
+        </form>
+        <div class="d-flex flex-wrap gap-3">
+          {% for n in public %}
+          <div class="postit postit-public" style="max-width: 280px;">
+            <form method="post" action="{{ url_for('team.notes_action') }}">
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <input type="hidden" name="action" value="update">
+              <input type="hidden" name="note_id" value="{{ n.id }}">
+              <textarea name="content" class="form-control form-control-sm border-0 bg-transparent p-0" rows="4" style="white-space: pre-line; resize: none;">{{ n.content }}</textarea>
+              <div class="d-flex justify-content-between align-items-center mt-2">
+                <span class="small text-muted">{{ n.author_name }} · {{ n.updated_at|dt }}</span>
+                <span>
+                  <button class="btn btn-sm" title="Enregistrer"><i class="bi bi-check2"></i></button>
+                  <button type="button" class="btn btn-sm" data-bs-toggle="modal" data-bs-target="#del-modal" data-nid="{{ n.id }}" title="Supprimer"><i class="bi bi-trash text-danger"></i></button>
+                </span>
+              </div>
+            </form>
+          </div>
+          {% else %}
+          <p class="text-muted">Aucune note publique.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="del-modal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <form class="modal-content" method="post" action="{{ url_for('team.notes_action') }}">
+      <div class="modal-body">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input type="hidden" name="note_id" id="del-nid">
+        <p>Supprimer cette note ?</p>
+        <input type="hidden" name="action" value="delete">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Non</button>
+        <button class="btn btn-danger">Supprimer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('del-modal').addEventListener('show.bs.modal', (e) => {
+  document.getElementById('del-nid').value = e.relatedTarget.dataset.nid;
+});
+</script>
+{% endblock %}
