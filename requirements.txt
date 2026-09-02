@@ -5,4 +5,4 @@ python-dotenv==1.2.3
 gunicorn==26.2.0
 
 # Requis uniquement pour le déploiement PostgreSQL (inutile en local avec SQLite)
-psycopg2-binary==2.9.10
+psycopg2-binary==2.9.12

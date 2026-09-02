@@ -67,11 +67,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> `psycopg2-binary` (driver PostgreSQL) nécessite un wheel adapté à votre version de
-> Python ; en cas d'échec d'installation sur une version récente, installez les
-> paquets un à un :
-> `pip install Flask Flask-SQLAlchemy SQLAlchemy python-dotenv gunicorn`
-> (`psycopg2-binary` reste requis uniquement pour la production PostgreSQL.)
+> `psycopg2-binary` n'est requis que pour la production PostgreSQL
+> (inutile en local avec SQLite).
 
 ```bash
 flask --app wsgi.py init-db     # crée les tables + le mot de passe administrateur
