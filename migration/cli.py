@@ -145,6 +145,7 @@ def _run_migration(args, engine, files):
         transaction.commit()
         # la table de staging n'a plus d'utilité une fois la projection commitée
         staging.drop(conn)
+        conn.commit()
         line()
         print("  >>> COMMIT effectué : migration validée. <<<")
         dispose(files, keep_archives=args.keep_archives, source_dir=args.source_dir)
@@ -162,9 +163,12 @@ def _drop_staging_after_rollback(conn):
     Sous PostgreSQL le DDL est transactionnel : la table disparaît déjà avec le
     rollback et ce DROP est un no-op (IF EXISTS). Sous SQLite, le driver pysqlite
     committe implicitement le DDL : cette purge évite tout résidu en dev/test.
+    Le DROP est exécuté puis commité explicitement (sinon SQLAlchemy 2.0
+    l'annulerait à la fermeture de la connexion).
     """
     try:
         staging.drop(conn)
+        conn.commit()
     except Exception:  # noqa: BLE001 — nettoyage best-effort
         pass
 

@@ -146,11 +146,15 @@ def _jsonable(row):
 def iter_records(conn, batch_size=1000):
     """Re-lit la staging en streaming : itère (source_file, source_table, record)."""
     table = staging_table(conn.dialect.name)
-    result = conn.execution_options(stream_results=True).execute(
-        sa.select(
-            table.c.source_file, table.c.source_table, table.c.record
-        ).order_by(table.c.id)
+    # stream_results au niveau du statement (et pas de la connexion) : l'option
+    # posée sur la connexion muterait l'objet partagé et casserait le reste du
+    # pipeline (INSERT ... RETURNING wrappé dans un curseur serveur côté PG).
+    select_stmt = (
+        sa.select(table.c.source_file, table.c.source_table, table.c.record)
+        .order_by(table.c.id)
+        .execution_options(stream_results=True)
     )
+    result = conn.execute(select_stmt)
     while True:
         rows = result.fetchmany(batch_size)
         if not rows:
