@@ -9,3 +9,6 @@ uploads/*
 nohup.out
 *.log
 .DS_Store
+
+# Dumps des anciennes bases : jamais versionnés (données personnelles + mot de passe)
+bdd_a_migrer/

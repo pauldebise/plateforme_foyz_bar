@@ -28,7 +28,7 @@ Foyz_plateforme/
 │   │   ├── transaction.py     #   Transaction, TransactionLine, Contribution
 │   │   ├── note.py            #   Note (post-it privé/public)
 │   │   └── system.py          #   Setting, LoginLog, UsefulLink
-│   ├── services/              # Logique métier (indépendante des routes)
+│   ├── services/               # Logique métier (indépendante des routes)
 │   │   ├── settings.py        #   Paramètres globaux + mot de passe administrateur
 │   │   ├── transactions.py    #   Moteur de caisse : achats, consignes, annulations…
 │   │   ├── stats.py           #   Statistiques de consommation
@@ -43,6 +43,10 @@ Foyz_plateforme/
 │   │   └── api.py             #   /api/* (JSON pour l'interface de caisse et les graphiques)
 │   ├── templates/             # Jinja2 (public/, team/, admin/, gateway/, errors/)
 │   └── static/                # CSS + JS (caisse, recherche d'étudiants, opérations)
+├── migration/                  # Module ETL de bascule nocturne (voir §6)
+├── bdd_a_migrer/               # Dumps des anciennes bases (jamais versionnés)
+├── tests/
+│   └── migration/             # Fixtures + suite de tests du module de migration
 ├── docs/                      # Cahier des charges
 ├── uploads/                   # Fichiers téléversés (affiches, logos, PDF, photos)
 ├── instance/                  # Base SQLite (créée à l'exécution)
@@ -63,9 +67,11 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> `psycopg2-binary` (driver PostgreSQL) nécessite Python ≤ 3.13 faute de wheel plus récent.
-> En local avec SQLite et Python 3.14, installez les paquets un à un :
+> `psycopg2-binary` (driver PostgreSQL) nécessite un wheel adapté à votre version de
+> Python ; en cas d'échec d'installation sur une version récente, installez les
+> paquets un à un :
 > `pip install Flask Flask-SQLAlchemy SQLAlchemy python-dotenv gunicorn`
+> (`psycopg2-binary` reste requis uniquement pour la production PostgreSQL.)
 
 ```bash
 flask --app wsgi.py init-db     # crée les tables + le mot de passe administrateur
@@ -203,3 +209,55 @@ dans `.env` (cookies `Secure`).
 - **Changer le mot de passe administrateur** : Module développement → Mot de passe administrateur.
 - Les paramètres (découvert, consigne, thèmes, durées de conservation…) se règlent dans
   **Administrateur → Module développement**, sans redéploiement.
+
+## 6. Bascule nocturne : migration des anciennes bases
+
+Le module `migration/` ingère, transforme et injecte les anciennes bases des deux
+campus dans la plateforme unifiée, en une transaction PostgreSQL unique avec
+audit comptable systématique.
+
+### Déroulé opérationnel
+
+1. Passer les anciens sites en maintenance (gel des écritures).
+2. Copier les dumps dans `bdd_a_migrer/` (créé automatiquement) :
+   - Brest : dump MySQL `brest_*.sql` (~500 Mo, majoritairement des logs — traités
+     en streaming par batchs, sans chargement en RAM) ;
+   - Paris : export léger `paris_*.json` / `*.jsonl` / `*.csv` / `*.sql`.
+3. `make migrate-dry` — cycle complet (parsing, conversions, injection, audit) puis
+   **ROLLBACK systématique** : la base et les fichiers restent intacts.
+4. `make migrate-run` — exécution réelle ; si et seulement si l'audit comptable
+   valide un **écart strictement nul (0 centime)**, `COMMIT` puis suppression des
+   fichiers sources ; sinon `ROLLBACK` et **aucun fichier n'est touché** (exit 1).
+   Option `--keep-archives` (ou `make migrate-keep`) : les sources sont déplacées
+   dans `bdd_a_migrer/archives/<horodatage>/` au lieu d'être supprimées.
+5. Redémarrer la plateforme.
+
+### Garanties
+
+- **Montants** : exclusivement en centimes entiers (`INTEGER`), toute source
+  flottante ou à fraction de centime est rejetée (`--money-unit euros|cents`).
+- **Invariable comptable** : `Σ soldes sources = Σ soldes cibles` (écart global
+  ET par campus strictement nul), vérifié dans la transaction avant `COMMIT`.
+- **Logs exclus** : tables `*_logs`, `log_*`, `connexions`, `sessions`,
+  `audit_*`, `debug_*`… purgées au vol ; l'historique **comptable** (transactions,
+  ventes) est conservé pour justifier les soldes. Les tables non reconnues ne
+  sont **pas** migrées (liste blanche) et figurent au rapport.
+- **Réconciliation** : les étudiants présents sur les deux campus (email, sinon
+  pseudo, sinon nom) sont fusionnés en un compte unique avec deux portefeuilles
+  (un par campus) ; l'historique reste rattaché à son `campus` d'origine.
+- **Mots de passe** : seuls les hachages compatibles sont repris ; les autres
+  comptes démarrent sans mot de passe (réinitialisation par l'équipe).
+
+### Commandes utiles
+
+```bash
+make migrate-audit   # comparaison soldes sources / cibles sans injection (exit 1 si écart)
+make migrate-dry     # répétition générale (ROLLBACK + fichiers intacts)
+make migrate-run     # bascule réelle
+make migrate-keep    # bascule réelle avec archivage des sources
+python -m tests.migration.test_migration   # suite de tests du module (11 tests)
+```
+
+Les contrats de mapping (tables/colonnes des anciens schémas) sont centralisés
+dans `migration/sources/` — à ajuster si le dump réel diffère, puis relancer un
+`--dry-run` pour valider.
