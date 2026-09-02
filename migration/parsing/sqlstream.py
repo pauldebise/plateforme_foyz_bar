@@ -361,17 +361,24 @@ def _looks_terminated(buf):
     return not (head.startswith("INSERT") or head.startswith("CREATE") or head.startswith("REPLACE"))
 
 
-def iter_business_rows(path, keep_map, batch_size=settings.DEFAULT_CHUNK_ROWS, encoding=None):
+def iter_business_rows(path, keep_map=None, batch_size=settings.DEFAULT_CHUNK_ROWS,
+                       encoding=None, keep_predicate=None, on_scan_done=None):
     """Itère (table, colonnes, lignes[dict]) par batchs pour les tables métier.
 
-    keep_map : dict table_minuscules -> identifiant logique (liste blanche).
+    keep_map : dict table_minuscules -> identifiant logique (liste blanche),
+    ou keep_predicate : fonction table -> bool (exactement l'un des deux).
     Colonnes issues du CREATE TABLE du dump, ou de la liste explicite de
     colonnes de l'INSERT ; sinon SourceError.
+    on_scan_done : callback(scanner) appelé en fin de fichier (statistiques).
     """
     path = Path(path)
+    if (keep_map is None) == (keep_predicate is None):
+        raise ValueError("fournir keep_map OU keep_predicate")
+    if keep_predicate is None:
+        keep_predicate = lambda t: bool(t) and t.lower() in keep_map  # noqa: E731
     enc = encoding or _sniff_encoding(path)
     with open(path, "r", encoding=enc, newline="") as fh:
-        scanner = SqlDumpScanner(fh, keep_predicate=lambda t: bool(t) and t.lower() in keep_map)
+        scanner = SqlDumpScanner(fh, keep_predicate=keep_predicate)
         pending_table, pending_cols, batch = None, None, []
         for kind, table, text in scanner.statements():
             if kind == "create" and text:
@@ -398,6 +405,8 @@ def iter_business_rows(path, keep_map, batch_size=settings.DEFAULT_CHUNK_ROWS, e
                     batch = []
         if batch:
             yield pending_table, pending_cols, batch
+        if on_scan_done is not None:
+            on_scan_done(scanner)
 
 
 def _explicit_columns(statement):
