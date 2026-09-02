@@ -30,7 +30,7 @@ _CAMPUS_PREFIX = {
     "paris": re.compile(r"^paris[-_]", re.IGNORECASE),
 }
 
-_IGNORED_NAMES = {".gitkeep", ".gitignore", "readme.md", "lisez-moi.txt"}
+_IGNORED_NAMES = {".gitkeep", ".gitignore", "readme.md", "lisez-moi.txt", "manifest.json"}
 
 
 @dataclass(frozen=True)

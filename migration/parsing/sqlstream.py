@@ -46,6 +46,7 @@ _HEADER_INSERT = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _INT_RE = re.compile(r"^[+-]?\d+$")
+_ROW_SEPARATOR = re.compile(r"\)\s*,\s*\(")  # séparateur de tuples (skip des logs)
 
 # longueur max du préfixe analysé pour décider du sort d'un statement
 _DECIDE_MAX = 256
@@ -183,7 +184,9 @@ class SqlDumpScanner:
                 elif state == "skip":
                     if kind == "insert" and table:
                         stop = m.start() if m else n
-                        self.skipped_rows_approx[table] += chunk[pos:stop].count("),(")
+                        self.skipped_rows_approx[table] += len(
+                            _ROW_SEPARATOR.findall(chunk[pos:stop])
+                        )
                     if not m:
                         pos = n
                         break
@@ -479,6 +482,9 @@ def _parse_values(statement, columns, table, filename):
     n_cols = len(columns)
     text = statement
     while i < parser.n:
+        i = parser.skip_ws(i)
+        if i >= parser.n:
+            break
         if text[i] != "(":
             raise SourceError(
                 f"{filename} : tuple inattendu dans l'INSERT de `{table}` (position {i})."

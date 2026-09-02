@@ -117,6 +117,11 @@ def parse_dt(raw, assume_tz=PARIS_TZ):
     return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+def utcnow():
+    """Horodatage naive UTC (convention de la plateforme)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def fmt_euros(cents):
     """Formatage console : 12345 -> "123,45 €"."""
     if cents is None:

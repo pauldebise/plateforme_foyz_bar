@@ -20,13 +20,14 @@ from collections import defaultdict
 import sqlalchemy as sa
 
 from . import audit, logfilter, settings
+from .errors import AccountingError
 from .parsing import files as files_reader
 from .parsing.sqlstream import iter_business_rows
 from .sources import brest as brest_contract
 from .sources import map_line_row, map_transaction_row, map_user_row
 from .sources import paris as paris_contract
 from . import staging
-from .util import normalize_key
+from .util import normalize_key, utcnow as now_utc
 
 _USERS_SQL = (
     "INSERT INTO users (first_name, last_name, promotion, username, password_hash, "
@@ -73,7 +74,11 @@ class SourceReader:
         self.money_unit = money_unit
         self.chunk_rows = chunk_rows
         self.conn = conn
-        self.scan_stats = []  # SqlDumpScanner des dumps SQL (rapport)
+        self.scan_stats = {}  # fichier -> SqlDumpScanner (le même fichier peut être
+        # scanné plusieurs passes : on garde la dernière exécution par fichier)
+
+    def _record_scan(self, filename, scanner):
+        self.scan_stats[filename] = scanner
 
     # ---------------------------------------------------------- brest (SQL)
 
@@ -85,7 +90,7 @@ class SourceReader:
                 src.path,
                 keep_map=brest_contract.TABLE_MAP,
                 batch_size=self.chunk_rows,
-                on_scan_done=lambda sc: self.scan_stats.append(sc),
+                on_scan_done=lambda sc, s=src: self._record_scan(s.path.name, sc),
             ):
                 entity = brest_contract.entity_for(table)
                 if entity != entity_wanted:
@@ -112,7 +117,7 @@ class SourceReader:
                     src.path,
                     keep_predicate=predicate,
                     batch_size=self.chunk_rows,
-                    on_scan_done=lambda sc: self.scan_stats.append(sc),
+                    on_scan_done=lambda sc, s=src: self._record_scan(s.path.name, sc),
                 ):
                     for row in rows:
                         yield src.path.name, table, row
@@ -133,7 +138,7 @@ class SourceReader:
                 user, warning = (obj, None) if obj else (None, "champs insuffisants")
                 yield "paris", filename, user, warning
 
-    def iter_accounting_items(self):
+    def _iter_brest_multi(self):
         for src in self.files:
             if src.campus != "brest" or src.kind != "sql_dump":
                 continue
@@ -141,7 +146,7 @@ class SourceReader:
                 src.path,
                 keep_map=brest_contract.TABLE_MAP,
                 batch_size=self.chunk_rows,
-                on_scan_done=lambda sc: self.scan_stats.append(sc),
+                on_scan_done=lambda sc, s=src: self._record_scan(s.path.name, sc),
             ):
                 entity = brest_contract.entity_for(table)
                 if entity not in ("transactions", "lines"):
@@ -193,11 +198,13 @@ class Migrator:
                     self.counts[f"warn_{warning[:40]}"] += 1
                 continue
             key = user["key"]
+            if user["src_id"] is not None:
+                # enregistré même si le compte est un doublon : les transactions
+                # référencent l'id source et doivent rester traçables
+                self.id_map[campus].setdefault(str(user["src_id"]), key)
             if key in self.accounts[campus]:
                 self.counts[f"duplicates_{campus}"] += 1
                 continue
-            if user["src_id"] is not None:
-                self.id_map[campus][str(user["src_id"])] = key
             self.accounts[campus][key] = (user, filename)
             self.key_order[campus].append(key)
             self.source_sums[campus] += user["balance_cents"]
@@ -269,7 +276,7 @@ class Migrator:
                 "blacklist": bool(primary["blacklist"] or (secondary and secondary["blacklist"])),
                 "blacklist_alcohol": bool(primary["blacklist_alcohol"]
                                           or (secondary and secondary["blacklist_alcohol"])),
-                "created_at": created_at,
+                "created_at": created_at or now_utc(),
             }
             user_id = self.conn.execute(sa.text(_USERS_SQL), params).scalar_one()
             self.target_id_by_key[key] = user_id
@@ -315,7 +322,7 @@ class Migrator:
 
     def _insert_transaction(self, campus, filename, txn):
         params = {
-            "created_at": txn["created_at"],
+            "created_at": txn["created_at"] or now_utc(),
             "type": txn["type"] or "direct",
             "campus": campus,
             "total": txn["total_cents"],
@@ -362,12 +369,13 @@ class Migrator:
             "unit_price": line_obj["unit_price"],
             "line_total": line_obj["line_total"],
         })
+        self.counts[f"lignes_{campus}"] += 1
         self.counts["lignes_importees"] += 1
 
     # ------------------------------------------------------------ global
 
     def migrate(self):
-        """Exécute les passes et l'audit. Retourne l'audit (lève si écart)."""
+        """Exécute les passes et l'audit. Lève AccountingError si écart (rapport imprimé)."""
         staging.create(self.conn)
         stage_stats = staging.load(self.conn, self.reader.files, self.chunk_rows)
         self.counts["staging_rows"] = stage_stats["rows"]
@@ -379,12 +387,18 @@ class Migrator:
             initial=self.initial_totals,
             final=audit.capture_target(self.conn),
         )
-        audit.check(result)
+        try:
+            audit.check(result)
+        except AccountingError:
+            audit.print_audit(result, extra_counts=self.report_lines())
+            raise
         return result
 
     def report_lines(self):
         """(label, valeur) pour le rapport final."""
         c = self.counts
+        paris_projected = (c.get("rows_users_paris", 0) + c.get("txns_paris", 0)
+                           + c.get("lignes_paris", 0))
         pairs = [
             ("Comptes créés", c.get("users_created")),
             ("Comptes fusionnés (2 campus)", c.get("users_merged")),
@@ -396,11 +410,15 @@ class Migrator:
             ("Transactions Paris", c.get("txns_paris")),
             ("Transactions annulées (conservées)", c.get("txns_annulees")),
             ("Lignes de vente importées", c.get("lignes_importees")),
+            ("dont Brest", c.get("lignes_brest")),
+            ("dont Paris", c.get("lignes_paris")),
             ("Lignes orphelines ignorées", c.get("lignes_orphelines")),
             ("Transactions avec user introuvable", c.get("txn_user_inconnu_brest", 0)
              + c.get("txn_user_inconnu_paris", 0)),
             ("Types de transaction inconnus (-> direct)", c.get("txn_type_inconnu")),
             ("Lignes staging Paris", c.get("staging_rows")),
+            ("Records Paris non projetés (hors entités)", c.get("staging_rows", 0)
+             - paris_projected),
             ("Comptes préexistants en cible", c.get("users_preexistants")),
         ]
         return [(k, v) for k, v in pairs if v]

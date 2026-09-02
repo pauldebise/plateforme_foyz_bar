@@ -41,10 +41,41 @@ def staging_table(dialect_name):
     return _TABLES[dialect_name]
 
 
+_DDL = {
+    "postgresql": """
+        CREATE TABLE IF NOT EXISTS staging_paris_raw (
+            id BIGSERIAL PRIMARY KEY,
+            source_file VARCHAR(255) NOT NULL DEFAULT '',
+            source_table VARCHAR(120),
+            campus VARCHAR(10) NOT NULL,
+            record JSONB NOT NULL,
+            loaded_at TIMESTAMP
+        )
+    """,
+    "sqlite": """
+        CREATE TABLE IF NOT EXISTS staging_paris_raw (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_file VARCHAR(255) NOT NULL DEFAULT '',
+            source_table VARCHAR(120),
+            campus VARCHAR(10) NOT NULL,
+            record JSON NOT NULL,
+            loaded_at TIMESTAMP
+        )
+    """,
+}
+
+
 def create(conn):
-    table = staging_table(conn.dialect.name)
-    _METADATA.create_all(conn, tables=[table])
-    return table
+    """Crée la staging DANS la transaction courante (DDL transactionnel).
+
+    DDL manuel : metadata.create_all() gérerait sa propre transaction et
+    commiterait le DDL, ce qui casserait la garantie de rollback intégral.
+    """
+    dialect = conn.dialect.name
+    if dialect not in _DDL:
+        raise SourceError(f"Dialecte de base non supporté pour la staging : {dialect}")
+    conn.execute(sa.text(_DDL[dialect]))
+    return staging_table(dialect)
 
 
 def load(conn, source_files, chunk_rows):
@@ -134,5 +165,4 @@ def count(conn):
 
 
 def drop(conn):
-    table = staging_table(conn.dialect.name)
-    _METADATA.drop_all(conn, tables=[table])
+    conn.execute(sa.text("DROP TABLE IF EXISTS staging_paris_raw"))
