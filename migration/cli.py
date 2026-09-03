@@ -14,6 +14,7 @@ import re
 import sys
 from pathlib import Path
 
+import sqlalchemy as sa
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
@@ -117,6 +118,25 @@ def _ensure_schema(engine):
     import app.models  # noqa: F401 — enregistre les modèles dans db.metadata
     from app.extensions import db
     db.metadata.create_all(engine)
+    _ensure_column(engine, "users", "blacklist_reason", "VARCHAR(255)")
+
+
+def _ensure_column(engine, table, column, ddl_type):
+    """Ajoute une colonne manquante sur une base existante (idempotent).
+
+    create_all() ne complète pas les tables déjà présentes : la cible d'une
+    bascule peut dater d'avant l'ajout de `users.blacklist_reason`.
+    """
+    with engine.connect() as conn:
+        if engine.dialect.name == "postgresql":
+            conn.execute(sa.text(
+                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {ddl_type}"
+            ))
+        else:  # sqlite (tests) : introspection puis ALTER
+            rows = conn.execute(sa.text(f"PRAGMA table_info({table})")).fetchall()
+            if rows and column not in {r[1] for r in rows}:
+                conn.execute(sa.text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+        conn.commit()
 
 
 def _run_migration(args, engine, files):

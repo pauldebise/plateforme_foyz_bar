@@ -15,6 +15,7 @@ class User(db.Model):
     team_campus: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
     blacklist: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     blacklist_alcohol: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
+    blacklist_reason: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)
 
     wallets: db.Mapped[list["Wallet"]] = db.relationship(
