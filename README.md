@@ -227,6 +227,19 @@ audit comptable systématique.
   flottante ou à fraction de centime est rejetée (`--money-unit euros|cents`).
 - **Invariable comptable** : `Σ soldes sources = Σ soldes cibles` (écart global
   ET par campus strictement nul), vérifié dans la transaction avant `COMMIT`.
+- **Catalogue** : les articles Brest (codes-barres, prix public/équipe, volumes)
+  sont importés avec leur type (table `article_types` ; « Boisson Chaude/Froide »
+  rattachées aux consommables `snack`, seul vocabulaire cible non alcoolisé —
+  ajustable dans `migration/sources/__init__.py`). Les lignes de vente
+  historiques sont rattachées aux articles importés quand c'est possible.
+- **Tireuses** : les fûts (`draft_beers`) deviennent des kegs avec leurs tarifs
+  par format (`keg_prices`), et l'état courant des tireuses
+  (`draft_beer_current`, lignes non closes, ouverture la plus récente) configure
+  les `taps` + régénère les articles de tireuse (demi/pinte/pot) comme le fait
+  l'application ; l'historique d'occupation est ignoré.
+- **Motifs de blacklist** : `users.blacklist_reason` (Brest) est importé dans la
+  colonne `blacklist_reason` de la table `users` (entités HTML décodées) ; la
+  colonne est ajoutée automatiquement si la cible préexistante ne l'a pas.
 - **Logs exclus** : tables `*_logs`, `log_*`, `connexions`, `sessions`,
   `audit_*`, `debug_*`… purgées au vol ; l'historique **comptable** (transactions,
   ventes) est conservé pour justifier les soldes. Les tables non reconnues ne
@@ -244,7 +257,7 @@ make migrate-audit   # comparaison soldes sources / cibles sans injection (exit 
 make migrate-dry     # répétition générale (ROLLBACK + fichiers intacts)
 make migrate-run     # bascule réelle
 make migrate-keep    # bascule réelle avec archivage des sources
-python -m tests.migration.test_migration   # suite de tests du module (11 tests)
+python -m tests.migration.test_migration   # suite de tests du module (13 tests)
 ```
 
 Les contrats de mapping (tables/colonnes des anciens schémas) sont centralisés
