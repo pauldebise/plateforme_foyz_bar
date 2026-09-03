@@ -293,17 +293,40 @@ def _keg_from_form(k):
 @bp.route("/tireuses/taps/nouveau", methods=["POST"])
 @login_required
 def tap_nouveau():
-    number = request.form.get("number", "").strip()
+    name = (request.form.get("name") or "").strip()
     campus = request.form.get("campus", "brest")
-    if not number.isdigit():
-        flash("Numéro de tireuse invalide.", "danger")
+    if not name:
+        flash("Le nom de la tireuse est obligatoire.", "danger")
         return redirect(url_for("admin.tireuses"))
-    if db.session.scalars(select(Tap).where(Tap.number == int(number))).first():
-        flash("Ce numéro de tireuse existe déjà.", "danger")
+    if db.session.scalars(select(Tap).where(func.lower(Tap.name) == name.lower())).first():
+        flash("Une tireuse porte déjà ce nom.", "danger")
         return redirect(url_for("admin.tireuses"))
-    db.session.add(Tap(number=int(number), campus=campus if campus in CAMPUSSES else "brest"))
+    max_number = db.session.scalar(select(func.max(Tap.number))) or 0
+    db.session.add(Tap(number=max_number + 1, name=name[:160], campus=campus if campus in CAMPUSSES else "brest"))
     db.session.commit()
-    flash("Tireuse ajoutée.", "success")
+    flash(f'"{name}" ajoutée.', "success")
+    return redirect(url_for("admin.tireuses"))
+
+
+@bp.route("/tireuses/taps/<int:tap_id>/renommer", methods=["POST"])
+@login_required
+def tap_renommer(tap_id):
+    tap = db.session.get(Tap, tap_id)
+    name = (request.form.get("name") or "").strip()
+    if tap is None:
+        abort(404)
+    if not name:
+        flash("Le nom de la tireuse est obligatoire.", "danger")
+        return redirect(url_for("admin.tireuses"))
+    duplicate = db.session.scalars(select(Tap).where(func.lower(Tap.name) == name.lower(), Tap.id != tap.id)).first()
+    if duplicate:
+        flash("Une autre tireuse porte déjà ce nom.", "danger")
+        return redirect(url_for("admin.tireuses"))
+    tap.name = name[:160]
+    db.session.commit()
+    if tap.keg_id:
+        C.assign_keg(tap, db.session.get(Keg, tap.keg_id))
+    flash(f'Tireuse renommée : "{name}".', "success")
     return redirect(url_for("admin.tireuses"))
 
 
@@ -314,7 +337,7 @@ def tap_assigner(tap_id):
     keg = db.session.get(Keg, request.form.get("keg_id", ""))
     if tap and keg:
         C.assign_keg(tap, keg)
-        flash(f'Fût "{keg.name}" assigné à la tireuse {tap.number} : catalogue mis à jour.', "success")
+        flash(f'Fût "{keg.name}" assigné à {tap.display_name} : catalogue mis à jour.', "success")
     return redirect(url_for("admin.tireuses"))
 
 
@@ -324,7 +347,7 @@ def tap_detacher(tap_id):
     tap = db.session.get(Tap, tap_id)
     if tap:
         C.detach_keg(tap)
-        flash(f"Tireuse {tap.number} libérée.", "success")
+        flash(f"{tap.display_name} libérée.", "success")
     return redirect(url_for("admin.tireuses"))
 
 

@@ -79,7 +79,12 @@ class Tap(db.Model):
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
     number: db.Mapped[int] = db.mapped_column(db.Integer, unique=True)
+    name: db.Mapped[str | None] = db.mapped_column(db.String(160), nullable=True)
     campus: db.Mapped[str] = db.mapped_column(db.String(10), default="brest")
     keg_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("kegs.id", ondelete="SET NULL"), nullable=True)
 
     keg: db.Mapped["Keg"] = db.relationship(backref="taps")
+
+    @property
+    def display_name(self):
+        return self.name or f"Tireuse {self.number}"

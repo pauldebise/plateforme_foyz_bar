@@ -28,6 +28,17 @@ def ensure_dev_admin():
     db.session.commit()
 
 
+def ensure_schema_upgrades():
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "taps" in inspector.get_table_names():
+        columns = {c["name"] for c in inspector.get_columns("taps")}
+        if "name" not in columns:
+            with db.engine.begin() as conn:
+                conn.execute(text("ALTER TABLE taps ADD COLUMN name VARCHAR(160)"))
+
+
 def create_app():
     load_dotenv()
     app = Flask(__name__)
@@ -41,6 +52,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        ensure_schema_upgrades()
         ensure_dev_admin()
 
     from app.routes.public import bp as public_bp

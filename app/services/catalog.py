@@ -19,9 +19,10 @@ def assign_keg(tap, keg):
     }
     for key, (label, vol) in TAP_SIZES.items():
         std, team = prices[key]
+        tap_label = tap.name or f"de tireuse {tap.number}"
         db.session.add(
             Article(
-                name=f'{label} de tireuse {tap.number} "{keg.name}"',
+                name=f'{label} {tap_label} "{keg.name}"',
                 article_type="biere",
                 volume_cl=vol,
                 price_std_brest=std,
