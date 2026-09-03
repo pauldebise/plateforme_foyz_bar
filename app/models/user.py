@@ -13,8 +13,6 @@ class User(db.Model):
     password_hash: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     team_status: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
     team_campus: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
-    team_title: db.Mapped[str | None] = db.mapped_column(db.String(120), nullable=True, default=None)
-    photo: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
     blacklist: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     blacklist_alcohol: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)

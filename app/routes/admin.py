@@ -136,7 +136,6 @@ def membre(user_id):
             status = ""
         u.team_status = status or None
         u.team_campus = request.form.get("team_campus") if u.team_status else None
-        u.team_title = (request.form.get("team_title") or "").strip() or None
         password = request.form.get("password") or ""
         if password:
             if len(password) < 6:
@@ -145,9 +144,6 @@ def membre(user_id):
             from werkzeug.security import generate_password_hash
 
             u.password_hash = generate_password_hash(password)
-        photo = save_upload(request.files.get("photo"), allowed=(".jpg", ".jpeg", ".png", ".webp"))
-        if photo:
-            u.photo = photo
         db.session.commit()
         flash("Membre mis à jour.", "success")
         return redirect(url_for("admin.membre", user_id=u.id))
@@ -500,7 +496,6 @@ def module_dev():
                 flash("Lien supprimé.", "success")
         db.session.commit()
         return redirect(url_for("admin.module_dev"))
-    members = db.session.scalars(select(User).where(User.team_status == "mandat").order_by(User.name)).unique().all()
     links = db.session.scalars(select(UsefulLink).order_by(UsefulLink.position)).all()
     values = {k: S.get_setting(k) for k in S.DEFAULTS}
-    return render_template("admin/module_dev.html", values=values, members=members, links=links)
+    return render_template("admin/module_dev.html", values=values, links=links)

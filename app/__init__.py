@@ -19,7 +19,7 @@ def ensure_dev_admin():
     password = current_app.config.get("DEFAULT_ADMIN_PASSWORD", "admin")
     admin = db.session.scalars(select(User).where(func.lower(User.name) == "admin")).first()
     if admin is None:
-        admin = User(name="admin", team_status="mandat", team_campus="brest", team_title="Dev Admin")
+        admin = User(name="admin", team_status="mandat", team_campus="brest")
         db.session.add(admin)
     if not admin.password_hash:
         admin.password_hash = generate_password_hash(password)

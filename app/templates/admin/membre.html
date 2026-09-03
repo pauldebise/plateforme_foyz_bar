@@ -6,9 +6,9 @@
 <div class="row g-4">
   <div class="col-lg-6">
     <div class="card">
-      <div class="card-header">Statut équipe &amp; trombinoscope</div>
+      <div class="card-header">Statut équipe</div>
       <div class="card-body">
-        <form method="post" enctype="multipart/form-data">
+        <form method="post">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <div class="mb-3">
             <label class="form-label">Statut équipe</label>
@@ -28,15 +28,6 @@
               {% endfor %}
             </select>
           </div>
-          <div class="mb-3">
-            <label class="form-label">Fonction affichée au trombinoscope</label>
-            <input class="form-control" name="team_title" value="{{ u.team_title or '' }}" placeholder="ex : Président, Maître barman…">
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Photo (trombinoscope)</label>
-            {% if u.photo %}<img src="/uploads/{{ u.photo }}" class="trombi-photo mb-2" style="width: 120px;">{% endif %}
-            <input class="form-control" type="file" name="photo" accept=".jpg,.jpeg,.png,.webp">
-          </div>
           <button class="btn btn-primary">Enregistrer</button>
         </form>
       </div>
@@ -51,7 +42,6 @@
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="team_status" value="{{ u.team_status or '' }}">
           <input type="hidden" name="team_campus" value="{{ u.team_campus or '' }}">
-          <input type="hidden" name="team_title" value="{{ u.team_title or '' }}">
           <div class="mb-3">
             <label class="form-label">Nouveau mot de passe</label>
             <input class="form-control" type="password" name="password" placeholder="{% if u.password_hash %}laisser vide pour conserver{% else %}définir un mot de passe{% endif %}">

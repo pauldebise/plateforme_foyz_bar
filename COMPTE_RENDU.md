@@ -35,7 +35,6 @@ d'interprétation et les choix techniques sont listés en §6.
 | Prix standards par campus | Catalogue public groupé par type, prix standard et équipe | `/catalogue` |
 | Règlement intérieur (Brest/Paris) | PDF téléversés dans le Module développement, affichage + iframe | `/reglement` |
 | Liens utiles configurables | Liens gérés dans le Module développement (ex : plateformes VSS) | `/liens` |
-| Trombinoscopes des deux équipes | Membres de mandat par campus, photo + fonction éditables | `/trombinoscope` |
 | Page d'identification | Connexion identifiant/mot de passe + **lieu de connexion** | `/connexion` |
 
 ### 2.2 Interface équipe (§3 du CDC)
@@ -65,12 +64,12 @@ Accès réservé aux **membres de mandat** (les anciens membres reçoivent une e
 | Sous-onglet | Réalisation |
 |---|---|
 | **Gestion des comptes** | Recherche globale (nom, identifiant), fiche complète : nom, promotion, soldes des deux portefeuilles, verres consignés, statuts *blacklist* / *blacklist alcool* ; profils modifiables à tout moment ; création de comptes (portefeuilles Brest + Paris initialisés). Le retrait du statut *blacklist alcool* exige le mot de passe administrateur (l'étudiant ne peut pas se le retirer seul). |
-| **Équipe** | Attribution/retrait du statut équipe ; distinction **mandat** / **ancien membre** ; identifiant + mot de passe (haché) ; photo + fonction pour le trombinoscope. Un compte *blacklisté* perd tous ses accès (connexion bloquée). |
+| **Équipe** | Attribution/retrait du statut équipe ; distinction **mandat** / **ancien membre** ; identifiant + mot de passe (haché). Un compte *blacklisté* perd tous ses accès (connexion bloquée). |
 | **Articles** | Fiche : nom, prix standard + prix Foy'z/barreux **pour chaque campus**, volume, type (Bière, Vin, Cidre, Snacks, Saucisson, Évènement/Soirée) ; les articles **tireuse** et **événement** ne sont pas modifiables ici (onglets dédiés). |
 | **Bières pression & tireuses** | Suivi des fûts (nom, degré, volume total, **volume restant**, prix au demi/pinte/pot standards et équipe, par campus) ; **assignation d'un fût à une tireuse** générant automatiquement les articles au format `[Demi/Pinte/Pot] de tireuse [Numéro] ["Nom du Fût"]` ; décrément du volume restant à chaque vente et désactivation automatique à sec. |
 | **Événements** | Planification (nom, campus, heures début/fin, affiche) ; catalogue d'**articles temporaires** dédié ; génération d'une **passerelle à sens unique** (lien sécurisé à jeton) offrant une interface d'encaissement simplifiée aux organisateurs (ex : BDE) — limitée aux **articles temporaires de l'événement** ; retour à l'interface équipe = **nouvelle authentification**. |
 | **Registre des connexions** | Traçabilité : compte, campus, IP, succès/échec, date/heure ; filtres par date et nom ; suppression automatique après la durée configurable. |
-| **Module développement** | Configuration : montant du découvert autorisé, valeur de la consigne, PDF des règlements (par campus), édition de la page d'accueil, **thème de couleur + logo par campus**, trombinoscopes, durée d'accès aux transactions depuis le site (données conservées en base), délai de déconnexion d'inactivité, mot de passe administrateur, nombre maximal de post-it (privé/public), liens utiles, liens vers l'hébergeur / la base de données / le dépôt du code source. |
+| **Module développement** | Configuration : montant du découvert autorisé, valeur de la consigne, PDF des règlements (par campus), édition de la page d'accueil, **thème de couleur + logo par campus**, durée d'accès aux transactions depuis le site (données conservées en base), délai de déconnexion d'inactivité, mot de passe administrateur, nombre maximal de post-it (privé/public), liens utiles, liens vers l'hébergeur / la base de données / le dépôt du code source. |
 
 ## 3. Architecture & organisation
 

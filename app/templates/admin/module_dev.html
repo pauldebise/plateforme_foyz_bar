@@ -137,22 +137,6 @@
     </div>
 
     <div class="card mb-4">
-      <div class="card-header"><i class="bi bi-people"></i> Trombinoscopes</div>
-      <div class="card-body">
-        <p class="small text-muted">Photos et fonctions des membres de mandat :</p>
-        <div class="d-flex flex-wrap gap-2">
-          {% for m in members %}
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.membre', user_id=m.id) }}">
-            <i class="bi bi-person"></i> {{ m.name }}{% if m.team_campus %} · {{ CAMPUSSES[m.team_campus] }}{% endif %}
-          </a>
-          {% else %}
-          <span class="text-muted small">Aucun membre de mandat.</span>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-
-    <div class="card mb-4">
       <div class="card-header"><i class="bi bi-server"></i> Accès infrastructure</div>
       <div class="card-body">
         <form method="post">

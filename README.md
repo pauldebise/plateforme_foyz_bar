@@ -35,7 +35,7 @@ Foyz_plateforme/
 │   │   ├── treasury.py        #   Trésorerie mensuelle (12 mois glissants)
 │   │   └── catalog.py         #   Gestion fûts/tireuses, génération des articles
 │   ├── routes/                # Blueprints
-│   │   ├── public.py          #   / (accueil), /catalogue, /reglement, /liens, /trombinoscope
+│   │   ├── public.py          #   / (accueil), /catalogue, /reglement, /liens
 │   │   ├── auth.py            #   /connexion, /deconnexion
 │   │   ├── team.py            #   /equipe/* (paiement, opérations, historique, stats…)
 │   │   ├── admin.py           #   /admin/* (comptes, équipe, articles, tireuses, événements…)
@@ -48,7 +48,7 @@ Foyz_plateforme/
 ├── tests/
 │   └── migration/             # Fixtures + suite de tests du module de migration
 ├── docs/                      # Cahier des charges
-├── uploads/                   # Fichiers téléversés (affiches, logos, PDF, photos)
+├── uploads/                   # Fichiers téléversés (affiches, logos, PDF)
 ├── instance/                  # Base SQLite (créée à l'exécution)
 ├── run.py / wsgi.py           # Lancement dev / point d'entrée Gunicorn
 ├── requirements.txt

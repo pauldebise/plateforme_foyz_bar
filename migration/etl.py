@@ -31,9 +31,9 @@ from .util import normalize_key, utcnow as now_utc
 
 _USERS_SQL = (
     "INSERT INTO users (name, promotion, password_hash, "
-    "team_status, team_campus, team_title, photo, blacklist, blacklist_alcohol, created_at) "
+    "team_status, team_campus, blacklist, blacklist_alcohol, created_at) "
     "VALUES (:name, :promotion, :password_hash, "
-    ":team_status, :team_campus, :team_title, :photo, :blacklist, :blacklist_alcohol, "
+    ":team_status, :team_campus, :blacklist, :blacklist_alcohol, "
     ":created_at) RETURNING id"
 )
 _WALLET_SQL = (
@@ -239,13 +239,9 @@ class Migrator:
 
             name = primary["name"] or (secondary["name"] if secondary else None) or key
             team_status = primary["team_status"] or (secondary["team_status"] if secondary else None)
-            team_title = primary["team_title"] or (secondary["team_title"] if secondary else None)
             team_campus = primary["team_campus"] or (secondary["team_campus"] if secondary else None)
-            if team_status is None and team_title:
-                team_status = "mandat"
             if team_status and not team_campus:
                 team_campus = campus
-            photo = primary["photo"] or (secondary["photo"] if secondary else None)
             created_at = primary["created_at"] or (secondary["created_at"] if secondary else None)
             promotion = primary["promotion"] or (secondary["promotion"] if secondary else None)
             password_hash = primary["password_hash"] or (secondary["password_hash"] if secondary else None)
@@ -260,8 +256,6 @@ class Migrator:
                 "password_hash": password_hash,
                 "team_status": team_status,
                 "team_campus": team_campus,
-                "team_title": team_title,
-                "photo": photo,
                 "blacklist": bool(primary["blacklist"] or (secondary and secondary["blacklist"])),
                 "blacklist_alcohol": bool(primary["blacklist_alcohol"]
                                           or (secondary and secondary["blacklist_alcohol"])),

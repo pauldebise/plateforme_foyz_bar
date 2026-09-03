@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, redirect, session, url_fo
 from sqlalchemy import select
 
 from app.extensions import db
-from app.models import Article, Event, Note, UsefulLink, User
+from app.models import Article, Event, Note, UsefulLink
 from app.services.settings import get_setting, int_setting
 from app.utils import ARTICLE_TYPES, CAMPUSSES, utcnow
 
@@ -73,16 +73,3 @@ def reglement():
 def liens():
     links = db.session.scalars(select(UsefulLink).order_by(UsefulLink.position, UsefulLink.id)).all()
     return render_template("public/liens.html", links=links)
-
-
-@bp.route("/trombinoscope")
-def trombinoscope():
-    members = db.session.scalars(
-        select(User)
-        .where(User.team_status == "mandat")
-        .order_by(User.team_campus, User.name)
-    ).all()
-    by_campus = {c: [] for c in CAMPUSSES}
-    for m in members:
-        by_campus.setdefault(m.team_campus or "brest", []).append(m)
-    return render_template("public/trombinoscope.html", by_campus=by_campus)
