@@ -3,6 +3,7 @@
 Aucune dépendance Flask : ce module doit rester importable seul.
 """
 
+import html
 import re
 import unicodedata
 from datetime import datetime, timezone
@@ -74,6 +75,33 @@ def normalize_key(value):
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = re.sub(r"\s+", " ", text).strip()
     return text or None
+
+
+def unescape_html(value):
+    """Décode les entités HTML des chaînes sources (mysqldump &#x27; etc.)."""
+    if value is None or not isinstance(value, str):
+        return value
+    try:
+        return html.unescape(value)
+    except Exception:  # noqa: BLE001 — dégradation douce sur une chaîne exotique
+        return value
+
+
+def liters_to_cl(value):
+    """Volume source exprimé en litres (décimal) -> centilitres entiers.
+
+    Retourne None si absent/illisible ; arrondi au centilitre le plus proche.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        liters = Decimal(str(value).strip().replace(",", "."))
+    except InvalidOperation:
+        return None
+    if not liters.is_finite() or liters < 0:
+        return None
+    cl = (liters * 100).to_integral_value(rounding="ROUND_HALF_UP")
+    return int(cl) or None
 
 
 def parse_dt(raw, assume_tz=PARIS_TZ):

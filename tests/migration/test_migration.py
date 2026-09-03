@@ -18,6 +18,9 @@ sys.path.insert(0, str(ROOT))
 from migration import audit, detect, logfilter, util  # noqa: E402
 from migration.errors import AccountingError, MigrationError  # noqa: E402
 from migration.parsing.sqlstream import SqlDumpScanner, iter_business_rows  # noqa: E402
+from migration.sources import (as_bool, map_article_row, map_keg_row,  # noqa: E402
+                               map_tap_row, resolve_article_type)
+from migration.util import liters_to_cl, unescape_html  # noqa: E402
 from tests.migration import make_fixtures  # noqa: E402
 
 
@@ -128,6 +131,54 @@ def test_detect():
             pass
 
 
+def test_bit_literals_and_html():
+    # mysqldump écrit les colonnes bit(1) sous forme b'0' / b'1' (Brest :
+    # alcohol_blacklisted) — sans ce fix, tout importait à False
+    _expect(as_bool("b'1'") is True, "bit b'1' -> True")
+    _expect(as_bool("b'0'") is False, "bit b'0' -> False")
+    _expect(as_bool("b'\\0'") is False, "bit b'\\0' -> False")
+    _expect(as_bool("b'\\x01'") is True, "bit b'\\x01' -> True")
+    _expect(as_bool(1) is True and as_bool(0) is False, "tinyint 0/1")
+    _expect(as_bool(None) is None, "bit absent -> None")
+    _expect(unescape_html("Menu Foy&#x27;z") == "Menu Foy'z", "entités HTML décodées")
+    _expect(unescape_html("BDE 21&#x2F;02&#x2F;2025") == "BDE 21/02/2025", "slash encodé")
+    _expect(liters_to_cl("0.33") == 33, "0.33 L -> 33 cl")
+    _expect(liters_to_cl("0.00") is None and liters_to_cl(0) is None, "0 L -> None")
+    _expect(liters_to_cl("0.5") == 50 and liters_to_cl(2.5) == 250, "litres variés")
+    _expect(liters_to_cl(None) is None and liters_to_cl("n/a") is None, "illisible -> None")
+
+
+def test_article_catalog_mapping():
+    types = {1: "Bière", 4: "Snacks", 6: "Boisson Chaude", 7: "Boisson Froide",
+             8: "Cocktails/Barbecue/Soirées"}
+    _expect(resolve_article_type(1, types) == "biere", "type 1 -> biere")
+    _expect(resolve_article_type("7", types) == "snack", "boisson froide -> snack")
+    _expect(resolve_article_type(6, types) == "snack", "boisson chaude -> snack")
+    _expect(resolve_article_type("8", types) == "evenement", "cocktails -> evenement")
+    _expect(resolve_article_type("Bière") == "biere", "nom direct -> biere")
+    _expect(resolve_article_type(None) == "snack", "type absent -> snack (non alcoolisé)")
+    article = map_article_row(
+        {"id": "0000000000042", "name": "Kronenbourg 25cl", "price": "2.50",
+         "price_foyz": "2.20", "type": 1, "volume": "0.25"}, "euros", types)
+    _expect(article["name"] == "Kronenbourg 25cl", "nom article")
+    _expect(article["price_std_cents"] == 250 and article["price_team_cents"] == 220,
+            "prix public/équipe en centimes")
+    _expect(article["volume_cl"] == 25 and article["is_alcohol"], "volume + alcool")
+    _expect(article["article_type"] == "biere", "type article")
+    keg = map_keg_row({"id": 1, "name": "Barbar", "half_pint_price": "1.75",
+                       "half_pint_price_foyz": "1.70", "pint_price": "3.50",
+                       "pint_price_foyz": "3.40", "pot_price": "5.60",
+                       "pot_price_foyz": "5.50", "volume": "30.00",
+                       "alcohol_volume": "8.0"}, "euros")
+    _expect(keg["volume_l"] == 30.0 and keg["remaining_l"] == 30.0, "volume fût")
+    _expect(keg["alcohol_degree"] == 8.0, "degré fût")
+    _expect(keg["price_pint_std"] == 350 and keg["price_pint_team"] == 340, "tarifs fût")
+    tap = map_tap_row({"id": 3, "beer_draught": "Tireuse de Gauche", "draft_beer_id": 1,
+                       "date_start": "2026-08-29 12:00:00", "date_end": None})
+    _expect(tap["date_end"] is None and tap["date_start"] is not None, "tireuse ouverte")
+    _expect(map_article_row({"name": "  "}, "euros") is None, "article sans nom ignoré")
+
+
 # ---------------------------------------------------------------------- e2e
 
 def _prepare(source_dir, logs_rows=300):
@@ -191,6 +242,33 @@ def test_e2e_run_and_invariants():
     staging_left = c.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE name='staging_paris_raw'"
     ).fetchone()[0]
+    # ---- catalogue importé (articles, fûts, tireuses, motifs de blacklist)
+    n_articles = c.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
+    n_tap_articles = c.execute("SELECT COUNT(*) FROM articles WHERE is_tap=1").fetchone()[0]
+    n_kegs = c.execute("SELECT COUNT(*) FROM kegs").fetchone()[0]
+    n_keg_prices = c.execute("SELECT COUNT(*) FROM keg_prices").fetchone()[0]
+    n_taps = c.execute("SELECT COUNT(*) FROM taps").fetchone()[0]
+    resolved = c.execute(
+        "SELECT COUNT(*) FROM transaction_lines WHERE article_id IS NOT NULL").fetchone()[0]
+    kronenbourg = c.execute(
+        "SELECT volume_cl, price_std_brest, price_team_brest, is_alcohol, article_type "
+        "FROM articles WHERE name='Kronenbourg 25cl'").fetchone()
+    menu = c.execute(
+        "SELECT name, article_type FROM articles WHERE name LIKE 'Menu Foy%'").fetchone()
+    diabolo = c.execute(
+        "SELECT article_type FROM articles WHERE name='Diabolo 33cl'").fetchone()
+    paris_article = c.execute(
+        "SELECT price_std_paris, price_team_paris, volume_cl FROM articles "
+        "WHERE name='Bière pression demi'").fetchone()
+    barbar = c.execute(
+        "SELECT k.id, kp.price_pint_std, kp.price_pint_team FROM kegs k "
+        "JOIN keg_prices kp ON kp.keg_id = k.id WHERE k.name='Barbar'").fetchone()
+    taps_map = dict(c.execute(
+        "SELECT t.number, k.name FROM taps t JOIN kegs k ON k.id = t.keg_id").fetchall())
+    motif = c.execute(
+        "SELECT blacklist_reason FROM users WHERE name='baptiste.chevalier'").fetchone()[0]
+    alcool_bit = c.execute(
+        "SELECT blacklist_alcohol FROM users WHERE name='manon.robin'").fetchone()[0]
     c.close()
     _expect(total == manifest["source_cents"]["total"], f"solde total {total} == manifest")
     _expect(brest == manifest["source_cents"]["brest"], f"solde brest {brest}")
@@ -199,6 +277,24 @@ def test_e2e_run_and_invariants():
             f"transactions {txns}")
     _expect(len(merged) == 1, "compte fusionné avec 2 portefeuilles")
     _expect(staging_left == 0, "staging supprimée après commit")
+    _expect(n_articles == manifest["brest_articles"] + manifest["paris_articles"]
+            + manifest["brest_tap_articles"], f"articles importés {n_articles}")
+    _expect(n_tap_articles == manifest["brest_tap_articles"], "articles de tireuse générés")
+    _expect(n_kegs == manifest["brest_kegs"] and n_keg_prices == manifest["brest_kegs"],
+            "fûts + tarifs importés")
+    _expect(n_taps == manifest["brest_taps"], "tireuses configurées")
+    _expect(resolved == manifest["brest_lines"], f"lignes rattachées aux articles {resolved}")
+    _expect(kronenbourg == (25, 250, 220, 1, "biere"), f"article bière {kronenbourg}")
+    _expect(menu is not None and menu[0] == "Menu Foy'z" and menu[1] == "evenement",
+            f"entités HTML + type 8 -> evenement ({menu})")
+    _expect(diabolo == ("snack",), "boisson froide -> snack")
+    _expect(paris_article == (200, 150, 25), f"article Paris projeté {paris_article}")
+    _expect(barbar is not None and barbar[1] == 350 and barbar[2] == 350,
+            f"tarif fût Barbar {barbar}")
+    _expect(taps_map == {1: "Barbar", 2: "Coreff rousse"},
+            f"tireuses : ouverture la plus récente gagne ({taps_map})")
+    _expect(motif == "Comportement inacceptable en soirée (fixture)", "motif blacklist importé")
+    _expect(alcool_bit == 1, "bit(1) alcohol_blacklisted -> blacklist_alcohol")
     remaining = [p.name for p in (src / "sources").iterdir() if p.name != "manifest.json"]
     _expect(remaining == [], f"fichiers sources supprimés ({remaining})")
     # double run impossible : plus de fichiers

@@ -3,19 +3,27 @@
 Déroulé (le tout DANS la transaction ouverte par la CLI) :
   1. capture des soldes cibles initiaux ;
   2. staging Paris (JSONB) ;
-  3. passe « comptes » : Brest (streaming dump) + Paris (staging) -> index par
+  3. passe « référence » : types d'articles Brest (id -> nom), préchargés pour
+     résoudre le type des articles et des lignes de vente ;
+  4. passe « comptes » : Brest (streaming dump) + Paris (staging) -> index par
      clé de réconciliation (email, sinon pseudo, sinon prenom.nom) ;
-  4. fusion des comptes présents sur les deux campus, insertion des users +
-     wallets (un par campus, solde = solde source du campus) ;
-  5. passe « comptabilité » : transactions + lignes de vente migrées avec
-     remapping des identifiants utilisateurs (rattachées à leur campus) ;
-  6. audit final (cf. audit.py).
+  5. fusion des comptes présents sur les deux campus, insertion des users +
+     wallets (un par campus, solde = solde source du campus ; motif de
+     blacklist importé) ;
+  6. passe « catalogue » : articles (prix public/équipe), fûts pressions
+     (kegs + keg_prices) et état courant des tireuses (taps + articles de
+     tireuse régénérés comme app.services.catalog) ;
+  7. passe « comptabilité » : transactions + lignes de vente migrées avec
+     remapping des identifiants utilisateurs et rattachement aux articles
+     importés (article_id) ;
+  8. audit final (cf. audit.py).
 
 Montants exclusivement en centimes entiers (int). Aucune écriture hors
 transaction : la CLI décide du COMMIT (run) ou du ROLLBACK (dry-run / erreur).
 """
 
 from collections import defaultdict
+from datetime import datetime
 
 import sqlalchemy as sa
 
@@ -24,16 +32,18 @@ from .errors import AccountingError
 from .parsing import files as files_reader
 from .parsing.sqlstream import iter_business_rows
 from .sources import brest as brest_contract
-from .sources import map_line_row, map_transaction_row, map_user_row
+from .sources import (TAP_NUMBERS, TAP_SIZES, map_article_row, map_keg_row,
+                      map_line_row, map_tap_row, map_transaction_row, map_user_row)
 from .sources import paris as paris_contract
 from . import staging
 from .util import normalize_key, utcnow as now_utc
 
 _USERS_SQL = (
     "INSERT INTO users (name, promotion, password_hash, "
-    "team_status, team_campus, blacklist, blacklist_alcohol, created_at) "
+    "team_status, team_campus, blacklist, blacklist_alcohol, blacklist_reason, "
+    "created_at) "
     "VALUES (:name, :promotion, :password_hash, "
-    ":team_status, :team_campus, :blacklist, :blacklist_alcohol, "
+    ":team_status, :team_campus, :blacklist, :blacklist_alcohol, :blacklist_reason, "
     ":created_at) RETURNING id"
 )
 _WALLET_SQL = (
@@ -53,6 +63,28 @@ _LINE_SQL = (
     "article_type, quantity, unit_price, line_total) "
     "VALUES (:transaction_id, :article_id, :article_name, :article_type, :quantity, "
     ":unit_price, :line_total)"
+)
+_ARTICLE_SQL = (
+    "INSERT INTO articles (name, article_type, volume_cl, price_std_brest, "
+    "price_std_paris, price_team_brest, price_team_paris, is_alcohol, is_tap, "
+    "tap_number, keg_id, active, created_at) "
+    "VALUES (:name, :article_type, :volume_cl, :price_std_brest, :price_std_paris, "
+    ":price_team_brest, :price_team_paris, :is_alcohol, :is_tap, :tap_number, "
+    ":keg_id, :active, :created_at) RETURNING id"
+)
+_KEG_SQL = (
+    "INSERT INTO kegs (name, alcohol_degree, volume_l, remaining_l, active, created_at) "
+    "VALUES (:name, :alcohol_degree, :volume_l, :remaining_l, :active, :created_at) "
+    "RETURNING id"
+)
+_KEG_PRICE_SQL = (
+    "INSERT INTO keg_prices (keg_id, campus, price_half_std, price_pint_std, "
+    "price_pot_std, price_half_team, price_pint_team, price_pot_team) "
+    "VALUES (:keg_id, :campus, :price_half_std, :price_pint_std, :price_pot_std, "
+    ":price_half_team, :price_pint_team, :price_pot_team)"
+)
+_TAP_SQL = (
+    "INSERT INTO taps (number, campus, keg_id) VALUES (:number, :campus, :keg_id)"
 )
 
 # Sens du flux d'argent par type de transaction : qui est débité/crédité.
@@ -83,6 +115,8 @@ class SourceReader:
     # ---------------------------------------------------------- brest (SQL)
 
     def _iter_brest(self, entity_wanted):
+        """Streaming des tables Brest d'une entité (ou d'un ensemble d'entités)."""
+        wanted = {entity_wanted} if isinstance(entity_wanted, str) else set(entity_wanted)
         for src in self.files:
             if src.campus != "brest" or src.kind != "sql_dump":
                 continue
@@ -93,7 +127,7 @@ class SourceReader:
                 on_scan_done=lambda sc, s=src: self._record_scan(s.path.name, sc),
             ):
                 entity = brest_contract.entity_for(table)
-                if entity != entity_wanted:
+                if entity not in wanted:
                     continue
                 for row in rows:
                     yield src.path.name, entity, row
@@ -127,6 +161,11 @@ class SourceReader:
 
     # ---------------------------------------------------------- flux publics
 
+    def iter_reference(self):
+        """Passe référence : lignes brutes de la table Brest `article_types`."""
+        for filename, _entity, row in self._iter_brest("article_types"):
+            yield "brest", filename, row
+
     def iter_users(self):
         """Passe comptes : (campus, source_file, user_canonique | None, warning)."""
         for filename, _entity, row in self._iter_brest("users"):
@@ -138,6 +177,27 @@ class SourceReader:
                 user, warning = (obj, None) if obj else (None, "champs insuffisants")
                 yield "paris", filename, user, warning
 
+    def iter_catalog(self, type_names=None):
+        """Passe catalogue : (entité, campus, objet canonique).
+
+        articles (catalogue), kegs (fûts pressions) et taps (occupations de
+        tireuses) Brest — un seul streaming du dump pour les trois — puis
+        articles Paris (staging).
+        """
+        for _filename, entity, row in self._iter_brest({"articles", "kegs", "taps"}):
+            if entity == "articles":
+                obj = map_article_row(row, self.money_unit, type_names)
+            elif entity == "kegs":
+                obj = map_keg_row(row, self.money_unit)
+            else:
+                obj = map_tap_row(row)
+            if obj is not None:
+                yield entity, "brest", obj
+        for filename, source_table, record in self._iter_paris():
+            entity, obj = paris_contract.map_record(source_table, record, "paris", self.money_unit)
+            if entity == "articles" and obj is not None:
+                yield "articles", "paris", obj
+
     def iter_transactions(self):
         """Passe comptabilité : transactions seules (avant les lignes de détail,
         quel que soit l'ordre des tables dans le dump)."""
@@ -148,10 +208,14 @@ class SourceReader:
             if entity == "transactions" and obj is not None:
                 yield "paris", filename, obj
 
-    def iter_lines(self):
-        """Passe lignes de détail : après les transactions (remapping des ids)."""
+    def iter_lines(self, type_names=None):
+        """Passe lignes de détail : après les transactions (remapping des ids).
+
+        `type_names` : {id: nom} de la table Brest `article_types`, pour
+        résoudre le type d'article des lignes (Brest `baskets.article_type`).
+        """
         for filename, _entity, row in self._iter_brest("lines"):
-            line_obj = map_line_row(row, self.money_unit)
+            line_obj = map_line_row(row, self.money_unit, type_names)
             if line_obj is not None:
                 yield "brest", filename, line_obj
         for filename, source_table, record in self._iter_paris():
@@ -175,9 +239,32 @@ class Migrator:
         self.id_map = {"brest": {}, "paris": {}}         # src_id -> key
         self.target_id_by_key = {}
         self.txn_id_map = {"brest": {}, "paris": {}}     # src txn id -> target id
+        self.type_names = {}                             # article_types id -> nom
+        self.article_id_map = {}                         # src article id -> cible
+        self.keg_id_map = {}                             # src keg id -> (cible, obj)
+        self.tap_candidates = {}                         # tap n° -> (clé_tri, obj)
         self.names_taken = set()
         self.counts = defaultdict(int)
         self.initial_totals = audit.capture_target(conn)
+
+    # ------------------------------------------------------------ référence
+
+    def load_reference(self):
+        """Précharge la table Brest `article_types` : {id: nom de type}.
+
+        Le dump réel place `articles` AVANT `article_types` : une passe dédiée
+        est nécessaire pour résoudre les types pendant la passe catalogue.
+        """
+        for _campus, _filename, row in self.reader.iter_reference():
+            self.counts["refs_article_types"] += 1
+            type_id = row.get("id")
+            name = row.get("name")
+            if type_id is None or not name:
+                continue
+            try:
+                self.type_names[int(str(type_id).strip())] = str(name).strip()
+            except ValueError:
+                continue
 
     # ------------------------------------------------------------ comptes
 
@@ -259,8 +346,12 @@ class Migrator:
                 "blacklist": bool(primary["blacklist"] or (secondary and secondary["blacklist"])),
                 "blacklist_alcohol": bool(primary["blacklist_alcohol"]
                                           or (secondary and secondary["blacklist_alcohol"])),
+                "blacklist_reason": primary["blacklist_reason"]
+                or (secondary["blacklist_reason"] if secondary else None),
                 "created_at": created_at or now_utc(),
             }
+            if params["blacklist_reason"]:
+                self.counts["motifs_blacklist"] += 1
             user_id = self.conn.execute(sa.text(_USERS_SQL), params).scalar_one()
             self.target_id_by_key[key] = user_id
 
@@ -275,6 +366,142 @@ class Migrator:
                 self.counts["wallets_created"] += 1
             self.counts["users_created"] += 1
         self.counts["wallets_preexistants"] = self.initial_totals.wallets
+
+    # ------------------------------------------------------- catalogue
+
+    def insert_catalog(self):
+        """Catalogue Brest/Paris : articles, fûts pressions, tireuses courantes."""
+        for entity, campus, obj in self.reader.iter_catalog(type_names=self.type_names):
+            if entity == "articles":
+                self._insert_article(campus, obj)
+            elif entity == "kegs":
+                self._insert_keg(obj)
+            else:
+                self._register_tap(obj)
+        self._create_taps()
+
+    def _insert_article(self, campus, obj):
+        # les prix source ne valent que pour leur campus ; l'autre reste à 0
+        if campus == "brest":
+            std_b, team_b = obj["price_std_cents"], obj["price_team_cents"]
+            std_p, team_p = 0, 0
+        else:
+            std_b, team_b = 0, 0
+            std_p, team_p = obj["price_std_cents"], obj["price_team_cents"]
+        params = {
+            "name": obj["name"],
+            "article_type": obj["article_type"],
+            "volume_cl": obj["volume_cl"],
+            "price_std_brest": std_b,
+            "price_std_paris": std_p,
+            "price_team_brest": team_b,
+            "price_team_paris": team_p,
+            "is_alcohol": obj["is_alcohol"],
+            "is_tap": False,
+            "tap_number": None,
+            "keg_id": None,
+            "active": obj["active"],
+            "created_at": now_utc(),
+        }
+        article_id = self.conn.execute(sa.text(_ARTICLE_SQL), params).scalar_one()
+        if obj["src_id"] is not None:
+            self.article_id_map.setdefault(str(obj["src_id"]), article_id)
+        self.counts[f"articles_{campus}"] += 1
+        self.counts["articles_importes"] += 1
+
+    def _insert_keg(self, obj):
+        params = {
+            "name": obj["name"],
+            "alcohol_degree": obj["alcohol_degree"],
+            "volume_l": obj["volume_l"],
+            "remaining_l": obj["remaining_l"],
+            "active": True,
+            "created_at": now_utc(),
+        }
+        keg_id = self.conn.execute(sa.text(_KEG_SQL), params).scalar_one()
+        self.conn.execute(sa.text(_KEG_PRICE_SQL), {
+            "keg_id": keg_id,
+            "campus": "brest",
+            "price_half_std": obj["price_half_std"],
+            "price_pint_std": obj["price_pint_std"],
+            "price_pot_std": obj["price_pot_std"],
+            "price_half_team": obj["price_half_team"],
+            "price_pint_team": obj["price_pint_team"],
+            "price_pot_team": obj["price_pot_team"],
+        })
+        self.counts["keg_prix_crees"] += 1
+        if obj["src_id"] is not None:
+            self.keg_id_map.setdefault(str(obj["src_id"]), (keg_id, obj))
+        self.counts["kegs_importes"] += 1
+
+    def _register_tap(self, obj):
+        """Occurrence de tireuse source : ne garde que l'état courant le plus récent.
+
+        `draft_beer_current` est un historique d'occupation (une ligne par
+        intervalle) : les lignes closes (date_end) sont ignorées ; pour une
+        même tireuse, l'ouverture la plus récente gagne (date_start, puis id).
+        """
+        if obj["date_end"] is not None:
+            self.counts["taps_historiques"] += 1
+            return
+        number = TAP_NUMBERS.get(str(obj["draught"] or "").strip().lower())
+        if number is None:
+            self.counts["taps_draught_inconnu"] += 1
+            return
+        try:
+            src_rank = int(str(obj["src_id"]))
+        except (TypeError, ValueError):
+            src_rank = 0
+        key = (obj["date_start"] or datetime.min, src_rank)
+        previous = self.tap_candidates.get(number)
+        if previous is not None:
+            self.counts["taps_doublons"] += 1
+            if previous[0] >= key:
+                return
+        self.tap_candidates[number] = (key, obj)
+
+    def _create_taps(self):
+        """Crée les tireuses courantes + leurs articles (comme assign_keg)."""
+        taken = {int(r[0]) for r in self.conn.execute(sa.text("SELECT number FROM taps"))}
+        for number in sorted(self.tap_candidates):
+            if number in taken:
+                # cible non vierge : la tireuse existe déjà, on ne touche pas
+                self.counts["taps_deja_presentes"] += 1
+                continue
+            _key, obj = self.tap_candidates[number]
+            keg = self.keg_id_map.get(str(obj["src_keg_id"]))
+            if keg is None:
+                self.counts["taps_keg_inconnu"] += 1
+                continue
+            keg_id, keg_obj = keg
+            self.conn.execute(sa.text(_TAP_SQL), {
+                "number": number, "campus": "brest", "keg_id": keg_id,
+            })
+            self.counts["taps_creees"] += 1
+            active = keg_obj["remaining_l"] > 0.01
+            prices = {
+                "demi": (keg_obj["price_half_std"], keg_obj["price_half_team"]),
+                "pinte": (keg_obj["price_pint_std"], keg_obj["price_pint_team"]),
+                "pot": (keg_obj["price_pot_std"], keg_obj["price_pot_team"]),
+            }
+            for key, (label, vol) in TAP_SIZES.items():
+                std, team = prices[key]
+                self.conn.execute(sa.text(_ARTICLE_SQL), {
+                    "name": f'{label} de tireuse {number} "{keg_obj["name"]}"'[:160],
+                    "article_type": "biere",
+                    "volume_cl": vol,
+                    "price_std_brest": std,
+                    "price_std_paris": std,
+                    "price_team_brest": team,
+                    "price_team_paris": team,
+                    "is_alcohol": True,
+                    "is_tap": True,
+                    "tap_number": number,
+                    "keg_id": keg_id,
+                    "active": active,
+                    "created_at": now_utc(),
+                })
+                self.counts["articles_tireuse_generes"] += 1
 
     # ------------------------------------------------------- comptabilité
 
@@ -301,7 +528,7 @@ class Migrator:
         # dans le dump Brest `baskets` précède `transactions`.
         for campus, filename, obj in self.reader.iter_transactions():
             self._insert_transaction(campus, filename, obj)
-        for campus, filename, obj in self.reader.iter_lines():
+        for campus, filename, obj in self.reader.iter_lines(type_names=self.type_names):
             self._insert_line(campus, obj)
 
     def _insert_transaction(self, campus, filename, txn):
@@ -344,9 +571,13 @@ class Migrator:
         if txn_id is None:
             self.counts["lignes_orphelines"] += 1
             return
+        src_article = line_obj.get("src_article_id")
+        article_id = self.article_id_map.get(str(src_article)) if src_article is not None else None
+        if article_id is not None:
+            self.counts["lignes_article_resolues"] += 1
         self.conn.execute(sa.text(_LINE_SQL), {
             "transaction_id": txn_id,
-            "article_id": None,
+            "article_id": article_id,
             "article_name": line_obj["article_name"],
             "article_type": line_obj["article_type"],
             "quantity": line_obj["quantity"],
@@ -363,8 +594,10 @@ class Migrator:
         staging.create(self.conn)
         stage_stats = staging.load(self.conn, self.reader.files, self.chunk_rows)
         self.counts["staging_rows"] = stage_stats["rows"]
+        self.load_reference()
         self.load_accounts()
         self.insert_users_and_wallets()
+        self.insert_catalog()
         self.insert_transactions()
         result = audit.AuditResult(
             source=dict(self.source_sums),
@@ -382,7 +615,7 @@ class Migrator:
         """(label, valeur) pour le rapport final."""
         c = self.counts
         paris_projected = (c.get("rows_users_paris", 0) + c.get("txns_paris", 0)
-                           + c.get("lignes_paris", 0))
+                           + c.get("lignes_paris", 0) + c.get("articles_paris", 0))
         pairs = [
             ("Comptes créés", c.get("users_created")),
             ("Comptes fusionnés (2 campus)", c.get("users_merged")),
@@ -390,10 +623,25 @@ class Migrator:
             ("Portefeuilles créés", c.get("wallets_created")),
             ("Mots de passe importés (hash compatible)", c.get("passwords_importes")),
             ("Mots de passe à réinitialiser", c.get("passwords_a_reinitialiser")),
+            ("Motifs de blacklist importés", c.get("motifs_blacklist")),
+            ("Types d'articles (référence)", c.get("refs_article_types")),
+            ("Articles importés", c.get("articles_importes")),
+            ("dont Brest", c.get("articles_brest")),
+            ("dont Paris", c.get("articles_paris")),
+            ("Fûts pressions importés", c.get("kegs_importes")),
+            ("Tarifs de fûts créés", c.get("keg_prix_crees")),
+            ("Tireuses configurées", c.get("taps_creees")),
+            ("Articles de tireuse générés", c.get("articles_tireuse_generes")),
+            ("Occupations tireuse closes (historique)", c.get("taps_historiques")),
+            ("Occupations tireuse doublons", c.get("taps_doublons")),
+            ("Tireuses sans type reconnu", c.get("taps_draught_inconnu")),
+            ("Tireuses avec fût introuvable", c.get("taps_keg_inconnu")),
+            ("Tireuses déjà présentes en cible", c.get("taps_deja_presentes")),
             ("Transactions Brest", c.get("txns_brest")),
             ("Transactions Paris", c.get("txns_paris")),
             ("Transactions annulées (conservées)", c.get("txns_annulees")),
             ("Lignes de vente importées", c.get("lignes_importees")),
+            ("Lignes rattachées à un article", c.get("lignes_article_resolues")),
             ("dont Brest", c.get("lignes_brest")),
             ("dont Paris", c.get("lignes_paris")),
             ("Lignes orphelines ignorées", c.get("lignes_orphelines")),

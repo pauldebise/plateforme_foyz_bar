@@ -24,10 +24,19 @@ LEGACY_MD5 = "5f4dcc3b5aa765d61d8327deb882cf99"  # format non compatible -> réi
 
 
 def esc(value):
+    if isinstance(value, _Raw):
+        return value.text
     if value is None:
         return "NULL"
     text = str(value).replace("\\", "\\\\").replace("'", "\\'")
     return f"'{text}'"
+
+
+class _Raw:
+    """Token SQL inséré tel quel (littéraux bit MySQL b'0'/b'1')."""
+
+    def __init__(self, text):
+        self.text = text
 
 
 def main(target_dir, logs_rows=5000):
@@ -72,6 +81,10 @@ def main(target_dir, logs_rows=5000):
             "titre": "Président" if i == 0 else None,
             "blacklist": 1 if i == 14 else 0,
             "blacklist_alcool": 1 if i == 15 else 0,
+            "blacklist_reason": ("Comportement inacceptable en soirée (fixture)"
+                                 if i == 14 else
+                                 ("Refus de vente d'alcool (fixture)" if i == 15 else "")),
+            "alcohol_blacklisted": _Raw("b'1'") if i == 15 else _Raw("b'0'"),
             "verres_restants": i % 3,
             "date_inscription": f"2025-09-{(i % 28) + 1:02d} 12:00:00",
         }
@@ -105,6 +118,10 @@ def main(target_dir, logs_rows=5000):
     moyens = ["cb", "Lydia", "espèces", "helloasso", None]
     brest_txns, brest_lines = [], []
     base_date = datetime(YEAR, 9, 1, 18, 0, 0)
+    produits = ["Kronenbourg 25cl", "Chips Paprika", "Saucisson"]
+    article_of_produit = {"Kronenbourg 25cl": "0000000000042",
+                          "Chips Paprika": "0000000000043",
+                          "Saucisson": "0000000000044"}
     for i in range(400):
         user = random.choice(brest_users)
         txn_type = types[i % len(types)]
@@ -127,10 +144,12 @@ def main(target_dir, logs_rows=5000):
             for j in range(random.randint(1, 3)):
                 qty = random.randint(1, 4)
                 pu = round(random.uniform(1, 6), 2)
+                produit = random.choice(produits)
                 brest_lines.append({
                     "id": len(brest_lines) + 1,
                     "vente_id": txn["id"],
-                    "produit": random.choice(["Kronenbourg 25cl", "Chips Paprika", "Saucisson"]),
+                    "article_id": article_of_produit[produit],
+                    "produit": produit,
                     "quantite": qty,
                     "prix_unitaire": f"{pu:.2f}",
                     "total": f"{qty * pu:.2f}",
@@ -193,10 +212,13 @@ def main(target_dir, logs_rows=5000):
                                          ("mdp", "varchar(255)"), ("solde", "decimal(10,2)"),
                                          ("statut", "varchar(20)"), ("titre", "varchar(120)"),
                                          ("blacklist", "tinyint"), ("blacklist_alcool", "tinyint"),
+                                         ("blacklist_reason", "varchar(255)"),
+                                         ("alcohol_blacklisted", "bit(1)"),
                                          ("verres_restants", "int"), ("date_inscription", "datetime")]))
     dump.append(insert_stmt("membres",
                             ["id", "prenom", "nom", "promotion", "email", "pseudo", "mdp",
                              "solde", "statut", "titre", "blacklist", "blacklist_alcool",
+                             "blacklist_reason", "alcohol_blacklisted",
                              "verres_restants", "date_inscription"], brest_users))
     dump.append(create_table("transactions", [("id", "int NOT NULL"), ("date", "datetime"),
                                               ("type", "varchar(30)"), ("montant", "decimal(10,2)"),
@@ -210,14 +232,92 @@ def main(target_dir, logs_rows=5000):
                                 ["id", "date", "type", "montant", "membre_id", "operateur",
                                  "moyen", "annule", "note"], brest_txns[start:start + 120]))
     dump.append(create_table("vente_lignes", [("id", "int NOT NULL"), ("vente_id", "int"),
+                                              ("article_id", "varchar(13)"),
                                               ("produit", "varchar(160)"), ("quantite", "int"),
                                               ("prix_unitaire", "decimal(10,2)"),
                                               ("total", "decimal(10,2)")]))
 
     for start in range(0, len(brest_lines), 200):
         dump.append(insert_stmt("vente_lignes",
-                                ["id", "vente_id", "produit", "quantite", "prix_unitaire",
-                                 "total"], brest_lines[start:start + 200]))
+                                ["id", "vente_id", "article_id", "produit", "quantite",
+                                 "prix_unitaire", "total"], brest_lines[start:start + 200]))
+
+    # catalogue Brest (types de référence + articles code-barres)
+    dump.append(create_table("article_types", [("id", "int NOT NULL"), ("name", "varchar(80)")]))
+    dump.append(insert_stmt("article_types", ["id", "name"], [
+        {"id": 1, "name": "Bière"}, {"id": 2, "name": "Vin"},
+        {"id": 3, "name": "Cidre"}, {"id": 4, "name": "Snacks"},
+        {"id": 5, "name": "Saucisson"}, {"id": 6, "name": "Boisson Chaude"},
+        {"id": 7, "name": "Boisson Froide"}, {"id": 8, "name": "Cocktails/Barbecue/Soirées"},
+    ]))
+    brest_articles = [
+        {"id": "0000000000042", "name": "Kronenbourg 25cl", "price": "2.50", "price_foyz": "2.20",
+         "type": 1, "stock": 12, "area": "Frigo de Gauche", "volume": "0.25", "returnable": 0,
+         "is_supplyable": 0, "store": "VNB", "nominal_quantity": 0},
+        {"id": "0000000000043", "name": "Chips Paprika", "price": "1.00", "price_foyz": "0.90",
+         "type": 4, "stock": 5, "area": "Autre", "volume": "0.00", "returnable": 0,
+         "is_supplyable": 1, "store": "PromoCash", "nominal_quantity": 0},
+        {"id": "0000000000044", "name": "Saucisson", "price": "3.00", "price_foyz": "2.80",
+         "type": 5, "stock": 3, "area": "Autre", "volume": "0.00", "returnable": 0,
+         "is_supplyable": 1, "store": "VNB", "nominal_quantity": 0},
+        {"id": "0000000000045", "name": "Diabolo 33cl", "price": "0.80", "price_foyz": "0.70",
+         "type": 7, "stock": -2, "area": "Frigo de Droite", "volume": "0.33", "returnable": 0,
+         "is_supplyable": 0, "store": "VNB", "nominal_quantity": 0},
+        {"id": "0000000000046", "name": "Menu Foy&#x27;z", "price": "5.40", "price_foyz": "5.20",
+         "type": 8, "stock": 1, "area": "Autre", "volume": "0.00", "returnable": 0,
+         "is_supplyable": 0, "store": "VNB", "nominal_quantity": 0},
+    ]
+    dump.append(create_table("articles", [("id", "varchar(13) NOT NULL"), ("name", "varchar(255)"),
+                                          ("price", "decimal(10,2)"), ("price_foyz", "decimal(10,2)"),
+                                          ("type", "int"), ("stock", "int"), ("area", "varchar(40)"),
+                                          ("volume", "decimal(10,2)"), ("returnable", "tinyint"),
+                                          ("is_supplyable", "tinyint"), ("store", "varchar(20)"),
+                                          ("nominal_quantity", "int")]))
+    dump.append(insert_stmt("articles",
+                            ["id", "name", "price", "price_foyz", "type", "stock", "area",
+                             "volume", "returnable", "is_supplyable", "store",
+                             "nominal_quantity"], brest_articles))
+
+    # fûts pressions + état courant des tireuses
+    brest_kegs = [
+        {"id": 1, "name": "Barbar", "half_pint_price": "1.75", "half_pint_price_foyz": "1.75",
+         "pint_price": "3.50", "pint_price_foyz": "3.50", "pot_price": "5.60",
+         "pot_price_foyz": "5.60", "stock": 0, "volume": "30.00", "alcohol_volume": "8.0"},
+        {"id": 2, "name": "Coreff rousse", "half_pint_price": "1.90", "half_pint_price_foyz": "1.80",
+         "pint_price": "3.30", "pint_price_foyz": "3.00", "pot_price": "5.20",
+         "pot_price_foyz": "4.80", "stock": 0, "volume": "20.00", "alcohol_volume": "5.5"},
+    ]
+    dump.append(create_table("draft_beers",
+                             [("id", "int NOT NULL"), ("name", "varchar(255)"),
+                              ("half_pint_price", "decimal(10,2)"),
+                              ("half_pint_price_foyz", "decimal(10,2)"),
+                              ("pint_price", "decimal(10,2)"), ("pint_price_foyz", "decimal(10,2)"),
+                              ("pot_price", "decimal(10,2)"), ("pot_price_foyz", "decimal(10,2)"),
+                              ("stock", "int"), ("volume", "decimal(10,2)"),
+                              ("alcohol_volume", "decimal(10,1)")]))
+    dump.append(insert_stmt("draft_beers",
+                            ["id", "name", "half_pint_price", "half_pint_price_foyz",
+                             "pint_price", "pint_price_foyz", "pot_price", "pot_price_foyz",
+                             "stock", "volume", "alcohol_volume"], brest_kegs))
+    brest_taps = [
+        {"id": 1, "beer_draught": "Tireuse de Gauche", "draft_beer_id": 1,
+         "date_start": "2026-08-01 18:00:00", "date_end": "2026-08-05 20:00:00"},
+        {"id": 2, "beer_draught": "Tireuse de Gauche", "draft_beer_id": 2,
+         "date_start": "2026-08-10 18:00:00", "date_end": None},
+        {"id": 3, "beer_draught": "Tireuse de Gauche", "draft_beer_id": 1,
+         "date_start": "2026-08-29 12:00:00", "date_end": None},
+        {"id": 4, "beer_draught": "Tireuse de Droite", "draft_beer_id": 2,
+         "date_start": "2026-08-30 19:00:00", "date_end": None},
+        {"id": 5, "beer_draught": "Tireuse Mobile", "draft_beer_id": 99,
+         "date_start": "2026-08-30 19:00:00", "date_end": None},
+    ]
+    dump.append(create_table("draft_beer_current",
+                             [("id", "int NOT NULL"), ("beer_draught", "varchar(40)"),
+                              ("draft_beer_id", "int"), ("date_start", "datetime"),
+                              ("date_end", "datetime")]))
+    dump.append(insert_stmt("draft_beer_current",
+                            ["id", "beer_draught", "draft_beer_id", "date_start", "date_end"],
+                            brest_taps))
     dump.append("/*!40101 SET character_set_client = @saved_client */;\n")
 
     brest_path = target / f"brest_foyz_{YEAR}.sql"
@@ -227,6 +327,10 @@ def main(target_dir, logs_rows=5000):
     paris = {
         "etudiants": paris_users,
         "transactions": paris_txns,
+        "articles": [
+            {"nom": "Bière pression demi", "prix": "2,00", "prix_equipe": "1,50",
+             "volume_cl": 25, "type": "biere"},
+        ],
         "lignes": [
             {"transaction_id": 1, "produit": "Guinness 33cl", "quantite": 2,
              "prix_unitaire": "4,20", "total": "8,40"},
@@ -249,6 +353,12 @@ def main(target_dir, logs_rows=5000):
         "brest_transactions": len(brest_txns),
         "paris_transactions": len(paris_txns),
         "brest_lines": len(brest_lines),
+        "brest_articles": len(brest_articles),
+        "brest_kegs": len(brest_kegs),
+        "brest_taps": 2,          # Gauche + Droite (Mobile -> fût inconnu)
+        "brest_tap_articles": 6,  # demi/pinte/pot x 2 tireuses
+        "brest_motifs_blacklist": 2,
+        "paris_articles": 1,
     }
     (target / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
