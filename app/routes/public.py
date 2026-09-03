@@ -1,23 +1,12 @@
-from flask import Blueprint, render_template, request, redirect, session, url_for, g
+from flask import Blueprint, render_template
 from sqlalchemy import select
 
 from app.extensions import db
-from app.models import Article, Event, Note, UsefulLink
+from app.models import Article, Event, Note, Tap, UsefulLink
 from app.services.settings import get_setting, int_setting
 from app.utils import ARTICLE_TYPES, CAMPUSSES, utcnow
 
 bp = Blueprint("public", __name__)
-
-
-@bp.before_request
-def pick_campus():
-    if "campus" in request.args and request.args["campus"] in CAMPUSSES:
-        session["public_campus"] = request.args["campus"]
-    session.setdefault("public_campus", "brest")
-
-
-def current_public_campus():
-    return session.get("public_campus", "brest")
 
 
 @bp.route("/")
@@ -45,17 +34,40 @@ def home():
 
 @bp.route("/catalogue")
 def catalogue():
-    campus = current_public_campus()
     articles = db.session.scalars(
         select(Article)
         .where(Article.active.is_(True), Article.event_id.is_(None))
         .order_by(Article.name)
     ).all()
+    taps = {t.number: t for t in db.session.scalars(select(Tap))}
     grouped = {}
     for a in articles:
-        grouped.setdefault(a.article_type, []).append(a)
+        grouped.setdefault(a.article_type, []).append((a, _campus_prices(a, taps)))
     ordered = sorted(grouped.items(), key=lambda kv: list(ARTICLE_TYPES).index(kv[0]))
-    return render_template("public/catalogue.html", grouped=ordered, campus=campus)
+    return render_template("public/catalogue.html", grouped=ordered)
+
+
+def _campus_prices(article, taps):
+    """Prix standard par campus ; None quand l'article n'existe pas sur le campus.
+
+    Un article issu de la migration n'existe que sur son campus d'origine
+    (tous ses prix y valent 0) et un article de tireuse ne concerne que le
+    campus de la tireuse : on affiche alors un tiret plutôt qu'un prix.
+    """
+    if article.is_tap:
+        tap = taps.get(article.tap_number)
+        if tap is None:
+            return {c: None for c in CAMPUSSES}
+        price = article.price_for(tap.campus)
+        return {c: (price if c == tap.campus else None) for c in CAMPUSSES}
+    return {
+        c: (
+            article.price_for(c)
+            if article.price_for(c) or article.price_for(c, team=True)
+            else None
+        )
+        for c in CAMPUSSES
+    }
 
 
 @bp.route("/reglement")

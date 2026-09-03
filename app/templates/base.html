@@ -74,11 +74,6 @@
         <a class="side-link {{ 'active' if request.endpoint == 'public.liens' }}" href="{{ url_for('public.liens') }}"><i class="bi bi-link-45deg"></i> Liens utiles</a>
       </nav>
       <div class="sidebar-footer mt-auto">
-        <div class="btn-group btn-group-sm w-100 mb-2" role="group">
-          {% for key, label in CAMPUSSES.items() %}
-          <a class="btn {% if public_campus == key %}btn-light{% else %}btn-outline-light{% endif %}" href="?campus={{ key }}">{{ label }}</a>
-          {% endfor %}
-        </div>
         <a class="btn btn-outline-light btn-sm w-100" href="{{ url_for('auth.login') }}"><i class="bi bi-person-lock"></i> Interface équipe</a>
       </div>
     {% endif %}

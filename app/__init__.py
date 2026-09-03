@@ -155,7 +155,7 @@ def create_app():
     def inject_globals():
         from app.services.settings import get_setting, int_setting, bool_setting
 
-        campus = session.get("campus") or session.get("public_campus") or "brest"
+        campus = session.get("campus") or "brest"
         return {
             "csrf_token": lambda: ensure_csrf(),
             "site_name": get_setting("site_name") or "Foy'z & Bar",
@@ -163,7 +163,6 @@ def create_app():
             "logo": get_setting(f"logo_{campus}") or "",
             "current_user": getattr(g, "current_user", None),
             "current_campus": session.get("campus", ""),
-            "public_campus": session.get("public_campus", "brest"),
             "CAMPUSSES": CAMPUSSES,
             "ARTICLE_TYPES": ARTICLE_TYPES,
             "PAYMENT_METHODS": PAYMENT_METHODS,
