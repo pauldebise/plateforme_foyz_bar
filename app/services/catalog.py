@@ -19,10 +19,10 @@ def assign_keg(tap, keg):
     }
     for key, (label, vol) in TAP_SIZES.items():
         std, team = prices[key]
-        tap_label = tap.name or f"de tireuse {tap.number}"
+        tap_label = tap.name or f"tireuse {tap.number}"
         db.session.add(
             Article(
-                name=f'{label} {tap_label} "{keg.name}"',
+                name=f"{label} de {tap_label} ({keg.name})",
                 article_type="biere",
                 volume_cl=vol,
                 price_std_brest=std,
@@ -45,6 +45,15 @@ def detach_keg(tap):
         select(Article).where(Article.tap_number == tap.number, Article.is_tap.is_(True))
     ):
         a.active = False
+    db.session.commit()
+
+
+def delete_tap(tap):
+    for a in db.session.scalars(
+        select(Article).where(Article.tap_number == tap.number, Article.is_tap.is_(True))
+    ):
+        a.active = False
+    db.session.delete(tap)
     db.session.commit()
 
 

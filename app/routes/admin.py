@@ -351,6 +351,18 @@ def tap_detacher(tap_id):
     return redirect(url_for("admin.tireuses"))
 
 
+@bp.route("/tireuses/taps/<int:tap_id>/supprimer", methods=["POST"])
+@login_required
+def tap_supprimer(tap_id):
+    tap = db.session.get(Tap, tap_id)
+    if tap is None:
+        abort(404)
+    name = tap.display_name
+    C.delete_tap(tap)
+    flash(f'Tireuse "{name}" supprimée : ses articles pression ont été désactivés.', "success")
+    return redirect(url_for("admin.tireuses"))
+
+
 @bp.route("/evenements")
 @login_required
 def evenements():

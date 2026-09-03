@@ -33,13 +33,17 @@
               <button class="btn btn-sm btn-outline-primary">Assigner</button>
             </form>
           </td>
-          <td class="text-end">
+          <td class="text-end text-nowrap">
             {% if t.keg %}
-            <form method="post" action="{{ url_for('admin.tap_detacher', tap_id=t.id) }}">
+            <form class="d-inline" method="post" action="{{ url_for('admin.tap_detacher', tap_id=t.id) }}">
               <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-secondary">Détacher</button>
             </form>
             {% endif %}
+            <form class="d-inline" method="post" action="{{ url_for('admin.tap_supprimer', tap_id=t.id) }}" onsubmit="return confirm('Supprimer cette tireuse ? Ses articles pression seront désactivés.')">
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+            </form>
           </td>
         </tr>
         {% endfor %}
