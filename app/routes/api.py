@@ -30,7 +30,7 @@ def wallet(user_id):
     w = u.wallet(campus)
     return jsonify(
         id=u.id,
-        name=u.full_name,
+        name=u.name,
         balance=w.balance,
         glasses=w.glasses_outstanding,
         blacklist=u.blacklist,
@@ -44,7 +44,7 @@ def purchase():
     payload = request.get_json(silent=True) or {}
     try:
         t = T.create_purchase(
-            operator_label=g.current_user.full_name,
+            operator_label=g.current_user.name,
             campus=payload.get("campus") or session.get("campus") or "brest",
             items=payload.get("items", []),
             contributor_ids=payload.get("contributors", []),
@@ -66,7 +66,7 @@ def glasses_return():
         return jsonify(ok=False, error="Étudiant introuvable."), 404
     try:
         t = T.return_glasses(
-            operator_label=g.current_user.full_name,
+            operator_label=g.current_user.name,
             campus=payload.get("campus") or session.get("campus") or "brest",
             user=u,
             count=payload.get("count", 0),

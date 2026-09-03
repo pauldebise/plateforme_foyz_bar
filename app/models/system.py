@@ -16,7 +16,7 @@ class LoginLog(db.Model):
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
     user_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    username: db.Mapped[str] = db.mapped_column(db.String(120), default="")
+    name: db.Mapped[str] = db.mapped_column(db.String(120), default="")
     campus: db.Mapped[str] = db.mapped_column(db.String(10), default="")
     ip: db.Mapped[str] = db.mapped_column(db.String(64), default="")
     success: db.Mapped[bool] = db.mapped_column(db.Boolean, default=True)

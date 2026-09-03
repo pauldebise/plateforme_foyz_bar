@@ -186,7 +186,7 @@ def test_e2e_run_and_invariants():
     # fusion : l'email commun doit donner un compte avec DEUX portefeuilles
     merged = c.execute(
         "SELECT COUNT(*) FROM users u JOIN wallets w ON w.user_id = u.id "
-        "WHERE u.username LIKE 'marie%' GROUP BY u.id HAVING COUNT(*) = 2"
+        "WHERE u.name LIKE 'marie%' GROUP BY u.id HAVING COUNT(*) = 2"
     ).fetchall()
     staging_left = c.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE name='staging_paris_raw'"
@@ -262,8 +262,8 @@ def test_e2e_preexisting_target_delta():
     manifest = _prepare(src / "sources")
     _fresh_db(db_path)
     c = sqlite3.connect(db_path)
-    c.execute("INSERT INTO users (first_name, last_name, blacklist, blacklist_alcohol, "
-              "created_at) VALUES ('Existant','User',0,0,'2026-01-01 00:00:00')")
+    c.execute("INSERT INTO users (name, blacklist, blacklist_alcohol, created_at) "
+              "VALUES ('Existant User',0,0,'2026-01-01 00:00:00')")
     uid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
     c.execute("INSERT INTO wallets (user_id, campus, balance, glasses_outstanding) "
               "VALUES (?, 'brest', 500, 0)", (uid,))

@@ -1,9 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Compte de {{ u.full_name }}{% endblock %}
+{% block title %}Compte de {{ u.name }}{% endblock %}
 {% block content %}
-<h1 class="h3 mb-1"><i class="bi bi-person"></i> {{ u.full_name }}</h1>
+<h1 class="h3 mb-1"><i class="bi bi-person"></i> {{ u.name }}</h1>
 <p class="text-muted">
-  {% if u.username %}@{{ u.username }} ·{% endif %}
   Solde Brest : <strong>{{ u.wallet('brest').balance|eur }}</strong> ·
   Solde Paris : <strong>{{ u.wallet('paris').balance|eur }}</strong> ·
   Verres consignés : Brest {{ u.wallet('brest').glasses_outstanding }} / Paris {{ u.wallet('paris').glasses_outstanding }}
@@ -16,8 +15,7 @@
       <div class="card-body">
         <form method="post">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-          <div class="mb-3"><label class="form-label">Prénom</label><input class="form-control" name="first_name" value="{{ u.first_name }}"></div>
-          <div class="mb-3"><label class="form-label">Nom</label><input class="form-control" name="last_name" value="{{ u.last_name }}"></div>
+          <div class="mb-3"><label class="form-label">Nom / surnom</label><input class="form-control" name="name" value="{{ u.name }}" required></div>
           <div class="mb-3"><label class="form-label">Promotion</label><input class="form-control" name="promotion" type="number" value="{{ u.promotion if u.promotion else '' }}"></div>
           <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" name="blacklist" id="bl" {% if u.blacklist %}checked{% endif %}>
@@ -55,7 +53,7 @@
         <a class="btn btn-outline-success btn-sm" href="{{ url_for('team.rechargement') }}">Rechargement</a>
         <a class="btn btn-outline-warning btn-sm" href="{{ url_for('team.retrait') }}">Retrait</a>
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('team.transfert') }}">Transfert</a>
-        <a class="btn btn-outline-dark btn-sm" href="{{ url_for('team.historique', user=u.full_name) }}">Historique</a>
+        <a class="btn btn-outline-dark btn-sm" href="{{ url_for('team.historique', user=u.name) }}">Historique</a>
       </div>
     </div>
   </div>

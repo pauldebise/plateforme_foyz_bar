@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
-from sqlalchemy import select
+from sqlalchemy import func, select
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
@@ -47,16 +47,10 @@ def save_upload(file_storage, allowed=None):
 @login_required
 def comptes():
     q = request.args.get("q", "").strip()
-    stmt = select(User).order_by(User.last_name, User.first_name).limit(200)
+    stmt = select(User).order_by(User.name).limit(200)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(
-            User.first_name.ilike(like)
-            | User.last_name.ilike(like)
-            | (User.first_name + " " + User.last_name).ilike(like)
-            | (User.last_name + " " + User.first_name).ilike(like)
-            | User.username.ilike(like)
-        )
+        stmt = stmt.where(User.name.ilike(like))
     users = db.session.scalars(stmt).unique().all()
     return render_template("admin/comptes.html", users=users, q=q)
 
@@ -64,15 +58,19 @@ def comptes():
 @bp.route("/comptes/nouveau", methods=["POST"])
 @login_required
 def comptes_nouveau():
-    first = (request.form.get("first_name") or "").strip()
-    last = (request.form.get("last_name") or "").strip()
+    name = (request.form.get("name") or "").strip()
     promotion = request.form.get("promotion", "").strip()
-    if not first or not last:
-        flash("Prénom et nom obligatoires.", "danger")
+    if not name:
+        flash("Nom / surnom obligatoire.", "danger")
+        return redirect(url_for("admin.comptes"))
+    existing = db.session.scalars(
+        select(User).where(func.lower(User.name) == name.lower())
+    ).first()
+    if existing:
+        flash("Ce nom / surnom est déjà utilisé.", "danger")
         return redirect(url_for("admin.comptes"))
     u = User(
-        first_name=first,
-        last_name=last,
+        name=name,
         promotion=int(promotion) if promotion.isdigit() else None,
     )
     db.session.add(u)
@@ -80,7 +78,7 @@ def comptes_nouveau():
     for c in CAMPUSSES:
         u.wallet(c)
     db.session.commit()
-    flash(f"Compte de {u.full_name} créé (portefeuilles Brest et Paris initialisés).", "success")
+    flash(f"Compte de {u.name} créé (portefeuilles Brest et Paris initialisés).", "success")
     return redirect(url_for("admin.compte", user_id=u.id))
 
 
@@ -91,8 +89,15 @@ def compte(user_id):
     if u is None:
         abort(404)
     if request.method == "POST":
-        u.first_name = (request.form.get("first_name") or u.first_name).strip()
-        u.last_name = (request.form.get("last_name") or u.last_name).strip()
+        new_name = (request.form.get("name") or "").strip()
+        if new_name and new_name.lower() != u.name.lower():
+            existing = db.session.scalars(
+                select(User).where(func.lower(User.name) == new_name.lower())
+            ).first()
+            if existing:
+                flash("Ce nom / surnom est déjà utilisé.", "danger")
+                return redirect(url_for("admin.compte", user_id=u.id))
+            u.name = new_name
         promotion = request.form.get("promotion", "").strip()
         u.promotion = int(promotion) if promotion.isdigit() else None
         u.blacklist = request.form.get("blacklist") == "on"
@@ -114,7 +119,7 @@ def compte(user_id):
 @login_required
 def equipe():
     members = db.session.scalars(
-        select(User).where(User.team_status.is_not(None)).order_by(User.last_name, User.first_name)
+        select(User).where(User.team_status.is_not(None)).order_by(User.name)
     ).unique().all()
     return render_template("admin/equipe.html", members=members)
 
@@ -132,13 +137,6 @@ def membre(user_id):
         u.team_status = status or None
         u.team_campus = request.form.get("team_campus") if u.team_status else None
         u.team_title = (request.form.get("team_title") or "").strip() or None
-        username = (request.form.get("username") or "").strip().lower()
-        if username:
-            existing = db.session.scalars(select(User).where(User.username == username)).first()
-            if existing and existing.id != u.id:
-                flash("Cet identifiant est déjà pris.", "danger")
-                return redirect(url_for("admin.membre", user_id=u.id))
-            u.username = username
         password = request.form.get("password") or ""
         if password:
             if len(password) < 6:
@@ -437,8 +435,8 @@ def journaux():
         except ValueError:
             pass
     if fuser:
-        query = query.filter(LoginLog.username.ilike(f"%{fuser}%") | LoginLog.user_id.in_(
-            select(User.id).where(User.last_name.ilike(f"%{fuser}%"))
+        query = query.filter(LoginLog.name.ilike(f"%{fuser}%") | LoginLog.user_id.in_(
+            select(User.id).where(User.name.ilike(f"%{fuser}%"))
         ))
     logs = query.order_by(LoginLog.created_at.desc()).limit(500).all()
     return render_template("admin/journaux.html", logs=logs, filters=request.args)
@@ -502,7 +500,7 @@ def module_dev():
                 flash("Lien supprimé.", "success")
         db.session.commit()
         return redirect(url_for("admin.module_dev"))
-    members = db.session.scalars(select(User).where(User.team_status == "mandat").order_by(User.last_name)).unique().all()
+    members = db.session.scalars(select(User).where(User.team_status == "mandat").order_by(User.name)).unique().all()
     links = db.session.scalars(select(UsefulLink).order_by(UsefulLink.position)).all()
     values = {k: S.get_setting(k) for k in S.DEFAULTS}
     return render_template("admin/module_dev.html", values=values, members=members, links=links)

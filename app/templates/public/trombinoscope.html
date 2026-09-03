@@ -9,11 +9,11 @@
     <div class="col-6 col-md-3 col-lg-2">
       <div class="text-center">
         {% if m.photo %}
-          <img class="trombi-photo" src="/uploads/{{ m.photo }}" alt="{{ m.full_name }}">
+          <img class="trombi-photo" src="/uploads/{{ m.photo }}" alt="{{ m.name }}">
         {% else %}
           <div class="trombi-placeholder"><i class="bi bi-person"></i></div>
         {% endif %}
-        <div class="fw-semibold mt-2">{{ m.full_name }}</div>
+        <div class="fw-semibold mt-2">{{ m.name }}</div>
         {% if m.team_title %}<div class="small text-primary">{{ m.team_title }}</div>{% endif %}
         <div class="small text-muted">Promo {{ m.promotion if m.promotion else "—" }}</div>
       </div>

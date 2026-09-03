@@ -29,7 +29,7 @@
         {% for log in logs %}
         <tr class="{{ 'table-danger' if not log.success }}">
           <td class="text-nowrap">{{ log.created_at|dt }}</td>
-          <td>{{ log.username }}{% if log.user_id %} <span class="text-muted small">(compte #{{ log.user_id }})</span>{% endif %}</td>
+          <td>{{ log.name }}{% if log.user_id %} <span class="text-muted small">(compte #{{ log.user_id }})</span>{% endif %}</td>
           <td>{{ CAMPUSSES.get(log.campus, log.campus) }}</td>
           <td class="small text-muted">{{ log.ip }}</td>
           <td>{% if log.success %}<span class="badge bg-success">succès</span>{% else %}<span class="badge bg-danger">échec</span>{% endif %}</td>

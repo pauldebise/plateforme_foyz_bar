@@ -50,7 +50,6 @@ Foyz_plateforme/
 ├── docs/                      # Cahier des charges
 ├── uploads/                   # Fichiers téléversés (affiches, logos, PDF, photos)
 ├── instance/                  # Base SQLite (créée à l'exécution)
-├── seed.py                    # Jeu de données de démonstration
 ├── run.py / wsgi.py           # Lancement dev / point d'entrée Gunicorn
 ├── requirements.txt
 ├── Dockerfile
@@ -72,19 +71,14 @@ pip install -r requirements.txt
 
 ```bash
 flask --app wsgi.py init-db     # crée les tables + le mot de passe administrateur
-python seed.py                  # (optionnel) jeu de données de démonstration
 python run.py                   # http://127.0.0.1:5000
 ```
 
-### Comptes de démonstration (après `seed.py`)
+### Connexion
 
-| Identifiant        | Mot de passe | Rôle                                |
-|--------------------|--------------|-------------------------------------|
-| `leo.martin`       | `foyz2026`   | Membre de mandat Brest (accès admin)|
-| `camille.rousseau` | `foyz2026`   | Mandat Brest                        |
-| `sarah.bernard`    | `foyz2026`   | Mandat Paris                        |
-| `antoine.moreau`   | `foyz2026`   | Ancien membre (équipe sans admin)   |
-| —                  | `admin`      | Mot de passe **administrateur** (confirmations découvert, annulations…) |
+Un seul champ d'identité : **nom / surnom** (`users.name`, unique), utilisé pour
+l'affichage et comme identifiant de connexion. Les comptes sont créés par
+l'administrateur (onglet Comptes) ou importés par le module de migration (§6).
 
 ## 3. Déploiement en production
 
@@ -201,8 +195,6 @@ dans `.env` (cookies `Secure`).
 - **Sauvegardes** : sauvegardez la base et le dossier des fichiers téléversés :
   - Docker : `docker compose exec db pg_dump -U foyz foyz > backup.sql` + volume `uploads`
   - SQLite : copie de `instance/foyz.db` + `uploads/`
-- **Charger la démo sur un déploiement Docker** (optionnel) :
-  `docker compose exec web python seed.py`
 - **Changer le mot de passe administrateur** : Module développement → Mot de passe administrateur.
 - Les paramètres (découvert, consigne, thèmes, durées de conservation…) se règlent dans
   **Administrateur → Module développement**, sans redéploiement.
@@ -240,7 +232,7 @@ audit comptable systématique.
   ventes) est conservé pour justifier les soldes. Les tables non reconnues ne
   sont **pas** migrées (liste blanche) et figurent au rapport.
 - **Réconciliation** : les étudiants présents sur les deux campus (email, sinon
-  pseudo, sinon nom) sont fusionnés en un compte unique avec deux portefeuilles
+  nom) sont fusionnés en un compte unique avec deux portefeuilles
   (un par campus) ; l'historique reste rattaché à son `campus` d'origine.
 - **Mots de passe** : seuls les hachages compatibles sont repris ; les autres
   comptes démarrent sans mot de passe (réinitialisation par l'équipe).

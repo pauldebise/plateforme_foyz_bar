@@ -43,18 +43,10 @@ def _split_shares(total, n):
 
 def search_students(query, campus=None, limit=15):
     q = (query or "").strip()
-    stmt = select(User).order_by(User.last_name, User.first_name).limit(limit)
+    stmt = select(User).order_by(User.name).limit(limit)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(
-            db.or_(
-                User.first_name.ilike(like),
-                User.last_name.ilike(like),
-                (User.first_name + " " + User.last_name).ilike(like),
-                (User.last_name + " " + User.first_name).ilike(like),
-                User.username.ilike(like),
-            )
-        )
+        stmt = stmt.where(User.name.ilike(like))
     users = db.session.scalars(stmt).unique().all()
     results = []
     for u in users:
@@ -62,7 +54,7 @@ def search_students(query, campus=None, limit=15):
         results.append(
             {
                 "id": u.id,
-                "name": u.full_name,
+                "name": u.name,
                 "promotion": u.promotion,
                 "blacklist": u.blacklist,
                 "blacklist_alcohol": u.blacklist_alcohol,
@@ -146,7 +138,7 @@ def create_purchase(
             if u.blacklist:
                 raise OperationError(
                     "blacklist",
-                    f"{u.full_name} est blacklisté : la transaction est impossible.",
+                    f"{u.name} est blacklisté : la transaction est impossible.",
                 )
     has_alcohol = any(a.is_alcohol for a, _ in lines) or any(
         a.article_type in ALCOHOL_TYPES for a, _ in lines
@@ -156,7 +148,7 @@ def create_purchase(
             if u.blacklist_alcohol:
                 raise OperationError(
                     "alcohol",
-                    f"{u.full_name} est blacklist alcool : commande avec alcool refusée.",
+                    f"{u.name} est blacklist alcool : commande avec alcool refusée.",
                 )
 
     all_team = (not direct) and users and all(u.is_team for u in users)
@@ -196,14 +188,14 @@ def create_purchase(
             if -new_balance > S.overdraft_limit():
                 raise OperationError(
                     "overdraft_limit",
-                    f"Découvert maximum dépassé pour {u.full_name} : transaction refusée.",
+                    f"Découvert maximum dépassé pour {u.name} : transaction refusée.",
                 )
         if negative:
             if not S.check_admin_password(admin_password):
                 raise OperationError(
                     "admin_password_required",
                     "Un étudiant passera en négatif : mot de passe administrateur requis.",
-                    {"negative_users": [u.full_name for u, _, _ in negative]},
+                    {"negative_users": [u.name for u, _, _ in negative]},
                 )
 
     ttype = "direct" if direct else "achat"
@@ -282,7 +274,7 @@ def return_glasses(*, operator_label, campus, user, count):
         raise OperationError("invalid", "Nombre de verres invalide.")
     w = _get_wallet(user, campus)
     if w.glasses_outstanding < count:
-        raise OperationError("invalid", f"{user.full_name} n'a que {w.glasses_outstanding} verre(s) consigné(s).")
+        raise OperationError("invalid", f"{user.name} n'a que {w.glasses_outstanding} verre(s) consigné(s).")
     credit = count * S.deposit_value()
     t = Transaction(
         type="consigne",
@@ -457,7 +449,7 @@ def visible_transactions():
 
 
 def describe_transaction(t):
-    names = [c.user.full_name for c in t.contributions if c.user_id]
+    names = [c.user.name for c in t.contributions if c.user_id]
     if t.type == "achat":
         label = "Achat — " + ", ".join(names)
         if t.deposit_glasses:

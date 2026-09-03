@@ -30,9 +30,9 @@ from . import staging
 from .util import normalize_key, utcnow as now_utc
 
 _USERS_SQL = (
-    "INSERT INTO users (first_name, last_name, promotion, username, password_hash, "
+    "INSERT INTO users (name, promotion, password_hash, "
     "team_status, team_campus, team_title, photo, blacklist, blacklist_alcohol, created_at) "
-    "VALUES (:first_name, :last_name, :promotion, :username, :password_hash, "
+    "VALUES (:name, :promotion, :password_hash, "
     ":team_status, :team_campus, :team_title, :photo, :blacklist, :blacklist_alcohol, "
     ":created_at) RETURNING id"
 )
@@ -175,7 +175,7 @@ class Migrator:
         self.id_map = {"brest": {}, "paris": {}}         # src_id -> key
         self.target_id_by_key = {}
         self.txn_id_map = {"brest": {}, "paris": {}}     # src txn id -> target id
-        self.usernames_taken = set()
+        self.names_taken = set()
         self.counts = defaultdict(int)
         self.initial_totals = audit.capture_target(conn)
 
@@ -201,25 +201,28 @@ class Migrator:
             self.key_order[campus].append(key)
             self.source_sums[campus] += user["balance_cents"]
 
-    def _unique_username(self, base, campus):
+    def _unique_name(self, base):
+        """Rend le nom / surnom unique (insensible à la casse/accents)."""
         if not base:
             return None
-        base = normalize_key(base).replace(" ", "-")[:78] or None
-        if base is None:
+        base = str(base).strip()[:80]
+        norm = normalize_key(base)
+        if norm is None:
             return None
         candidate, i = base, 1
-        while candidate in self.usernames_taken:
+        while normalize_key(candidate) in self.names_taken:
             i += 1
-            candidate = f"{base}-{campus[0]}{i}"
-        self.usernames_taken.add(candidate)
+            suffix = f" {i}"
+            candidate = base[: 80 - len(suffix)] + suffix
+        self.names_taken.add(normalize_key(candidate))
         return candidate
 
     def insert_users_and_wallets(self):
-        # pré-charger les usernames déjà en base (cible non vierge)
+        # pré-charger les noms déjà en base (cible non vierge)
         rows = self.conn.execute(
-            sa.text("SELECT username FROM users WHERE username IS NOT NULL")
+            sa.text("SELECT name FROM users")
         ).fetchall()
-        self.usernames_taken = {r[0] for r in rows}
+        self.names_taken = {normalize_key(r[0]) for r in rows if r[0]}
         if self.initial_totals.users:
             self.counts["users_preexistants"] = self.initial_totals.users
 
@@ -234,8 +237,7 @@ class Migrator:
             primary = self.accounts[campus := campuses[0]][key][0]
             secondary = self.accounts[campuses[1]][key][0] if len(campuses) == 2 else None
 
-            first = primary["first_name"] or (secondary["first_name"] if secondary else "")
-            last = primary["last_name"] or (secondary["last_name"] if secondary else "")
+            name = primary["name"] or (secondary["name"] if secondary else None) or key
             team_status = primary["team_status"] or (secondary["team_status"] if secondary else None)
             team_title = primary["team_title"] or (secondary["team_title"] if secondary else None)
             team_campus = primary["team_campus"] or (secondary["team_campus"] if secondary else None)
@@ -246,9 +248,6 @@ class Migrator:
             photo = primary["photo"] or (secondary["photo"] if secondary else None)
             created_at = primary["created_at"] or (secondary["created_at"] if secondary else None)
             promotion = primary["promotion"] or (secondary["promotion"] if secondary else None)
-            username = self._unique_username(primary["username"]
-                                             or (secondary["username"] if secondary else None)
-                                             or key.replace(" ", "."), campus)
             password_hash = primary["password_hash"] or (secondary["password_hash"] if secondary else None)
             if password_hash:
                 self.counts["passwords_importes"] += 1
@@ -256,10 +255,8 @@ class Migrator:
                 self.counts["passwords_a_reinitialiser"] += 1
 
             params = {
-                "first_name": (first or "?")[:80],
-                "last_name": (last or "")[:80],
+                "name": self._unique_name(name) or "?",
                 "promotion": promotion,
-                "username": username,
                 "password_hash": password_hash,
                 "team_status": team_status,
                 "team_campus": team_campus,

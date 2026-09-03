@@ -16,20 +16,19 @@
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead class="table-light">
-        <tr><th>Membre</th><th>Statut</th><th>Campus</th><th>Identifiant</th><th>Photo</th><th></th></tr>
+        <tr><th>Membre</th><th>Statut</th><th>Campus</th><th>Photo</th><th></th></tr>
       </thead>
       <tbody>
         {% for u in members %}
         <tr>
-          <td><strong>{{ u.full_name }}</strong>{% if u.team_title %} <span class="text-muted small">· {{ u.team_title }}</span>{% endif %}</td>
+          <td><strong>{{ u.name }}</strong>{% if u.team_title %} <span class="text-muted small">· {{ u.team_title }}</span>{% endif %}</td>
           <td>{% if u.team_status == 'mandat' %}<span class="badge bg-success">mandat</span>{% else %}<span class="badge bg-secondary">ancien</span>{% endif %}</td>
           <td>{{ CAMPUSSES.get(u.team_campus, '—') }}</td>
-          <td>{{ u.username or '—' }}</td>
           <td>{% if u.photo %}<img src="/uploads/{{ u.photo }}" style="height: 36px; border-radius: 6px;">{% else %}<span class="text-muted small">aucune</span>{% endif %}</td>
           <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.membre', user_id=u.id) }}">Gérer</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">Aucun membre d'équipe.</td></tr>
+        <tr><td colspan="5" class="text-center text-muted py-4">Aucun membre d'équipe.</td></tr>
         {% endfor %}
       </tbody>
     </table>

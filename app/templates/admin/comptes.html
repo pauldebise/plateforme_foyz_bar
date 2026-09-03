@@ -9,8 +9,8 @@
 <form class="card mb-3">
   <div class="card-body row g-2 align-items-end">
     <div class="col-md-8">
-      <label class="form-label small">Recherche globale (nom, identifiant)</label>
-      <input class="form-control" name="q" value="{{ q }}" placeholder="Ex : Dupont, paul.dupont…">
+      <label class="form-label small">Recherche globale</label>
+      <input class="form-control" name="q" value="{{ q }}" placeholder="Ex : Dupont, Flavie…">
     </div>
     <div class="col-md-2 d-grid"><button class="btn btn-primary"><i class="bi bi-search"></i> Rechercher</button></div>
     <div class="col-md-2 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.comptes') }}">Réinitialiser</a></div>
@@ -26,7 +26,7 @@
       <tbody>
         {% for u in users %}
         <tr>
-          <td><strong>{{ u.full_name }}</strong>{% if u.username %}<div class="small text-muted">@{{ u.username }}</div>{% endif %}</td>
+          <td><strong>{{ u.name }}</strong></td>
           <td>{{ u.promotion if u.promotion else '—' }}</td>
           <td>{{ u.wallet('brest').balance|eur }}</td>
           <td>{{ u.wallet('paris').balance|eur }}</td>
@@ -59,10 +59,9 @@
       </div>
       <div class="modal-body">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-        <div class="mb-3"><label class="form-label">Prénom</label><input class="form-control" name="first_name" required></div>
-        <div class="mb-3"><label class="form-label">Nom</label><input class="form-control" name="last_name" required></div>
+        <div class="mb-3"><label class="form-label">Nom / surnom</label><input class="form-control" name="name" required></div>
         <div class="mb-3"><label class="form-label">Promotion (année de sortie)</label><input class="form-control" name="promotion" type="number"></div>
-        <p class="form-text mb-0">Deux portefeuilles (Brest &amp; Paris) sont automatiquement créés à 0,00 €.</p>
+        <p class="form-text mb-0">Deux portefeuilles (Brest &amp; Paris) sont créés à 0,00 €.</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>

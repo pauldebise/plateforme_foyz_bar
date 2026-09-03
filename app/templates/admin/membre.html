@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Membre — {{ u.full_name }}{% endblock %}
+{% block title %}Membre — {{ u.name }}{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4"><i class="bi bi-person-badge"></i> Gestion du membre : {{ u.full_name }}</h1>
+<h1 class="h3 mb-4"><i class="bi bi-person-badge"></i> Gestion du membre : {{ u.name }}</h1>
 
 <div class="row g-4">
   <div class="col-lg-6">
@@ -52,10 +52,6 @@
           <input type="hidden" name="team_status" value="{{ u.team_status or '' }}">
           <input type="hidden" name="team_campus" value="{{ u.team_campus or '' }}">
           <input type="hidden" name="team_title" value="{{ u.team_title or '' }}">
-          <div class="mb-3">
-            <label class="form-label">Identifiant</label>
-            <input class="form-control" name="username" value="{{ u.username or '' }}" placeholder="prenom.nom">
-          </div>
           <div class="mb-3">
             <label class="form-label">Nouveau mot de passe</label>
             <input class="form-control" type="password" name="password" placeholder="{% if u.password_hash %}laisser vide pour conserver{% else %}définir un mot de passe{% endif %}">

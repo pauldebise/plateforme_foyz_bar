@@ -3,7 +3,7 @@ import time
 from collections import defaultdict, deque
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
-from sqlalchemy import select
+from sqlalchemy import func, select
 from werkzeug.security import check_password_hash
 
 from app.extensions import db
@@ -34,13 +34,15 @@ def login():
         if _rate_limited(ip):
             flash("Trop de tentatives. Réessayez dans quelques minutes.", "danger")
             return render_template("auth/login.html"), 429
-        username = (request.form.get("username") or "").strip().lower()
+        name = (request.form.get("name") or "").strip()
         password = request.form.get("password") or ""
         campus = request.form.get("campus")
         if campus not in CAMPUSSES:
             campus = "brest"
 
-        user = db.session.scalars(select(User).where(User.username == username)).first()
+        user = db.session.scalars(
+            select(User).where(func.lower(User.name) == name.lower())
+        ).first()
         ok = False
         if user and user.password_hash:
             ok = check_password_hash(user.password_hash, password)
@@ -50,7 +52,7 @@ def login():
         else:
             reason = "Identifiants incorrects."
 
-        db.session.add(LoginLog(user_id=user.id if user else None, username=username, campus=campus, ip=ip, success=bool(ok)))
+        db.session.add(LoginLog(user_id=user.id if user else None, name=name, campus=campus, ip=ip, success=bool(ok)))
         db.session.commit()
 
         if not ok:

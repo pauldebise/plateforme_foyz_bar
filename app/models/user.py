@@ -8,10 +8,8 @@ class User(db.Model):
     __tablename__ = "users"
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    first_name: db.Mapped[str] = db.mapped_column(db.String(80))
-    last_name: db.Mapped[str] = db.mapped_column(db.String(80))
+    name: db.Mapped[str] = db.mapped_column(db.String(80), unique=True, index=True)
     promotion: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
-    username: db.Mapped[str | None] = db.mapped_column(db.String(80), unique=True, nullable=True, index=True)
     password_hash: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     team_status: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
     team_campus: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
@@ -24,10 +22,6 @@ class User(db.Model):
     wallets: db.Mapped[list["Wallet"]] = db.relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
     )
-
-    @property
-    def full_name(self):
-        return f"{self.first_name} {self.last_name}".strip()
 
     @property
     def is_team(self):
@@ -57,4 +51,4 @@ class Wallet(db.Model):
 
     @property
     def owner_name(self):
-        return self.user.full_name if self.user else "?"
+        return self.user.name if self.user else "?"

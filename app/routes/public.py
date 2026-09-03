@@ -80,7 +80,7 @@ def trombinoscope():
     members = db.session.scalars(
         select(User)
         .where(User.team_status == "mandat")
-        .order_by(User.team_campus, User.last_name, User.first_name)
+        .order_by(User.team_campus, User.name)
     ).all()
     by_campus = {c: [] for c in CAMPUSSES}
     for m in members:

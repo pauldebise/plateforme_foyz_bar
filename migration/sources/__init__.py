@@ -102,14 +102,17 @@ def normalize_team_status(value):
 
 # ------------------------------------------------------------ alias tables
 
+# Identité : un seul champ cible `name` (nom / surnom, identifiant de connexion).
+NAME_FIELDS = ("name", "pseudo", "username", "login", "identifiant", "nom_surnom",
+               "real_name")
+# Certaines sources séparent prénom / nom : combinés si aucun champ `name`.
+FIRST_NAME_FIELDS = ("prenom", "prénom", "first_name", "firstname")
+LAST_NAME_FIELDS = ("nom", "last_name", "lastname", "famille")
+
 USER_FIELDS = {
     "src_id": ("id", "membre_id", "student_id", "utilisateur_id", "user_id", "id_etudiant",
                "card_id"),
-    "first_name": ("prenom", "prénom", "first_name", "firstname", "real_name"),
-    "last_name": ("nom", "last_name", "lastname", "famille"),
-    "promotion": ("promotion", "promo", "annee", "année", "year", "promotion_annee"),
     "email": ("email", "mail", "courriel", "adresse_mail"),
-    "username": ("pseudo", "username", "login", "identifiant", "name"),
     "password": ("mdp", "password", "password_hash", "mot_de_passe", "pass", "hash"),
     "balance": ("solde", "balance", "solde_euros", "credit", "solde_compte"),
     "team_status": ("statut", "statut_equipe", "team_status", "role_equipe", "status",
@@ -124,6 +127,7 @@ USER_FIELDS = {
                             "consignes_restantes", "verres_sortis", "ecocups"),
     "created_at": ("date_inscription", "created_at", "date_creation", "inscription", "cree_le",
                    "registration"),
+    "promotion": ("promotion", "promo", "annee", "année", "year", "promotion_annee"),
 }
 
 TXN_FIELDS = {
@@ -163,19 +167,24 @@ def map_user_row(row, campus, money_unit):
     """Convertit une ligne source en compte canonique (montants en centimes).
 
     Retourne (dict | None, warning | None). None = ligne ignorée (identité absente).
+    L'identité cible est un seul champ `name` (nom / surnom) ; les sources qui
+    séparent prénom / nom sont combinées. La clé de réconciliation reste
+    l'email quand il existe (fusion inter-campus), sinon le nom.
     """
-    first = pick(row, USER_FIELDS["first_name"]) or ""
-    last = pick(row, USER_FIELDS["last_name"]) or ""
+    name = pick(row, NAME_FIELDS)
+    if not name:
+        first = pick(row, FIRST_NAME_FIELDS) or ""
+        last = pick(row, LAST_NAME_FIELDS) or ""
+        name = f"{first} {last}".strip()
     email = pick(row, USER_FIELDS["email"])
-    username = pick(row, USER_FIELDS["username"])
-    if not (first or last) and not (email or username):
-        return None, "identité absente (ni nom, ni email/pseudo)"
-    key = normalize_key(email) or normalize_key(username) or normalize_key(f"{first}.{last}")
+    if not name and not email:
+        return None, "identité absente (ni nom, ni email)"
+    name = str(name).strip() if name is not None else ""
+    if not name:
+        name = str(email)
+    key = normalize_key(email) or normalize_key(name)
     if not key:
         return None, "clé de réconciliation vide"
-    if not (first or last):
-        # identité reconstituée depuis l'identifiant pour l'affichage minimal
-        first = username or email or "?"
     password = pick(row, USER_FIELDS["password"])
     from ..util import looks_like_werkzeug_hash
     hash_val = str(password) if looks_like_werkzeug_hash(password) else None
@@ -187,10 +196,8 @@ def map_user_row(row, campus, money_unit):
         "src_id": pick(row, USER_FIELDS["src_id"]),
         "key": key,
         "email": email,
-        "first_name": str(first).strip(),
-        "last_name": str(last).strip(),
+        "name": name[:80],
         "promotion": as_int(pick(row, USER_FIELDS["promotion"])),
-        "username": (str(username).strip() or None) if username else None,
         "password_hash": hash_val,
         "team_status": normalize_team_status(pick(row, USER_FIELDS["team_status"])),
         "team_title": pick(row, USER_FIELDS["team_title"]),
