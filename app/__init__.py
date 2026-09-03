@@ -3,11 +3,29 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for, send_from_directory, abort
+from flask import Flask, current_app, g, jsonify, redirect, render_template, request, session, url_for, send_from_directory, abort
+from sqlalchemy import func, select
+from werkzeug.security import generate_password_hash
 
 from app.config import get_config, UPLOAD_DIR
 from app.extensions import db
 from app.utils import CAMPUSSES, ARTICLE_TYPES, PAYMENT_METHODS, TRANSACTION_TYPES, euros, to_paris
+
+
+def ensure_dev_admin():
+    from app.models import User
+    from app.services.settings import get_setting, set_admin_password
+
+    password = current_app.config.get("DEFAULT_ADMIN_PASSWORD", "admin")
+    admin = db.session.scalars(select(User).where(func.lower(User.name) == "admin")).first()
+    if admin is None:
+        admin = User(name="admin", team_status="mandat", team_campus="brest", team_title="Dev Admin")
+        db.session.add(admin)
+    if not admin.password_hash:
+        admin.password_hash = generate_password_hash(password)
+    if not get_setting("admin_password_hash"):
+        set_admin_password(password)
+    db.session.commit()
 
 
 def create_app():
@@ -23,6 +41,7 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        ensure_dev_admin()
 
     from app.routes.public import bp as public_bp
     from app.routes.auth import bp as auth_bp
@@ -167,11 +186,7 @@ def create_app():
     def init_db_command():
         with app.app_context():
             db.create_all()
-            from app.services.settings import set_setting, set_admin_password, get_setting
-
-            if not get_setting("admin_password_hash"):
-                set_admin_password(app.config.get("DEFAULT_ADMIN_PASSWORD", "admin"))
-            db.session.commit()
+            ensure_dev_admin()
         print("Base de données initialisée.")
 
     return app
