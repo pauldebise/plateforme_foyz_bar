@@ -3,10 +3,10 @@ import io
 from datetime import datetime, timedelta
 
 from flask import Blueprint, Response, abort, flash, g, jsonify, redirect, render_template, request, session, url_for
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.extensions import db
-from app.models import Article, Contribution, Note, Transaction, User
+from app.models import Article, Contribution, Note, Tap, Transaction, User
 from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
 from app.services.settings import int_setting
@@ -38,9 +38,14 @@ def campus():
 @bp.route("/paiement")
 @login_required
 def payment():
+    campus_tap_numbers = select(Tap.number).where(Tap.campus == campus())
     articles = db.session.scalars(
         select(Article)
-        .where(Article.active.is_(True), Article.event_id.is_(None))
+        .where(
+            Article.active.is_(True),
+            Article.event_id.is_(None),
+            or_(Article.is_tap.is_(False), Article.tap_number.in_(campus_tap_numbers)),
+        )
         .order_by(Article.is_tap.desc(), Article.name)
     ).all()
     data = [

@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta
 
-from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, url_for
+from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for
 from sqlalchemy import func, select
 from werkzeug.utils import secure_filename
 
@@ -45,6 +45,11 @@ def save_upload(file_storage, allowed=None):
     name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{new_token()[:8]}_{filename}"
     file_storage.save(os.path.join(current_app.config["UPLOAD_FOLDER"], name))
     return name
+
+
+def session_campus():
+    campus = session.get("campus")
+    return campus if campus in CAMPUSSES else "brest"
 
 
 @bp.route("/comptes")
@@ -222,10 +227,12 @@ def _article_from_form(a):
 @bp.route("/tireuses")
 @login_required
 def tireuses():
+    campus = session_campus()
     kegs = db.session.scalars(select(Keg).order_by(Keg.active.desc(), Keg.name)).unique().all()
-    taps = db.session.scalars(select(Tap).order_by(Tap.number)).all()
-    free_kegs = [k for k in kegs if k.remaining_l > 0.01 and not any(t.keg_id == k.id for t in taps)]
-    return render_template("admin/tireuses.html", kegs=kegs, taps=taps, free_kegs=free_kegs)
+    taps = db.session.scalars(select(Tap).where(Tap.campus == campus).order_by(Tap.number)).all()
+    all_taps = db.session.scalars(select(Tap)).all()
+    free_kegs = [k for k in kegs if k.remaining_l > 0.01 and not any(t.keg_id == k.id for t in all_taps)]
+    return render_template("admin/tireuses.html", kegs=kegs, taps=taps, free_kegs=free_kegs, campus=campus)
 
 
 @bp.route("/tireuses/kegs/nouveau", methods=["POST"])
@@ -294,33 +301,46 @@ def _keg_from_form(k):
 @login_required
 def tap_nouveau():
     name = (request.form.get("name") or "").strip()
-    campus = request.form.get("campus", "brest")
+    campus = session_campus()
     if not name:
         flash("Le nom de la tireuse est obligatoire.", "danger")
         return redirect(url_for("admin.tireuses"))
-    if db.session.scalars(select(Tap).where(func.lower(Tap.name) == name.lower())).first():
-        flash("Une tireuse porte déjà ce nom.", "danger")
+    if db.session.scalars(
+        select(Tap).where(func.lower(Tap.name) == name.lower(), Tap.campus == campus)
+    ).first():
+        flash("Une tireuse porte déjà ce nom sur ce campus.", "danger")
         return redirect(url_for("admin.tireuses"))
     max_number = db.session.scalar(select(func.max(Tap.number))) or 0
-    db.session.add(Tap(number=max_number + 1, name=name[:160], campus=campus if campus in CAMPUSSES else "brest"))
+    db.session.add(Tap(number=max_number + 1, name=name[:160], campus=campus))
     db.session.commit()
     flash(f'"{name}" ajoutée.', "success")
     return redirect(url_for("admin.tireuses"))
 
 
+def _campus_tap_or_404(tap_id):
+    tap = db.session.get(Tap, tap_id)
+    if tap is None or tap.campus != session_campus():
+        return None
+    return tap
+
+
 @bp.route("/tireuses/taps/<int:tap_id>/renommer", methods=["POST"])
 @login_required
 def tap_renommer(tap_id):
-    tap = db.session.get(Tap, tap_id)
+    tap = _campus_tap_or_404(tap_id)
     name = (request.form.get("name") or "").strip()
     if tap is None:
         abort(404)
     if not name:
         flash("Le nom de la tireuse est obligatoire.", "danger")
         return redirect(url_for("admin.tireuses"))
-    duplicate = db.session.scalars(select(Tap).where(func.lower(Tap.name) == name.lower(), Tap.id != tap.id)).first()
+    duplicate = db.session.scalars(
+        select(Tap).where(
+            func.lower(Tap.name) == name.lower(), Tap.id != tap.id, Tap.campus == tap.campus
+        )
+    ).first()
     if duplicate:
-        flash("Une autre tireuse porte déjà ce nom.", "danger")
+        flash("Une autre tireuse porte déjà ce nom sur ce campus.", "danger")
         return redirect(url_for("admin.tireuses"))
     tap.name = name[:160]
     db.session.commit()
@@ -333,7 +353,7 @@ def tap_renommer(tap_id):
 @bp.route("/tireuses/taps/<int:tap_id>/assigner", methods=["POST"])
 @login_required
 def tap_assigner(tap_id):
-    tap = db.session.get(Tap, tap_id)
+    tap = _campus_tap_or_404(tap_id)
     keg = db.session.get(Keg, request.form.get("keg_id", ""))
     if tap and keg:
         C.assign_keg(tap, keg)
@@ -344,7 +364,7 @@ def tap_assigner(tap_id):
 @bp.route("/tireuses/taps/<int:tap_id>/detacher", methods=["POST"])
 @login_required
 def tap_detacher(tap_id):
-    tap = db.session.get(Tap, tap_id)
+    tap = _campus_tap_or_404(tap_id)
     if tap:
         C.detach_keg(tap)
         flash(f"{tap.display_name} libérée.", "success")
@@ -354,7 +374,7 @@ def tap_detacher(tap_id):
 @bp.route("/tireuses/taps/<int:tap_id>/supprimer", methods=["POST"])
 @login_required
 def tap_supprimer(tap_id):
-    tap = db.session.get(Tap, tap_id)
+    tap = _campus_tap_or_404(tap_id)
     if tap is None:
         abort(404)
     name = tap.display_name
