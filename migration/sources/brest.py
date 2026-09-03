@@ -5,7 +5,14 @@ sont exclues à la volée pendant le streaming — cf. logfilter.py) :
 
     users         -> membres / étudiants (solde en euros décimaux)
     transactions  -> historique comptable conservé (justifie les soldes)
-    lines         -> lignes de détail des ventes
+    lines         -> lignes de détail des ventes (table `baskets`)
+
+Schéma réel Brest (dump du 31/08) : users(card_id, name, real_name, password,
+balance, blacklisted, is_foyz, promo, disabled, registration, ecocups,
+alcohol_blacklisted), transactions(id, date, user_id, balance=montant,
+logged_user_id), baskets(id, transaction_id, article_id, article_name,
+article_price, article_type, article_volume, quantity, beer_draught,
+extra_type). Aucun email : la clé de réconciliation est le pseudo (`name`).
 
 Ajuster TABLE_MAP / USER_FIELDS / TXN_FIELDS (dans sources/__init__.py) si le
 schéma réel diffère la veille de la bascule.
@@ -37,6 +44,7 @@ TABLE_MAP = {
     "detail_ventes": "lines",
     "détail_ventes": "lines",
     "lignes_transaction": "lines",
+    "baskets": "lines",
 }
 
 ENTITY_FIELDS = {"users": USER_FIELDS, "transactions": TXN_FIELDS, "lines": LINE_FIELDS}

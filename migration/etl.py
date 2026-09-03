@@ -138,33 +138,25 @@ class SourceReader:
                 user, warning = (obj, None) if obj else (None, "champs insuffisants")
                 yield "paris", filename, user, warning
 
-    def _iter_brest_multi(self):
-        for src in self.files:
-            if src.campus != "brest" or src.kind != "sql_dump":
-                continue
-            for table, _cols, rows in iter_business_rows(
-                src.path,
-                keep_map=brest_contract.TABLE_MAP,
-                batch_size=self.chunk_rows,
-                on_scan_done=lambda sc, s=src: self._record_scan(s.path.name, sc),
-            ):
-                entity = brest_contract.entity_for(table)
-                if entity not in ("transactions", "lines"):
-                    continue
-                for row in rows:
-                    yield src.path.name, entity, row
-
-    def iter_accounting_items(self):
-        for filename, entity, row in self._iter_brest_multi():
-            if entity == "transactions":
-                yield "brest", filename, map_transaction_row(row, "brest", self.money_unit)
-            else:
-                line_obj = map_line_row(row, self.money_unit)
-                if line_obj is not None:
-                    yield "brest", filename, line_obj
+    def iter_transactions(self):
+        """Passe comptabilité : transactions seules (avant les lignes de détail,
+        quel que soit l'ordre des tables dans le dump)."""
+        for filename, _entity, row in self._iter_brest("transactions"):
+            yield "brest", filename, map_transaction_row(row, "brest", self.money_unit)
         for filename, source_table, record in self._iter_paris():
             entity, obj = paris_contract.map_record(source_table, record, "paris", self.money_unit)
-            if entity in ("transactions", "lines") and obj is not None:
+            if entity == "transactions" and obj is not None:
+                yield "paris", filename, obj
+
+    def iter_lines(self):
+        """Passe lignes de détail : après les transactions (remapping des ids)."""
+        for filename, _entity, row in self._iter_brest("lines"):
+            line_obj = map_line_row(row, self.money_unit)
+            if line_obj is not None:
+                yield "brest", filename, line_obj
+        for filename, source_table, record in self._iter_paris():
+            entity, obj = paris_contract.map_record(source_table, record, "paris", self.money_unit)
+            if entity == "lines" and obj is not None:
                 yield "paris", filename, obj
 
 
@@ -314,11 +306,12 @@ class Migrator:
         return None
 
     def insert_transactions(self):
-        for campus, filename, obj in self.reader.iter_accounting_items():
-            if "src_transaction_id" in obj:  # ligne de détail
-                self._insert_line(campus, obj)
-            else:
-                self._insert_transaction(campus, filename, obj)
+        # ordre imposé : transactions d'abord (txn_id_map), lignes ensuite ;
+        # dans le dump Brest `baskets` précède `transactions`.
+        for campus, filename, obj in self.reader.iter_transactions():
+            self._insert_transaction(campus, filename, obj)
+        for campus, filename, obj in self.reader.iter_lines():
+            self._insert_line(campus, obj)
 
     def _insert_transaction(self, campus, filename, txn):
         params = {

@@ -77,6 +77,8 @@ TEAM_STATUS_MAP = {
     "bureau": "mandat", "admin": "mandat", "president": "mandat",
     "ancien": "ancien", "ancien membre": "ancien", "alumni": "ancien",
     "anciens": "ancien",
+    # Brest : users.is_foyz (tinyint 0/1) -> statut équipe
+    "1": "mandat",
 }
 
 
@@ -101,23 +103,27 @@ def normalize_team_status(value):
 # ------------------------------------------------------------ alias tables
 
 USER_FIELDS = {
-    "src_id": ("id", "membre_id", "student_id", "utilisateur_id", "user_id", "id_etudiant"),
-    "first_name": ("prenom", "prénom", "first_name", "firstname"),
+    "src_id": ("id", "membre_id", "student_id", "utilisateur_id", "user_id", "id_etudiant",
+               "card_id"),
+    "first_name": ("prenom", "prénom", "first_name", "firstname", "real_name"),
     "last_name": ("nom", "last_name", "lastname", "famille"),
     "promotion": ("promotion", "promo", "annee", "année", "year", "promotion_annee"),
     "email": ("email", "mail", "courriel", "adresse_mail"),
-    "username": ("pseudo", "username", "login", "identifiant"),
+    "username": ("pseudo", "username", "login", "identifiant", "name"),
     "password": ("mdp", "password", "password_hash", "mot_de_passe", "pass", "hash"),
     "balance": ("solde", "balance", "solde_euros", "credit", "solde_compte"),
-    "team_status": ("statut", "statut_equipe", "team_status", "role_equipe", "status"),
+    "team_status": ("statut", "statut_equipe", "team_status", "role_equipe", "status",
+                    "is_foyz"),
     "team_title": ("titre", "team_title", "fonction", "poste"),
     "team_campus": ("campus_equipe", "team_campus", "campus"),
     "photo": ("photo", "avatar", "photo_url"),
     "blacklist": ("blacklist", "blacklisted", "interdit", "liste_noire"),
-    "blacklist_alcohol": ("blacklist_alcool", "blacklist_alcohol", "sans_alcool"),
+    "blacklist_alcohol": ("blacklist_alcool", "blacklist_alcohol", "sans_alcool",
+                          "alcohol_blacklisted"),
     "glasses_outstanding": ("verres_restants", "verres", "glasses_outstanding",
-                            "consignes_restantes", "verres_sortis"),
-    "created_at": ("date_inscription", "created_at", "date_creation", "inscription", "cree_le"),
+                            "consignes_restantes", "verres_sortis", "ecocups"),
+    "created_at": ("date_inscription", "created_at", "date_creation", "inscription", "cree_le",
+                   "registration"),
 }
 
 TXN_FIELDS = {
@@ -125,10 +131,11 @@ TXN_FIELDS = {
     "created_at": ("date", "date_heure", "date_transaction", "created_at", "horodatage",
                    "date_vente", "timestamp"),
     "type": ("type", "type_transaction", "categorie", "catégorie", "nature"),
-    "total": ("montant", "montant_total", "total", "prix_total", "valeur", "somme"),
+    "total": ("montant", "montant_total", "total", "prix_total", "valeur", "somme",
+              "balance"),
     "user_id": ("membre_id", "user_id", "etudiant_id", "compte_id", "client_id"),
     "operator": ("operateur", "opérateur", "operator", "caissier", "vendeur",
-                 "operateur_label"),
+                 "operateur_label", "logged_user_id"),
     "payment_method": ("moyen", "moyen_paiement", "payment_method", "paiement", "reglement"),
     "cancelled": ("annule", "annulée", "annulee", "cancelled", "est_annule", "annulation"),
     "cancelled_at": ("date_annulation", "cancelled_at", "annule_le"),
@@ -142,7 +149,7 @@ LINE_FIELDS = {
     "article_name": ("produit", "article", "article_name", "nom_produit", "designation",
                      "désignation", "nom"),
     "quantity": ("quantite", "quantité", "quantity", "qte", "qté"),
-    "unit_price": ("prix_unitaire", "unit_price", "pu", "prix"),
+    "unit_price": ("prix_unitaire", "unit_price", "pu", "prix", "article_price"),
     "line_total": ("total", "montant", "line_total", "montant_ligne", "prix_total", "sous_total"),
     "article_type": ("type_article", "article_type", "categorie", "catégorie", "famille"),
 }
