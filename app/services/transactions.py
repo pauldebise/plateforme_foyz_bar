@@ -1,6 +1,6 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.extensions import db
 from app.models import (
@@ -41,12 +41,41 @@ def _split_shares(total, n):
     return shares
 
 
+def _recent_activity(campus=None, days=45):
+    """Achats récents par utilisateur : (nombre d'achats, dernier achat)."""
+    since = utcnow() - timedelta(days=days)
+    stmt = (
+        select(
+            Contribution.user_id.label("user_id"),
+            func.count(Transaction.id).label("recent_count"),
+            func.max(Transaction.created_at).label("last_at"),
+        )
+        .join(Transaction, Transaction.id == Contribution.transaction_id)
+        .where(
+            Contribution.user_id.isnot(None),
+            Transaction.cancelled.is_(False),
+            Transaction.type == "achat",
+            Transaction.created_at >= since,
+        )
+        .group_by(Contribution.user_id)
+    )
+    if campus:
+        stmt = stmt.where(Contribution.campus == campus)
+    return stmt.subquery()
+
+
 def search_students(query, campus=None, limit=15):
     q = (query or "").strip()
-    stmt = select(User).order_by(User.name).limit(limit)
+    activity = _recent_activity(campus)
+    # En tête : comptes les plus actifs récemment ; ensuite alphabétique.
+    stmt = select(User).outerjoin(activity, activity.c.user_id == User.id)
     if q:
-        like = f"%{q}%"
-        stmt = stmt.where(User.name.ilike(like))
+        stmt = stmt.where(User.name.ilike(f"%{q}%"))
+    stmt = stmt.order_by(
+        func.coalesce(activity.c.recent_count, 0).desc(),
+        func.coalesce(activity.c.last_at, datetime(1970, 1, 1)).desc(),
+        User.name.asc(),
+    ).limit(limit)
     users = db.session.scalars(stmt).unique().all()
     results = []
     for u in users:
