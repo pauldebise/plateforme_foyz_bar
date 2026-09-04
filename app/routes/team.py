@@ -48,6 +48,12 @@ def payment():
         )
         .order_by(Article.is_tap.desc(), Article.name)
     ).all()
+    # un article absent du campus courant (tous ses prix y valent 0) est exclu
+    # de l'encaissement ; il reste listé dans l'onglet admin Articles
+    articles = [
+        a for a in articles
+        if a.is_tap or a.price_for(campus()) or a.price_for(campus(), team=True)
+    ]
     data = [
         {
             "id": a.id,
