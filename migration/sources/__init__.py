@@ -158,6 +158,47 @@ TXN_FIELDS = {
     "deposit_glasses": ("verres_consignes", "deposit_glasses", "nb_verres", "verres"),
 }
 
+# Ancienne base Brest : les opérations sont éclatées en plusieurs tables de
+# même forme (id, date, user_id, balance=montant, logged_user_id). Le nom de
+# la table donne le type : transactions = achats, payments = rechargements
+# (colonne enum `type` = moyen de paiement), withdrawals = retraits,
+# transfert = transferts (une ligne par côté : -X donneur, +X bénéficiaire,
+# à apparier en aval). `logged_user_id` est un badge (users.card_id) que le
+# moteur résout en nom de compte opérateur.
+PAYMENT_FIELDS = {
+    "src_id": ("id",),
+    "created_at": ("date",),
+    "total": ("balance",),
+    "user_id": ("user_id",),
+    "operator": ("logged_user_id",),
+    "payment_method": ("type",),
+}
+WITHDRAWAL_FIELDS = {
+    "src_id": ("id",),
+    "created_at": ("date",),
+    "total": ("balance",),
+    "user_id": ("user_id",),
+    "operator": ("logged_user_id",),
+}
+TRANSFER_FIELDS = dict(WITHDRAWAL_FIELDS)
+
+# Enum `payments.type` (Brest) -> moyen de paiement cible
+# (cb | lydia | especes | helloasso). « Check » sans équivalent en cible :
+# None, le moyen source est conservé en note.
+SOURCE_PAYMENT_ENUM = {
+    "creditcard": "cb",
+    "cash": "especes",
+    "lydia": "lydia",
+    "check": None,
+}
+
+# Type cible imposé par le nom de la table source.
+OPERATION_TYPES = {
+    "rechargements": "rechargement",
+    "retraits": "retrait",
+    "transferts": "transfert",
+}
+
 LINE_FIELDS = {
     "transaction_id": ("transaction_id", "vente_id", "id_vente", "id_transaction",
                        "operation_id"),
@@ -333,6 +374,42 @@ def map_transaction_row(row, campus, money_unit):
         "deposit_glasses": as_int(pick(row, TXN_FIELDS["deposit_glasses"])) or 0,
         "campus": campus,
         "type_warning": article_note,
+    }
+
+
+def map_operation_row(row, fields, entity, campus, money_unit):
+    """Convertit une ligne des tables d'opérations séparées Brest
+    (payments / withdrawals / transfert) en transaction canonique.
+
+    `entity` (rechargements | retraits | transferts) fixe le type cible. Pour
+    les transferts le montant source est signé (-X donneur, +X bénéficiaire) :
+    `signed_cents` conserve le signe pour l'appariement effectué en aval et
+    `side` désigne le côté porté par la ligne.
+    """
+    total = to_cents(pick(row, fields["total"]), money_unit, context=f"{entity} {campus}")
+    payment, note = None, None
+    if entity == "rechargements":
+        raw = pick(row, fields.get("payment_method", ()))
+        if raw is not None and str(raw).strip():
+            payment = SOURCE_PAYMENT_ENUM.get(str(raw).strip().lower())
+            if payment is None:
+                note = f"moyen de paiement source : {raw}"
+    signed = total if entity == "transferts" else None
+    return {
+        "src_id": pick(row, fields["src_id"]),
+        "created_at": parse_dt(pick(row, fields["created_at"])),
+        "type": OPERATION_TYPES[entity],
+        "total_cents": abs(total),
+        "signed_cents": signed,
+        "side": ("from" if signed < 0 else "to") if signed else None,
+        "src_user_id": pick(row, fields["user_id"]),
+        "operator_label": str(pick(row, fields["operator"]) or "")[:120],
+        "payment_method": payment,
+        "cancelled": False,
+        "cancelled_at": None,
+        "note": note,
+        "deposit_glasses": 0,
+        "campus": campus,
     }
 
 

@@ -63,7 +63,7 @@
               <details class="small text-muted">
                 <summary>Détail</summary>
                 {% for l in t.lines %}{{ l.quantity }} × {{ l.article_name }} ({{ l.line_total|eur }})<br>{% endfor %}
-                {% for c in t.contributions %}{% if c.user_id %}Part de {{ c.user.name }} : {{ c.amount|eur }} → solde {{ c.balance_after|eur }}<br>{% endif %}{% endfor %}
+                {% for c in t.contributions %}{% if c.user_id %}Part de {{ c.user.name }} : {{ c.amount|eur }}{% if c.balance_after %} → solde {{ c.balance_after|eur }}{% endif %}<br>{% endif %}{% endfor %}
               </details>
             {% endif %}
             {% if t.event_id %}<span class="badge bg-dark">Événement</span>{% endif %}

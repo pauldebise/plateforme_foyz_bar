@@ -171,6 +171,46 @@ def main(target_dir, logs_rows=5000):
             "annulee": False,
         })
 
+    # --------------------------------- opérations éclatées Brest (schéma réel)
+    # payments (rechargements, enum `type` = moyen de paiement), withdrawals
+    # (retraits) et transfert (une ligne signée par côté).
+    brest_payments = [
+        {"id": 1, "date": "2026-09-02 12:00:00", "user_id": brest_users[0]["id"],
+         "balance": "20.00", "type": "CreditCard", "logged_user_id": brest_users[1]["id"]},
+        {"id": 2, "date": "2026-09-02 13:00:00", "user_id": brest_users[2]["id"],
+         "balance": "10.00", "type": "Cash", "logged_user_id": brest_users[1]["id"]},
+        {"id": 3, "date": "2026-09-02 14:00:00", "user_id": brest_users[3]["id"],
+         "balance": "5.00", "type": "Check", "logged_user_id": brest_users[1]["id"]},
+        {"id": 4, "date": "2026-09-02 15:00:00", "user_id": brest_users[4]["id"],
+         "balance": "8.00", "type": "Lydia", "logged_user_id": "9999999999999"},
+    ]
+    brest_withdrawals = [
+        {"id": 1, "date": "2026-09-02 16:00:00", "user_id": brest_users[5]["id"],
+         "balance": "15.00", "logged_user_id": brest_users[1]["id"]},
+        {"id": 2, "date": "2026-09-02 17:00:00", "user_id": brest_users[6]["id"],
+         "balance": "5.50", "logged_user_id": brest_users[0]["id"]},
+    ]
+    brest_transfers = [
+        # trois paires -X / +X, dont deux partageant la même clé d'appariement
+        {"balance": "-5.00", "date": "2026-09-03 10:00:00", "id": 1,
+         "logged_user_id": brest_users[1]["id"], "user_id": brest_users[0]["id"]},
+        {"balance": "5.00", "date": "2026-09-03 10:00:00", "id": 2,
+         "logged_user_id": brest_users[1]["id"], "user_id": brest_users[2]["id"]},
+        {"balance": "-2.50", "date": "2026-09-03 11:00:00", "id": 3,
+         "logged_user_id": brest_users[0]["id"], "user_id": brest_users[2]["id"]},
+        {"balance": "2.50", "date": "2026-09-03 11:00:00", "id": 4,
+         "logged_user_id": brest_users[0]["id"], "user_id": brest_users[3]["id"]},
+        {"balance": "-1.20", "date": "2026-09-03 10:00:00", "id": 5,
+         "logged_user_id": brest_users[1]["id"], "user_id": brest_users[4]["id"]},
+        {"balance": "1.20", "date": "2026-09-03 10:00:00", "id": 6,
+         "logged_user_id": brest_users[1]["id"], "user_id": brest_users[5]["id"]},
+        # demi-lignes orphelines : conservées avec leur seul côté connu
+        {"balance": "-3.00", "date": "2026-09-04 09:00:00", "id": 7,
+         "logged_user_id": brest_users[0]["id"], "user_id": brest_users[0]["id"]},
+        {"balance": "1.50", "date": "2026-09-04 10:00:00", "id": 8,
+         "logged_user_id": brest_users[0]["id"], "user_id": brest_users[1]["id"]},
+    ]
+
     # ---------------------------------------------------------------- dump SQL
     def create_table(name, columns):
         cols = ",\n  ".join(f"`{c}` {t}" for c, t in columns)
@@ -241,6 +281,32 @@ def main(target_dir, logs_rows=5000):
         dump.append(insert_stmt("vente_lignes",
                                 ["id", "vente_id", "article_id", "produit", "quantite",
                                  "prix_unitaire", "total"], brest_lines[start:start + 200]))
+
+    # opérations éclatées : rechargements, retraits, transferts (badges)
+    dump.append(create_table("payments", [("id", "int NOT NULL"), ("date", "datetime"),
+                                          ("user_id", "varchar(13)"),
+                                          ("balance", "decimal(10,2)"),
+                                          ("type", "enum('CreditCard','Cash','Check','Lydia')"),
+                                          ("logged_user_id", "varchar(13)")]))
+
+    for start in range(0, len(brest_payments), 120):
+        dump.append(insert_stmt("payments",
+                                ["id", "date", "user_id", "balance", "type",
+                                 "logged_user_id"], brest_payments[start:start + 120]))
+    dump.append(create_table("withdrawals", [("id", "int NOT NULL"), ("date", "datetime"),
+                                             ("user_id", "varchar(13)"),
+                                             ("balance", "decimal(10,2)"),
+                                             ("logged_user_id", "varchar(13)")]))
+    dump.append(insert_stmt("withdrawals",
+                            ["id", "date", "user_id", "balance", "logged_user_id"],
+                            brest_withdrawals))
+    dump.append(create_table("transfert", [("id", "int NOT NULL"), ("date", "datetime"),
+                                           ("user_id", "varchar(13)"),
+                                           ("balance", "decimal(10,2)"),
+                                           ("logged_user_id", "varchar(13)")]))
+    dump.append(insert_stmt("transfert",
+                            ["id", "date", "user_id", "balance", "logged_user_id"],
+                            brest_transfers))
 
     # catalogue Brest (types de référence + articles code-barres)
     dump.append(create_table("article_types", [("id", "int NOT NULL"), ("name", "varchar(80)")]))
@@ -351,6 +417,11 @@ def main(target_dir, logs_rows=5000):
         "source_cents": {"brest": expected_brest_cents, "paris": expected_paris_cents,
                          "total": expected_brest_cents + expected_paris_cents},
         "brest_transactions": len(brest_txns),
+        "brest_achats": len([t for t in brest_txns if t["type"] == "vente"]),
+        "brest_payments": len(brest_payments),
+        "brest_withdrawals": len(brest_withdrawals),
+        "brest_transfer_rows": len(brest_transfers),
+        "brest_transfer_txns": 5,  # 3 paires appariées + 2 demi-lignes orphelines
         "paris_transactions": len(paris_txns),
         "brest_lines": len(brest_lines),
         "brest_articles": len(brest_articles),

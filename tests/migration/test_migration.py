@@ -19,7 +19,9 @@ from migration import audit, detect, logfilter, util  # noqa: E402
 from migration.errors import AccountingError, MigrationError  # noqa: E402
 from migration.parsing.sqlstream import SqlDumpScanner, iter_business_rows  # noqa: E402
 from migration.sources import (as_bool, map_article_row, map_keg_row,  # noqa: E402
-                               map_tap_row, resolve_article_type)
+                               map_operation_row, map_tap_row, map_transaction_row,
+                               resolve_article_type)
+from migration.sources.brest import ENTITY_FIELDS  # noqa: E402
 from migration.util import liters_to_cl, unescape_html  # noqa: E402
 from tests.migration import make_fixtures  # noqa: E402
 
@@ -179,6 +181,49 @@ def test_article_catalog_mapping():
     _expect(map_article_row({"name": "  "}, "euros") is None, "article sans nom ignoré")
 
 
+def test_operation_mapping():
+    # tables d'opérations séparées de la base Brest réelle (badges varchar(13))
+    pay = map_operation_row(
+        {"id": "9", "date": "2026-08-31 14:10:00", "user_id": "0000000000042",
+         "balance": "1.50", "type": "CreditCard", "logged_user_id": "1425784165891"},
+        ENTITY_FIELDS["rechargements"], "rechargements", "brest", "euros")
+    _expect(pay["type"] == "rechargement" and pay["total_cents"] == 150,
+            "payments -> rechargement")
+    _expect(pay["payment_method"] == "cb" and pay["src_user_id"] == "0000000000042",
+            "enum CreditCard -> cb")
+    _expect(pay["operator_label"] == "1425784165891", "badge opérateur brut (résolu en aval)")
+    check = map_operation_row(
+        {"id": "10", "date": "2026-08-31 14:10:00", "user_id": "1", "balance": "20.00",
+         "type": "Check", "logged_user_id": "2"},
+        ENTITY_FIELDS["rechargements"], "rechargements", "brest", "euros")
+    _expect(check["payment_method"] is None
+            and check["note"] == "moyen de paiement source : Check",
+            "chèque sans équivalent cible -> note")
+    wd = map_operation_row(
+        {"id": "3", "date": "2026-08-31 15:00:00", "user_id": "1", "balance": "10.00",
+         "logged_user_id": "2"},
+        ENTITY_FIELDS["retraits"], "retraits", "brest", "euros")
+    _expect(wd["type"] == "retrait" and wd["total_cents"] == 1000, "withdrawals -> retrait")
+    neg = map_operation_row(
+        {"id": "4", "date": "2026-08-31 16:00:00", "user_id": "1", "balance": "-2.00",
+         "logged_user_id": "2"},
+        ENTITY_FIELDS["transferts"], "transferts", "brest", "euros")
+    _expect(neg["type"] == "transfert" and neg["total_cents"] == 200
+            and neg["signed_cents"] == -200 and neg["side"] == "from",
+            "demi-transfert donneur (signé)")
+
+
+def test_brest_transactions_default_to_achat():
+    # la table `transactions` du dump réel n'a pas de colonne type
+    txn = map_transaction_row(
+        {"id": 5, "date": "2026-08-31 16:00:00", "user_id": "0000000000042",
+         "balance": "2.20", "logged_user_id": "1425784165891"},
+        "brest", "euros")
+    _expect(txn["type"] is None, "type absent -> None (achat imposé en aval)")
+    _expect(txn["total_cents"] == 220 and txn["src_user_id"] == "0000000000042",
+            "montant + badge acheteur")
+
+
 # ---------------------------------------------------------------------- e2e
 
 def _prepare(source_dir, logs_rows=300):
@@ -269,11 +314,59 @@ def test_e2e_run_and_invariants():
         "SELECT blacklist_reason FROM users WHERE name='baptiste.chevalier'").fetchone()[0]
     alcool_bit = c.execute(
         "SELECT blacklist_alcohol FROM users WHERE name='manon.robin'").fetchone()[0]
+    # ---- opérations éclatées Brest : payments / withdrawals / transfert
+    pay = c.execute(
+        "SELECT t.total, t.payment_method, t.operator_label, u.name "
+        "FROM transactions t LEFT JOIN users u ON u.id = t.to_user_id "
+        "WHERE t.campus='brest' AND t.type='rechargement' AND t.total=2000 "
+        "AND t.payment_method='cb'").fetchall()
+    _expect(len(pay) == 1 and pay[0][2] == "camille.rousseau" and pay[0][3] == "léo.martin",
+            f"rechargement payments + opérateur résolu en nom ({pay})")
+    check_pay = c.execute(
+        "SELECT payment_method FROM transactions WHERE campus='brest' "
+        "AND type='rechargement' AND note LIKE 'moyen de paiement source : Check'"
+    ).fetchall()
+    _expect(len(check_pay) == 1 and check_pay[0][0] is None,
+            f"chèque sans équivalent -> note ({check_pay})")
+    pay_contrib = c.execute(
+        "SELECT u.name, c.amount, c.balance_after FROM contributions c "
+        "JOIN users u ON u.id = c.user_id JOIN transactions t ON t.id = c.transaction_id "
+        "WHERE t.campus='brest' AND t.type='rechargement' AND t.total=2000").fetchall()
+    _expect(pay_contrib == [("léo.martin", 2000, 0)],
+            f"contribution rechargement importé ({pay_contrib})")
+    wd = c.execute(
+        "SELECT t.total, u.name FROM transactions t JOIN users u ON u.id = t.from_user_id "
+        "WHERE t.campus='brest' AND t.type='retrait' AND t.total=1500").fetchall()
+    _expect(wd == [(1500, "anaïs.costa")], f"retrait withdrawals importé ({wd})")
+    tr = c.execute(
+        "SELECT t.total, uf.name, ut.name FROM transactions t "
+        "JOIN users uf ON uf.id = t.from_user_id JOIN users ut ON ut.id = t.to_user_id "
+        "WHERE t.campus='brest' AND t.type='transfert' AND t.total=500").fetchall()
+    _expect(tr == [(500, "léo.martin", "hugo.petit")], f"transfert apparié ({tr})")
+    tr_contrib = c.execute(
+        "SELECT c.amount FROM contributions c JOIN transactions t ON t.id = c.transaction_id "
+        "WHERE t.campus='brest' AND t.type='transfert' AND t.total=500 "
+        "ORDER BY c.amount").fetchall()
+    _expect(tr_contrib == [(-500,), (500,)], f"contributions transfert ± ({tr_contrib})")
+    orph_neg = c.execute(
+        "SELECT from_user_id IS NOT NULL, to_user_id IS NULL FROM transactions "
+        "WHERE campus='brest' AND type='transfert' AND total=300").fetchone()
+    orph_pos = c.execute(
+        "SELECT from_user_id IS NULL, to_user_id IS NOT NULL FROM transactions "
+        "WHERE campus='brest' AND type='transfert' AND total=150").fetchone()
+    _expect(orph_neg == (1, 1), f"demi-transfert donneur orphelin ({orph_neg})")
+    _expect(orph_pos == (1, 1), f"demi-transfert bénéficiaire orphelin ({orph_pos})")
+    n_achats = c.execute(
+        "SELECT COUNT(*) FROM transactions WHERE campus='brest' AND type='achat'"
+    ).fetchone()[0]
+    _expect(n_achats == manifest["brest_achats"], f"achats typés ({n_achats})")
     c.close()
     _expect(total == manifest["source_cents"]["total"], f"solde total {total} == manifest")
     _expect(brest == manifest["source_cents"]["brest"], f"solde brest {brest}")
     _expect(paris == manifest["source_cents"]["paris"], f"solde paris {paris}")
-    _expect(txns == manifest["brest_transactions"] + manifest["paris_transactions"],
+    _expect(txns == (manifest["brest_transactions"] + manifest["paris_transactions"]
+                     + manifest["brest_payments"] + manifest["brest_withdrawals"]
+                     + manifest["brest_transfer_txns"]),
             f"transactions {txns}")
     _expect(len(merged) == 1, "compte fusionné avec 2 portefeuilles")
     _expect(staging_left == 0, "staging supprimée après commit")

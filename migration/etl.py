@@ -13,9 +13,11 @@ Déroulé (le tout DANS la transaction ouverte par la CLI) :
   6. passe « catalogue » : articles (prix public/équipe), fûts pressions
      (kegs + keg_prices) et état courant des tireuses (taps + articles de
      tireuse régénérés comme app.services.catalog) ;
-  7. passe « comptabilité » : transactions + lignes de vente migrées avec
-     remapping des identifiants utilisateurs et rattachement aux articles
-     importés (article_id) ;
+  7. passe « comptabilité » : achats + lignes de vente, rechargements
+     (payments), retraits (withdrawals) et transferts (transfert, demi-lignes
+     signées appariées) migrés avec remapping des identifiants utilisateurs,
+     rattachement aux articles importés (article_id), contribution signée par
+     étudiant et résolution du badge opérateur en nom de compte ;
   8. audit final (cf. audit.py).
 
 Montants exclusivement en centimes entiers (int). Aucune écriture hors
@@ -33,7 +35,8 @@ from .parsing import files as files_reader
 from .parsing.sqlstream import iter_business_rows
 from .sources import brest as brest_contract
 from .sources import (TAP_NUMBERS, TAP_SIZES, map_article_row, map_keg_row,
-                      map_line_row, map_tap_row, map_transaction_row, map_user_row)
+                      map_line_row, map_operation_row, map_tap_row,
+                      map_transaction_row, map_user_row)
 from .sources import paris as paris_contract
 from . import staging
 from .util import normalize_key, utcnow as now_utc
@@ -63,6 +66,10 @@ _LINE_SQL = (
     "article_type, quantity, unit_price, line_total) "
     "VALUES (:transaction_id, :article_id, :article_name, :article_type, :quantity, "
     ":unit_price, :line_total)"
+)
+_CONTRIB_SQL = (
+    "INSERT INTO contributions (transaction_id, user_id, campus, amount, balance_after) "
+    "VALUES (:transaction_id, :user_id, :campus, :amount, 0)"
 )
 _ARTICLE_SQL = (
     "INSERT INTO articles (name, article_type, volume_cl, price_std_brest, "
@@ -199,14 +206,30 @@ class SourceReader:
                 yield "articles", "paris", obj
 
     def iter_transactions(self):
-        """Passe comptabilité : transactions seules (avant les lignes de détail,
-        quel que soit l'ordre des tables dans le dump)."""
-        for filename, _entity, row in self._iter_brest("transactions"):
-            yield "brest", filename, map_transaction_row(row, "brest", self.money_unit)
+        """Passe comptabilité : (campus, fichier, entité, transaction).
+
+        Brest : `transactions` (achats), `payments` (rechargements avec moyen
+        de paiement), `withdrawals` (retraits) et `transfert` (demi-lignes
+        signées à apparier) ; Paris : transactions.
+        """
+        for filename, entity, row in self._iter_brest(
+            {"transactions", "rechargements", "retraits", "transferts"}
+        ):
+            if entity == "transactions":
+                obj = map_transaction_row(row, "brest", self.money_unit)
+                # la table Brest réelle n'a pas de colonne type : des achats.
+                # Un type présent mais inconnu (type_warning) reste None pour
+                # conserver la note « type source inconnu ».
+                if obj["type"] is None and obj.get("type_warning") is None:
+                    obj["type"] = "achat"
+            else:
+                obj = map_operation_row(row, brest_contract.ENTITY_FIELDS[entity],
+                                        entity, "brest", self.money_unit)
+            yield "brest", filename, entity, obj
         for filename, source_table, record in self._iter_paris():
             entity, obj = paris_contract.map_record(source_table, record, "paris", self.money_unit)
             if entity == "transactions" and obj is not None:
-                yield "paris", filename, obj
+                yield "paris", filename, "transactions", obj
 
     def iter_lines(self, type_names=None):
         """Passe lignes de détail : après les transactions (remapping des ids).
@@ -238,6 +261,7 @@ class Migrator:
         self.key_order = {"brest": [], "paris": []}
         self.id_map = {"brest": {}, "paris": {}}         # src_id -> key
         self.target_id_by_key = {}
+        self.target_names = {}                           # id cible -> nom (opérateurs)
         self.txn_id_map = {"brest": {}, "paris": {}}     # src txn id -> target id
         self.type_names = {}                             # article_types id -> nom
         self.article_id_map = {}                         # src article id -> cible
@@ -354,6 +378,7 @@ class Migrator:
                 self.counts["motifs_blacklist"] += 1
             user_id = self.conn.execute(sa.text(_USERS_SQL), params).scalar_one()
             self.target_id_by_key[key] = user_id
+            self.target_names[user_id] = params["name"]
 
             for c in campuses:
                 source_user, _ = self.accounts[c][key]
@@ -505,8 +530,8 @@ class Migrator:
 
     # ------------------------------------------------------- comptabilité
 
-    def _resolve_user_id(self, campus, ref):
-        """Resout une référence utilisateur source (id ou email/pseudo) -> id cible."""
+    def _lookup_user_id(self, campus, ref):
+        """Id cible d'une référence utilisateur source (badge/id/pseudo), None sinon."""
         if ref in (None, ""):
             return None
         ref_str = str(ref).strip()
@@ -516,28 +541,87 @@ class Migrator:
         if key is not None and key in self.target_id_by_key:
             return self.target_id_by_key[key]
         norm = normalize_key(ref_str)
-        if norm and norm in self.accounts[campus]:
-            k = norm
-            if k in self.target_id_by_key:
-                return self.target_id_by_key[k]
-        self.counts[f"txn_user_inconnu_{campus}"] += 1
+        if norm and norm in self.accounts[campus] and norm in self.target_id_by_key:
+            return self.target_id_by_key[norm]
         return None
 
+    def _resolve_user_id(self, campus, ref):
+        """Comme _lookup_user_id, mais compte les références non résolues."""
+        user_id = self._lookup_user_id(campus, ref)
+        if user_id is None and ref not in (None, ""):
+            self.counts[f"txn_user_inconnu_{campus}"] += 1
+        return user_id
+
+    def _operator_label(self, campus, raw):
+        """Badge `logged_user_id` source -> nom du compte opérateur.
+
+        Les identifiants d'opérateur Brest sont des badges (users.card_id) :
+        afficher le numéro brut en colonne « Opérateur » est illisible. Quand
+        le badge correspond à un compte migré, son nom est utilisé ; sinon le
+        numéro source est conservé tel quel.
+        """
+        ref = str(raw or "").strip()
+        if not ref:
+            return ""
+        user_id = self._lookup_user_id(campus, ref)
+        name = self.target_names.get(user_id) if user_id is not None else None
+        if name:
+            self.counts["operateurs_resolus"] += 1
+            return name[:120]
+        self.counts["operateurs_badge_inconnu"] += 1
+        return ref[:120]
+
     def insert_transactions(self):
-        # ordre imposé : transactions d'abord (txn_id_map), lignes ensuite ;
-        # dans le dump Brest `baskets` précède `transactions`.
-        for campus, filename, obj in self.reader.iter_transactions():
-            self._insert_transaction(campus, filename, obj)
+        """Transactions (quel que soit l'ordre des tables dans le dump) puis
+        lignes de détail.
+
+        Les demi-lignes de transfert Brest (`transfert`, une ligne signée par
+        côté) sont mises en attente puis appariées par (date, opérateur,
+        montant) : -X côté donneur, +X côté bénéficiaire.
+        """
+        pending_transfers = {}
+        for campus, _filename, entity, obj in self.reader.iter_transactions():
+            if entity == "transferts":
+                self._buffer_transfer(pending_transfers.setdefault(campus, {}), obj)
+                continue
+            if entity in ("rechargements", "retraits") and obj["total_cents"] <= 0:
+                self.counts["operations_montant_non_positif"] += 1
+                continue
+            self._insert_transaction(campus, obj, track_id=(entity == "transactions"))
+        for campus, by_key in pending_transfers.items():
+            self._flush_transfers(campus, by_key)
         for campus, filename, obj in self.reader.iter_lines(type_names=self.type_names):
             self._insert_line(campus, obj)
 
-    def _insert_transaction(self, campus, filename, txn):
+    def _buffer_transfer(self, by_key, obj):
+        """Met en attente une demi-ligne de transfert (montant signé)."""
+        if not obj["signed_cents"]:
+            self.counts["transferts_montant_nul"] += 1
+            return
+        key = (obj["created_at"], obj["operator_label"], abs(obj["signed_cents"]))
+        side = "neg" if obj["signed_cents"] < 0 else "pos"
+        by_key.setdefault(key, {"neg": [], "pos": []})[side].append(obj)
+        self.counts["demi_transferts_brest"] += 1
+
+    def _flush_transfers(self, campus, by_key):
+        """Apparie les demi-lignes et insère les transactions de transfert."""
+        for key in sorted(by_key, key=lambda k: (k[0] or datetime.min, k[2])):
+            negs, poss = by_key[key]["neg"], by_key[key]["pos"]
+            while negs and poss:
+                self._insert_transaction(campus, negs.pop(0), transfer_to=poss.pop(0)["src_user_id"],
+                                         track_id=False)
+            for obj in negs + poss:
+                # demi-ligne sans pendant : conservée avec son seul côté connu
+                self.counts["transferts_non_apparies"] += 1
+                self._insert_transaction(campus, obj, track_id=False)
+
+    def _insert_transaction(self, campus, txn, transfer_to=None, track_id=True):
         params = {
             "created_at": txn["created_at"] or now_utc(),
             "type": txn["type"] or "direct",
             "campus": campus,
             "total": txn["total_cents"],
-            "operator_label": txn["operator_label"][:120],
+            "operator_label": self._operator_label(campus, txn["operator_label"]),
             "payment_method": txn["payment_method"],
             "deposit_glasses": txn["deposit_glasses"],
             "deposit_user_id": None,
@@ -548,23 +632,58 @@ class Migrator:
             "cancelled_at": txn["cancelled_at"],
         }
         user_id = self._resolve_user_id(campus, txn["src_user_id"])
-        side = _USER_SIDE.get(params["type"], "to")
+        side = txn.get("side") or _USER_SIDE.get(params["type"], "to")
         if side == "from":
             params["from_user_id"] = user_id
         elif side == "deposit":
             params["deposit_user_id"] = user_id
         else:
             params["to_user_id"] = user_id
+        if transfer_to is not None:
+            params["to_user_id"] = self._resolve_user_id(campus, transfer_to)
         if txn["type"] is None:
             self.counts["txn_type_inconnu"] += 1
             base_note = (params["note"] or "")
             params["note"] = (f"[type source inconnu] {base_note}".strip())[:255] or None
         new_id = self.conn.execute(sa.text(_TXN_SQL), params).scalar_one()
-        if txn["src_id"] is not None:
+        # seules les ventes sont référencées par des lignes de détail :
+        # les autres tables sources réutilisent les mêmes id (1, 2, 3…)
+        if track_id and txn["src_id"] is not None:
             self.txn_id_map[campus][str(txn["src_id"])] = new_id
+        self._insert_contribution(campus, new_id, params)
         self.counts[f"txns_{campus}"] += 1
+        self.counts[f"txns_type_{params['type']}"] += 1
         if txn["cancelled"]:
             self.counts["txns_annulees"] += 1
+
+    def _insert_contribution(self, campus, txn_id, params):
+        """Contribution signée rattachant l'étudiant à la transaction importée.
+
+        Sans elle, les lignes migrées resteraient anonymes dans l'historique
+        (libellé, filtre par étudiant, statistiques par profil). L'ancienne
+        base ne conservant pas le solde résultant, balance_after reste à 0 :
+        l'affichage masque le solde quand il est inconnu.
+        """
+        total = params["total"]
+        entries = []
+        if params["type"] == "transfert":
+            if params["from_user_id"]:
+                entries.append((params["from_user_id"], -total))
+            if params["to_user_id"]:
+                entries.append((params["to_user_id"], total))
+        elif params["type"] == "direct":
+            return
+        else:
+            user_id = (params["from_user_id"] or params["to_user_id"]
+                       or params["deposit_user_id"])
+            if user_id:
+                entries.append((user_id, -total if params["from_user_id"] else total))
+        for contrib_user_id, amount in entries:
+            self.conn.execute(sa.text(_CONTRIB_SQL), {
+                "transaction_id": txn_id, "user_id": contrib_user_id,
+                "campus": campus, "amount": amount,
+            })
+            self.counts["contributions_importees"] += 1
 
     def _insert_line(self, campus, line_obj):
         txn_id = self.txn_id_map[campus].get(str(line_obj["src_transaction_id"]))
@@ -639,7 +758,19 @@ class Migrator:
             ("Tireuses déjà présentes en cible", c.get("taps_deja_presentes")),
             ("Transactions Brest", c.get("txns_brest")),
             ("Transactions Paris", c.get("txns_paris")),
+            ("dont achats", c.get("txns_type_achat")),
+            ("dont rechargements (payments)", c.get("txns_type_rechargement")),
+            ("dont retraits (withdrawals)", c.get("txns_type_retrait")),
+            ("dont transferts (demi-lignes appariées)", c.get("txns_type_transfert")),
             ("Transactions annulées (conservées)", c.get("txns_annulees")),
+            ("Contributions étudiant créées", c.get("contributions_importees")),
+            ("Opérateurs résolus (badge -> nom)", c.get("operateurs_resolus")),
+            ("Opérateurs au badge inconnu (numéro conservé)", c.get("operateurs_badge_inconnu")),
+            ("Demi-transferts reçus", c.get("demi_transferts_brest")),
+            ("Transferts non appariés (côté seul conservé)", c.get("transferts_non_apparies")),
+            ("Transferts à montant nul ignorés", c.get("transferts_montant_nul")),
+            ("Rechargements/retraits à montant non positif ignorés",
+             c.get("operations_montant_non_positif")),
             ("Lignes de vente importées", c.get("lignes_importees")),
             ("Lignes rattachées à un article", c.get("lignes_article_resolues")),
             ("dont Brest", c.get("lignes_brest")),
