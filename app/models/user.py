@@ -8,7 +8,7 @@ class User(db.Model):
     __tablename__ = "users"
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    name: db.Mapped[str] = db.mapped_column(db.String(80), unique=True, index=True)
+    name: db.Mapped[str] = db.mapped_column(db.String(255), unique=True, index=True)
     promotion: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
     password_hash: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     team_status: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)

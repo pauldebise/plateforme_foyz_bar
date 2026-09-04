@@ -311,7 +311,7 @@ def tap_nouveau():
         flash("Une tireuse porte déjà ce nom sur ce campus.", "danger")
         return redirect(url_for("admin.tireuses"))
     max_number = db.session.scalar(select(func.max(Tap.number))) or 0
-    db.session.add(Tap(number=max_number + 1, name=name[:160], campus=campus))
+    db.session.add(Tap(number=max_number + 1, name=name[:255], campus=campus))
     db.session.commit()
     flash(f'"{name}" ajoutée.', "success")
     return redirect(url_for("admin.tireuses"))
@@ -342,7 +342,7 @@ def tap_renommer(tap_id):
     if duplicate:
         flash("Une autre tireuse porte déjà ce nom sur ce campus.", "danger")
         return redirect(url_for("admin.tireuses"))
-    tap.name = name[:160]
+    tap.name = name[:255]
     db.session.commit()
     if tap.keg_id:
         C.assign_keg(tap, db.session.get(Keg, tap.keg_id))

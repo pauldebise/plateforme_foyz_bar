@@ -325,7 +325,7 @@ def map_user_row(row, campus, money_unit):
         "src_id": pick(row, USER_FIELDS["src_id"]),
         "key": key,
         "email": email,
-        "name": name[:80],
+        "name": name[:255],
         "promotion": as_int(pick(row, USER_FIELDS["promotion"])),
         "password_hash": hash_val,
         "team_status": normalize_team_status(pick(row, USER_FIELDS["team_status"])),
@@ -366,7 +366,7 @@ def map_transaction_row(row, campus, money_unit):
         "type": txn_type,
         "total_cents": total,
         "src_user_id": pick(row, TXN_FIELDS["user_id"]),
-        "operator_label": str(pick(row, TXN_FIELDS["operator"]) or "")[:120],
+        "operator_label": str(pick(row, TXN_FIELDS["operator"]) or "")[:255],
         "payment_method": payment,
         "cancelled": cancelled,
         "cancelled_at": parse_dt(pick(row, TXN_FIELDS["cancelled_at"])),
@@ -403,7 +403,7 @@ def map_operation_row(row, fields, entity, campus, money_unit):
         "signed_cents": signed,
         "side": ("from" if signed < 0 else "to") if signed else None,
         "src_user_id": pick(row, fields["user_id"]),
-        "operator_label": str(pick(row, fields["operator"]) or "")[:120],
+        "operator_label": str(pick(row, fields["operator"]) or "")[:255],
         "payment_method": payment,
         "cancelled": False,
         "cancelled_at": None,
@@ -464,7 +464,7 @@ def map_line_row(row, money_unit, type_names=None):
     return {
         "src_transaction_id": pick(row, LINE_FIELDS["transaction_id"]),
         "src_article_id": pick(row, LINE_FIELDS["article_id"]),
-        "article_name": str(unescape_html(name) or "?")[:200],
+        "article_name": str(unescape_html(name) or "?")[:255],
         "article_type": article_type,
         "quantity": quantity,
         "unit_price": unit_price,
@@ -488,7 +488,7 @@ def map_article_row(row, money_unit, type_names=None):
     active = as_bool(pick(row, ARTICLE_FIELDS["active"]))
     return {
         "src_id": pick(row, ARTICLE_FIELDS["src_id"]),
-        "name": str(unescape_html(name)).strip()[:160],
+        "name": str(unescape_html(name)).strip()[:255],
         "article_type": article_type,
         "is_alcohol": article_type in ALCOHOLIC_ARTICLE_TYPES,
         "volume_cl": volume_cl,
@@ -516,7 +516,7 @@ def map_keg_row(row, money_unit):
     volume_l = (volume_l or 0) / 100.0
     return {
         "src_id": pick(row, KEG_FIELDS["src_id"]),
-        "name": str(unescape_html(name)).strip()[:160],
+        "name": str(unescape_html(name)).strip()[:255],
         "volume_l": volume_l,
         "remaining_l": volume_l,
         "alcohol_degree": _deg(pick(row, KEG_FIELDS["alcohol_degree"])),

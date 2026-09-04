@@ -8,7 +8,7 @@ class Article(db.Model):
     __tablename__ = "articles"
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    name: db.Mapped[str] = db.mapped_column(db.String(160))
+    name: db.Mapped[str] = db.mapped_column(db.String(255))
     article_type: db.Mapped[str] = db.mapped_column(db.String(20), default="biere", index=True)
     volume_cl: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
     price_std_brest: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
@@ -36,7 +36,7 @@ class Keg(db.Model):
     __tablename__ = "kegs"
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    name: db.Mapped[str] = db.mapped_column(db.String(160))
+    name: db.Mapped[str] = db.mapped_column(db.String(255))
     alcohol_degree: db.Mapped[float] = db.mapped_column(db.Float, default=0.0)
     volume_l: db.Mapped[float] = db.mapped_column(db.Float, default=30.0)
     remaining_l: db.Mapped[float] = db.mapped_column(db.Float, default=30.0)
@@ -79,7 +79,7 @@ class Tap(db.Model):
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
     number: db.Mapped[int] = db.mapped_column(db.Integer, unique=True)
-    name: db.Mapped[str | None] = db.mapped_column(db.String(160), nullable=True)
+    name: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     campus: db.Mapped[str] = db.mapped_column(db.String(10), default="brest")
     keg_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("kegs.id", ondelete="SET NULL"), nullable=True)
 

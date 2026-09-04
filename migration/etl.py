@@ -316,7 +316,7 @@ class Migrator:
         """Rend le nom / surnom unique (insensible à la casse/accents)."""
         if not base:
             return None
-        base = str(base).strip()[:80]
+        base = str(base).strip()[:255]
         norm = normalize_key(base)
         if norm is None:
             return None
@@ -324,7 +324,7 @@ class Migrator:
         while normalize_key(candidate) in self.names_taken:
             i += 1
             suffix = f" {i}"
-            candidate = base[: 80 - len(suffix)] + suffix
+            candidate = base[: 255 - len(suffix)] + suffix
         self.names_taken.add(normalize_key(candidate))
         return candidate
 
@@ -512,7 +512,7 @@ class Migrator:
             for key, (label, vol) in TAP_SIZES.items():
                 std, team = prices[key]
                 self.conn.execute(sa.text(_ARTICLE_SQL), {
-                    "name": f'{label} de tireuse {number} "{keg_obj["name"]}"'[:160],
+                    "name": f'{label} de tireuse {number} "{keg_obj["name"]}"'[:255],
                     "article_type": "biere",
                     "volume_cl": vol,
                     "price_std_brest": std,
@@ -567,9 +567,9 @@ class Migrator:
         name = self.target_names.get(user_id) if user_id is not None else None
         if name:
             self.counts["operateurs_resolus"] += 1
-            return name[:120]
+            return name[:255]
         self.counts["operateurs_badge_inconnu"] += 1
-        return ref[:120]
+        return ref[:255]
 
     def insert_transactions(self):
         """Transactions (quel que soit l'ordre des tables dans le dump) puis

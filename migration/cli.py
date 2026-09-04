@@ -119,7 +119,7 @@ def _ensure_schema(engine):
     from app.extensions import db
     db.metadata.create_all(engine)
     _ensure_column(engine, "users", "blacklist_reason", "VARCHAR(255)")
-    _ensure_column(engine, "taps", "name", "VARCHAR(160)")
+    _ensure_column(engine, "taps", "name", "VARCHAR(255)")
 
 
 def _ensure_column(engine, table, column, ddl_type):
