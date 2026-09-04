@@ -136,12 +136,13 @@ a, .btn-link { color: var(--primary); }
 .postit-public { background: #cfe3ff !important; }
 
 .search-result { cursor: pointer; }
-.search-result:hover { background: #eef3f8; }
+.search-result:hover, .search-result.active { background: #eef3f8; }
 
 .qty-btn { width: 32px; }
 
-.cat-item { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .45rem .75rem; border-bottom: 1px dashed #e3e7eb; }
+.cat-item { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .45rem .75rem; border-bottom: 1px dashed #e3e7eb; cursor: pointer; }
 .cat-item:last-child { border-bottom: 0; }
+.cat-item:hover, .cat-item.active { background: #eef3f8; }
 
 .balance-chip { font-size: .8rem; }
 .badge-blacklist { background: #8a1c1c; }
