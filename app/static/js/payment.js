@@ -95,6 +95,25 @@ const TYPE_LABELS = {
   snack: 'Snacks', saucisson: 'Saucissons', evenement: 'Événements',
 };
 
+let catalogActive = -1;
+
+function catalogItems() {
+  return els.catalog ? Array.from(els.catalog.querySelectorAll('.cat-item')) : [];
+}
+
+function setCatalogActive(i) {
+  const items = catalogItems();
+  if (!items.length) { catalogActive = -1; return; }
+  catalogActive = Math.max(0, Math.min(i, items.length - 1));
+  items.forEach((el, idx) => el.classList.toggle('active', idx === catalogActive));
+  items[catalogActive].scrollIntoView({ block: 'nearest' });
+}
+
+function clearCatalogActive() {
+  catalogActive = -1;
+  catalogItems().forEach((el) => el.classList.remove('active'));
+}
+
 function renderCatalog() {
   if (!els.catalog) return;
   const q = els.catalogSearch.value.trim().toLowerCase();
@@ -123,11 +142,13 @@ function renderCatalog() {
     std.forEach((a) => body.appendChild(catalogRow(a)));
     els.catalog.appendChild(card);
   });
+  clearCatalogActive();
 }
 
 function catalogRow(a) {
   const row = document.createElement('div');
   row.className = 'cat-item';
+  row.dataset.id = a.id;
   row.innerHTML = `<div><span>${a.name}</span>
     ${a.alcohol ? '<i class="bi bi-exclamation-diamond text-warning" title="Alcoolisé"></i>' : ''}
     ${a.volume ? `<span class="text-muted small">${a.volume} cl</span>` : ''}</div>
@@ -136,12 +157,17 @@ function catalogRow(a) {
       <button class="btn btn-sm btn-primary qty-btn"><i class="bi bi-plus-lg"></i></button>
     </div>`;
   row.querySelector('button').addEventListener('click', () => addToCart(a));
+  row.addEventListener('mouseenter', () => {
+    const idx = catalogItems().indexOf(row);
+    if (idx >= 0) setCatalogActive(idx);
+  });
   return row;
 }
 
 function addToCart(article) {
   cart.set(article.id, (cart.get(article.id) || 0) + 1);
   renderCart();
+  if (els.catalogSearch) els.catalogSearch.focus({ preventScroll: true });
 }
 
 function renderCart() {
@@ -200,7 +226,11 @@ function buildPayload(adminPassword) {
   return payload;
 }
 
+let paying = false;
+
 async function pay(adminPassword) {
+  if (paying) return;
+  paying = true;
   try {
     const res = await apiFetch(window.GATEWAY_MODE ? location.pathname + '/encaisser' : '/api/purchase', { json: buildPayload(adminPassword) });
     showSuccess(res.total);
@@ -211,6 +241,8 @@ async function pay(adminPassword) {
     } else {
       alert(e.message);
     }
+  } finally {
+    paying = false;
   }
 }
 
@@ -252,13 +284,43 @@ if (els.depositSwitch) {
   els.glasses.addEventListener('input', renderCart);
 }
 
-if (els.catalogSearch) els.catalogSearch.addEventListener('input', renderCatalog);
+if (els.catalogSearch) {
+  els.catalogSearch.addEventListener('input', () => {
+    renderCatalog();
+    if (els.catalogSearch.value.trim()) setCatalogActive(0);
+  });
+
+  els.catalogSearch.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setCatalogActive(catalogActive + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setCatalogActive(catalogActive - 1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const row = catalogItems()[catalogActive];
+      const a = row ? CATALOG.find((x) => String(x.id) === String(row.dataset.id)) : null;
+      if (a) {
+        addToCart(a);
+        els.catalogSearch.value = '';
+        renderCatalog();
+      } else if (!els.catalogSearch.value.trim() && els.payBtn && !els.payBtn.disabled) {
+        pay();
+      }
+    } else if (e.key === 'Escape') {
+      els.catalogSearch.value = '';
+      renderCatalog();
+    }
+  });
+}
 if (els.payBtn) els.payBtn.addEventListener('click', () => pay());
 
 initStudentSearch(els.search, els.results, (r) => {
   if (contributors.find((c) => c.id === r.id)) return;
   contributors.push(r);
   renderContributors();
+  if (els.catalogSearch) els.catalogSearch.focus();
 }, { campus: CAMPUS });
 
 if (els.rgSearch) {
