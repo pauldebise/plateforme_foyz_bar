@@ -3,6 +3,7 @@
 {% block content %}
 <div id="payment-config" data-campus="{{ current_campus }}" data-deposit-value="{{ deposit_value }}" data-deposit-enabled="{{ '1' if deposit_enabled else '0' }}" data-overdraft-limit="{{ overdraft_limit }}"></div>
 <script type="application/json" id="catalog-data">{{ catalog|tojson }}</script>
+<script type="application/json" id="top-articles">{{ top_ids|tojson }}</script>
 
 <div class="row g-4">
   <div class="col-lg-4">
@@ -77,14 +78,6 @@
 
   <div class="col-lg-8">
     <div class="card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-shop"></i> Catalogue</span>
-        <input id="catalog-search" class="form-control form-control-sm" style="max-width: 240px;" placeholder="Filtrer les articles…">
-      </div>
-      <div class="card-body" id="catalog"></div>
-    </div>
-
-    <div class="card">
       <div class="card-header"><i class="bi bi-receipt"></i> Commande en cours</div>
       <div class="card-body p-0">
         <p class="text-muted text-center py-3 mb-0" id="cart-empty">Aucun article sélectionné.</p>
@@ -95,6 +88,14 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-shop"></i> Catalogue</span>
+        <input id="catalog-search" class="form-control form-control-sm" style="max-width: 240px;" placeholder="Filtrer les articles…">
+      </div>
+      <div class="card-body" id="catalog"></div>
     </div>
   </div>
 </div>
