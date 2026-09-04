@@ -1,6 +1,11 @@
 let contributors = [];
 let cart = new Map();
 const CATALOG = JSON.parse(document.getElementById('catalog-data').textContent);
+const TOP_IDS = (() => {
+  const el = document.getElementById('top-articles');
+  if (!el) return null;
+  try { return JSON.parse(el.textContent); } catch { return null; }
+})();
 const CONFIG = document.getElementById('payment-config');
 const DEPOSIT_VALUE = parseInt(CONFIG.dataset.depositValue, 10);
 const DEPOSIT_ENABLED = CONFIG.dataset.depositEnabled === '1';
@@ -114,10 +119,80 @@ function clearCatalogActive() {
   catalogItems().forEach((el) => el.classList.remove('active'));
 }
 
+function catalogCard(label, icon, cls, items) {
+  const card = document.createElement('div');
+  card.className = 'card mb-2' + (cls ? ` ${cls}` : '');
+  card.innerHTML = `<div class="card-header py-1 small fw-bold">${icon} ${label}</div><div class="card-body p-0"></div>`;
+  const body = card.querySelector('.card-body');
+  items.forEach((a) => body.appendChild(catalogRow(a)));
+  return card;
+}
+
+const TAP_SIZE_ORDER = ['Demi', 'Pinte', 'Pot'];
+
+function tapGroups() {
+  const map = new Map();
+  CATALOG.filter((a) => a.tap).forEach((a) => {
+    const m = a.name.match(/^(Demi|Pinte|Pot) de (.*)$/);
+    const key = a.tap_number != null ? `t${a.tap_number}` : a.id;
+    const g = map.get(key) || { label: m ? m[2] : a.name, sizes: [] };
+    g.sizes.push({ size: m ? m[1] : 'Pinte', article: a });
+    map.set(key, g);
+  });
+  const groups = Array.from(map.values());
+  groups.forEach((g) => g.sizes.sort(
+    (x, y) => TAP_SIZE_ORDER.indexOf(x.size) - TAP_SIZE_ORDER.indexOf(y.size),
+  ));
+  return groups;
+}
+
+function tapRow(group) {
+  const row = document.createElement('div');
+  row.className = 'cat-item tap-item';
+  row.dataset.id = (group.sizes.find((s) => s.size === 'Pinte') || group.sizes[0]).article.id;
+  const alcohol = group.sizes.some((s) => s.article.alcohol)
+    ? '<i class="bi bi-exclamation-diamond text-warning" title="Alcoolisé"></i>' : '';
+  const buttons = group.sizes.map((s) =>
+    `<button class="btn btn-sm btn-primary tap-btn"><span class="tap-size">${s.size}</span><span class="tap-price">${(unitPrice(s.article) / 100).toFixed(2)} € <i class="bi bi-plus-lg"></i></span></button>`
+  ).join('');
+  row.innerHTML = `<span class="tap-label">${group.label} ${alcohol}</span><div class="tap-sizes">${buttons}</div>`;
+  row.querySelectorAll('.tap-btn').forEach((btn, i) => {
+    btn.addEventListener('click', () => addToCart(group.sizes[i].article));
+  });
+  row.addEventListener('mouseenter', () => {
+    const idx = catalogItems().indexOf(row);
+    if (idx >= 0) setCatalogActive(idx);
+  });
+  return row;
+}
+
 function renderCatalog() {
   if (!els.catalog) return;
   const q = els.catalogSearch.value.trim().toLowerCase();
   els.catalog.innerHTML = '';
+  if (!q) {
+    const trending = TOP_IDS
+      ? TOP_IDS.map((id) => CATALOG.find((a) => a.id === id)).filter((a) => a && !a.tap)
+      : [];
+    const taps = tapGroups();
+    if (trending.length || taps.length) {
+      if (taps.length) {
+        const card = document.createElement('div');
+        card.className = 'card mb-2 border-warning';
+        card.innerHTML = `<div class="card-header py-1 small fw-bold"><i class="bi bi-cup-straw"></i> Tireuses</div><div class="card-body p-0"></div>`;
+        const body = card.querySelector('.card-body');
+        taps.forEach((g) => body.appendChild(tapRow(g)));
+        els.catalog.appendChild(card);
+      }
+      if (trending.length) {
+        els.catalog.appendChild(catalogCard(
+          'Articles tendances', '<i class="bi bi-fire"></i>', 'border-success', trending,
+        ));
+      }
+      clearCatalogActive();
+      return;
+    }
+  }
   const groups = {};
   CATALOG.forEach((a) => {
     if (q && !a.name.toLowerCase().includes(q)) return;

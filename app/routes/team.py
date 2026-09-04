@@ -10,7 +10,7 @@ from app.models import Article, Contribution, Note, Tap, Transaction, User
 from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
 from app.services.settings import int_setting
-from app.services.stats import sales_stats, students_stats
+from app.services.stats import sales_stats, students_stats, top_article_ids
 from app.services.treasury import treasury
 from app.utils import ARTICLE_TYPES, CAMPUSSES, PAYMENT_METHODS, login_required, utcnow
 
@@ -61,12 +61,14 @@ def payment():
             "type": a.article_type,
             "volume": a.volume_cl,
             "alcohol": a.is_alcohol,
+            "tap": a.is_tap,
+            "tap_number": a.tap_number,
             "std": a.price_for(campus(), False),
             "team": a.price_for(campus(), True),
         }
         for a in articles
     ]
-    return render_template("team/payment.html", catalog=data)
+    return render_template("team/payment.html", catalog=data, top_ids=top_article_ids(campus()))
 
 
 @bp.route("/rechargement", methods=["GET", "POST"])

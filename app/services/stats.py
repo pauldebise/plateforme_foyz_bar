@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.extensions import db
 from app.models import Contribution, Transaction, TransactionLine, User
@@ -142,3 +142,24 @@ def students_stats(filters=None):
         })
     result.sort(key=lambda s: -s["spent"])
     return result
+
+
+def top_article_ids(campus=None, limit=9):
+    """IDs des articles les plus vendus (en quantité) sur la période d'historique,
+    du plus consommé au moins consommé."""
+    stmt = (
+        select(TransactionLine.article_id, func.sum(TransactionLine.quantity).label("qty"))
+        .join(Transaction, TransactionLine.transaction_id == Transaction.id)
+        .where(
+            Transaction.type.in_(["achat", "direct"]),
+            Transaction.cancelled.is_(False),
+            Transaction.created_at >= history_cutoff(),
+            TransactionLine.article_id.isnot(None),
+        )
+        .group_by(TransactionLine.article_id)
+        .order_by(func.sum(TransactionLine.quantity).desc())
+        .limit(limit)
+    )
+    if campus in ("brest", "paris"):
+        stmt = stmt.where(Transaction.campus == campus)
+    return [aid for aid in db.session.scalars(stmt)]

@@ -143,6 +143,12 @@ a, .btn-link { color: var(--primary); }
 .cat-item { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .45rem .75rem; border-bottom: 1px dashed #e3e7eb; cursor: pointer; }
 .cat-item:last-child { border-bottom: 0; }
 .cat-item:hover, .cat-item.active { background: #eef3f8; }
+.tap-item { display: block; }
+.tap-label { font-size: .9rem; font-weight: 500; color: #444; }
+.tap-sizes { display: flex; flex-wrap: nowrap; gap: .35rem; margin-top: .25rem; }
+.tap-btn { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: .3rem .4rem; font-size: .78rem; line-height: 1.15; }
+.tap-btn .tap-size { font-weight: 600; }
+.tap-btn .tap-price { font-weight: 700; }
 
 .balance-chip { font-size: .8rem; }
 .badge-blacklist { background: #8a1c1c; }
