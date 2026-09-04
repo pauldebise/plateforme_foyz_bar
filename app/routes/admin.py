@@ -507,7 +507,7 @@ def module_dev():
                 "overdraft_limit_cents", "deposit_value_cents", "deposit_enabled",
                 "max_history_days", "login_logs_retention_days", "session_timeout_minutes",
                 "max_postits_private", "max_postits_public", "homepage_text",
-                "theme_color_brest", "theme_color_paris", "site_name",
+                "theme_color_public", "theme_color_brest", "theme_color_paris", "site_name",
                 "link_hosting", "link_database", "link_repository",
             ):
                 if key in request.form:
@@ -530,6 +530,10 @@ def module_dev():
             if logo_p:
                 S.set_setting("logo_paris", logo_p)
             flash("Paramètres enregistrés.", "success")
+        elif action == "reset_theme_colors":
+            for key in ("theme_color_public", "theme_color_brest", "theme_color_paris"):
+                S.set_setting(key, S.DEFAULTS[key])
+            flash("Couleurs réinitialisées aux valeurs par défaut.", "success")
         elif action == "password":
             current = request.form.get("current_password", "")
             new = request.form.get("new_password", "")

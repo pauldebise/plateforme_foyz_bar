@@ -5,6 +5,10 @@
 
 body { background: #f4f6f8; }
 
+.color-swatch .form-label {
+  min-height: 3rem;
+}
+
 .app-shell { min-height: 100vh; }
 
 .sidebar {

@@ -52,11 +52,15 @@
               <label class="form-label">Post-it publics max</label>
               <input class="form-control" type="number" name="max_postits_public" value="{{ values['max_postits_public'] }}">
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4 color-swatch">
+              <label class="form-label">Thème de couleur — Page publique</label>
+              <input class="form-control form-control-color w-100" type="color" name="theme_color_public" value="{{ values['theme_color_public'] }}">
+            </div>
+            <div class="col-md-4 color-swatch">
               <label class="form-label">Thème de couleur — Brest</label>
               <input class="form-control form-control-color w-100" type="color" name="theme_color_brest" value="{{ values['theme_color_brest'] }}">
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4 color-swatch">
               <label class="form-label">Thème de couleur — Paris</label>
               <input class="form-control form-control-color w-100" type="color" name="theme_color_paris" value="{{ values['theme_color_paris'] }}">
             </div>
@@ -86,8 +90,13 @@
             </div>
             <div class="col-12 d-flex gap-2 flex-wrap">
               <button class="btn btn-primary"><i class="bi bi-save"></i> Enregistrer les paramètres</button>
+              <button class="btn btn-outline-secondary" form="reset-colors-form"><i class="bi bi-arrow-counterclockwise"></i> Couleurs par défaut</button>
             </div>
           </div>
+        </form>
+        <form id="reset-colors-form" class="d-none" method="post">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="reset_theme_colors">
         </form>
       </div>
     </div>

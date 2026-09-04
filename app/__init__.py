@@ -155,11 +155,14 @@ def create_app():
     def inject_globals():
         from app.services.settings import get_setting, int_setting, bool_setting
 
-        campus = session.get("campus") or "brest"
+        campus = session.get("campus") or ""
         return {
             "csrf_token": lambda: ensure_csrf(),
             "site_name": get_setting("site_name") or "Foy'z & Bar",
-            "theme_color": get_setting(f"theme_color_{campus}") or "#00529c",
+            "theme_color": (
+                get_setting(f"theme_color_{campus}") if campus in CAMPUSSES
+                else get_setting("theme_color_public")
+            ) or "#804db3",
             "logo": get_setting(f"logo_{campus}") or "",
             "current_user": getattr(g, "current_user", None),
             "current_campus": session.get("campus", ""),
