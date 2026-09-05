@@ -1,10 +1,13 @@
+import hashlib
+import hmac
+import re
 import threading
 import time
 from collections import defaultdict, deque
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import func, select
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
 from app.models import LoginLog, User
@@ -13,6 +16,32 @@ from app.utils import CAMPUSSES, is_safe_target, utcnow
 bp = Blueprint("auth", __name__)
 _limiter_lock = threading.Lock()
 _attempts = defaultdict(deque)
+
+# Hash bcrypt hérité de l'ancienne plateforme (PHP password_hash) : $2a$, $2b$, $2y$
+_BCRYPT_HASH_RE = re.compile(r"^\$2[aby]\$\d{2}\$")
+
+
+def _check_legacy_password(stored, password):
+    """Vérifie un mot de passe migré (users.legacy_password, valeur brute source).
+
+    Formats gérés : hash bcrypt, empreinte hexadécimale md5 (32) / sha1 (40) /
+    sha256 (64), sinon comparaison directe (texte brut). True -> l'appelant
+    convertit le compte au format werkzeug et vide legacy_password.
+    """
+    if not stored or password is None:
+        return False
+    if _BCRYPT_HASH_RE.match(stored):
+        try:
+            import bcrypt
+
+            return bcrypt.checkpw(password.encode(), stored.encode())
+        except (ImportError, ValueError):
+            return False
+    hex_digests = {32: "md5", 40: "sha1", 64: "sha256"}
+    if len(stored) in hex_digests:
+        digest = hashlib.new(hex_digests[len(stored)], password.encode()).hexdigest()
+        return hmac.compare_digest(digest.encode(), stored.lower().encode())
+    return hmac.compare_digest(stored.encode(), password.encode())
 
 
 def _rate_limited(ip):
@@ -46,6 +75,12 @@ def login():
         ok = False
         if user and user.password_hash:
             ok = check_password_hash(user.password_hash, password)
+        if not ok and user and user.legacy_password:
+            ok = _check_legacy_password(user.legacy_password, password)
+            if ok:
+                # Conversion au format cible : le mot de passe hérité ne sert plus.
+                user.password_hash = generate_password_hash(password)
+                user.legacy_password = None
         if ok and user and (not user.is_team or user.blacklist):
             ok = False
             reason = "Accès refusé : compte blacklisté." if user.blacklist else "Accès réservé aux membres de l'équipe."

@@ -11,6 +11,10 @@ class User(db.Model):
     name: db.Mapped[str] = db.mapped_column(db.String(255), unique=True, index=True)
     promotion: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
     password_hash: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
+    # Mot de passe hérité de l'ancienne plateforme (bcrypt/md5/texte brut),
+    # importé par la migration : vérifié à la connexion puis converti en
+    # password_hash (format werkzeug) et vidé.
+    legacy_password: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
     team_status: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
     team_campus: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
     blacklist: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)

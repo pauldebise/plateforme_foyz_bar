@@ -4,5 +4,8 @@ SQLAlchemy==2.0.52
 python-dotenv==1.2.3
 gunicorn==26.2.0
 
+# Vérification des mots de passe legacy (bcrypt) importés par la migration
+bcrypt==5.0.0
+
 # Requis uniquement pour le déploiement PostgreSQL (inutile en local avec SQLite)
 psycopg2-binary==2.9.12

@@ -32,11 +32,16 @@ def ensure_schema_upgrades():
     from sqlalchemy import inspect, text
 
     inspector = inspect(db.engine)
-    if "taps" in inspector.get_table_names():
-        columns = {c["name"] for c in inspector.get_columns("taps")}
-        if "name" not in columns:
-            with db.engine.begin() as conn:
-                conn.execute(text("ALTER TABLE taps ADD COLUMN name VARCHAR(160)"))
+    table_columns = {
+        t: {c["name"] for c in inspector.get_columns(t)}
+        for t in inspector.get_table_names()
+    }
+    if "taps" in table_columns and "name" not in table_columns["taps"]:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE taps ADD COLUMN name VARCHAR(160)"))
+    if "users" in table_columns and "legacy_password" not in table_columns["users"]:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN legacy_password VARCHAR(255)"))
 
 
 def create_app():
