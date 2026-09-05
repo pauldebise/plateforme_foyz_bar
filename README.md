@@ -247,8 +247,12 @@ audit comptable systématique.
 - **Réconciliation** : les étudiants présents sur les deux campus (email, sinon
   nom) sont fusionnés en un compte unique avec deux portefeuilles
   (un par campus) ; l'historique reste rattaché à son `campus` d'origine.
-- **Mots de passe** : seuls les hachages compatibles sont repris ; les autres
-  comptes démarrent sans mot de passe (réinitialisation par l'équipe).
+- **Mots de passe** : les hachages compatibles (werkzeug) sont repris tels
+  quels ; les autres (bcrypt de l'ancienne plateforme, md5, texte brut) sont
+  importés bruts dans `users.legacy_password` et vérifiés à la connexion
+  (puis convertis au format cible au premier login). Les identifiants de
+  connexion reprennent le nom réel source (`real_name`, ex « Paul Debise »),
+  sinon le pseudo.
 
 ### Commandes utiles
 
@@ -257,7 +261,7 @@ make migrate-audit   # comparaison soldes sources / cibles sans injection (exit 
 make migrate-dry     # répétition générale (ROLLBACK + fichiers intacts)
 make migrate-run     # bascule réelle
 make migrate-keep    # bascule réelle avec archivage des sources
-python -m tests.migration.test_migration   # suite de tests du module (13 tests)
+python -m tests.migration.test_migration   # suite de tests du module (16 tests)
 ```
 
 Les contrats de mapping (tables/colonnes des anciens schémas) sont centralisés

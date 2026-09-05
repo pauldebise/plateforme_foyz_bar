@@ -7,9 +7,10 @@ Déroulé (le tout DANS la transaction ouverte par la CLI) :
      résoudre le type des articles et des lignes de vente ;
   4. passe « comptes » : Brest (streaming dump) + Paris (staging) -> index par
      clé de réconciliation (email, sinon pseudo, sinon prenom.nom) ;
-  5. fusion des comptes présents sur les deux campus, insertion des users +
-     wallets (un par campus, solde = solde source du campus ; motif de
-     blacklist importé) ;
+   5. fusion des comptes présents sur les deux campus, insertion des users +
+      wallets (un par campus, solde = solde source du campus ; motif de
+      blacklist importé, mot de passe conservé : hash werkzeug réutilisable
+      ou valeur legacy brute — bcrypt/md5 — vérifiée à la connexion) ;
   6. passe « catalogue » : articles (prix public/équipe), fûts pressions
      (kegs + keg_prices) et état courant des tireuses (taps + articles de
      tireuse régénérés comme app.services.catalog) ;
@@ -42,10 +43,10 @@ from . import staging
 from .util import normalize_key, utcnow as now_utc
 
 _USERS_SQL = (
-    "INSERT INTO users (name, promotion, password_hash, "
+    "INSERT INTO users (name, promotion, password_hash, legacy_password, "
     "team_status, team_campus, blacklist, blacklist_alcohol, blacklist_reason, "
     "created_at) "
-    "VALUES (:name, :promotion, :password_hash, "
+    "VALUES (:name, :promotion, :password_hash, :legacy_password, "
     ":team_status, :team_campus, :blacklist, :blacklist_alcohol, :blacklist_reason, "
     ":created_at) RETURNING id"
 )
@@ -356,8 +357,11 @@ class Migrator:
             created_at = primary["created_at"] or (secondary["created_at"] if secondary else None)
             promotion = primary["promotion"] or (secondary["promotion"] if secondary else None)
             password_hash = primary["password_hash"] or (secondary["password_hash"] if secondary else None)
+            legacy_password = primary["legacy_password"] or (secondary["legacy_password"] if secondary else None)
             if password_hash:
                 self.counts["passwords_importes"] += 1
+            elif legacy_password:
+                self.counts["passwords_legacy_importes"] += 1
             else:
                 self.counts["passwords_a_reinitialiser"] += 1
 
@@ -365,6 +369,7 @@ class Migrator:
                 "name": self._unique_name(name) or "?",
                 "promotion": promotion,
                 "password_hash": password_hash,
+                "legacy_password": legacy_password,
                 "team_status": team_status,
                 "team_campus": team_campus,
                 "blacklist": bool(primary["blacklist"] or (secondary and secondary["blacklist"])),
@@ -741,6 +746,8 @@ class Migrator:
             ("Comptes ignorés (identité absente)", c.get("users_skipped")),
             ("Portefeuilles créés", c.get("wallets_created")),
             ("Mots de passe importés (hash compatible)", c.get("passwords_importes")),
+            ("Mots de passe legacy importés (bcrypt/md5, vérifiés à la connexion)",
+             c.get("passwords_legacy_importes")),
             ("Mots de passe à réinitialiser", c.get("passwords_a_reinitialiser")),
             ("Motifs de blacklist importés", c.get("motifs_blacklist")),
             ("Types d'articles (référence)", c.get("refs_article_types")),

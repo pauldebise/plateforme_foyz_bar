@@ -133,6 +133,35 @@ def test_detect():
             pass
 
 
+def test_user_password_and_real_name_mapping():
+    from migration.sources import map_user_row
+    # Ligne au format réel du dump Brest : `name`=pseudo, `real_name`,
+    # `password` = hash bcrypt PHP (non réutilisable tel quel en cible)
+    user, warning = map_user_row(
+        {"card_id": "1548963257462",
+         "name": "aime secretement massé Paul DEBISE chips vachement bete",
+         "real_name": "Paul Debise",
+         "password": "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC",
+         "balance": "-26.18", "is_foyz": 1, "promo": "CI2028"},
+        "brest", "euros")
+    _expect(warning is None, "ligne utilisateur valide")
+    _expect(user["name"] == "Paul Debise",
+            f"identifiant de connexion = real_name ({user['name']})")
+    _expect(user["key"] == "paul debise", "clé de réconciliation = nom réel")
+    _expect(user["password_hash"] is None, "bcrypt -> pas un hash werkzeug")
+    _expect(user["legacy_password"] == "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC",
+            "bcrypt conservé brut dans legacy_password")
+    # Hash werkzeug source -> réutilisé tel quel en cible, rien en legacy
+    werkzeug_hash = "pbkdf2:sha256:600000$sel$deadbeef"
+    reuser, _ = map_user_row({"name": "x", "mdp": werkzeug_hash}, "brest", "euros")
+    _expect(reuser["password_hash"] == werkzeug_hash and reuser["legacy_password"] is None,
+            "hash werkzeug -> password_hash")
+    # Sans mot de passe ni real_name : pseudo seul, rien importé
+    plain, _ = map_user_row({"name": "y"}, "brest", "euros")
+    _expect(plain["name"] == "y" and plain["password_hash"] is None
+            and plain["legacy_password"] is None, "sans mot de passe -> legacy None")
+
+
 def test_bit_literals_and_html():
     # mysqldump écrit les colonnes bit(1) sous forme b'0' / b'1' (Brest :
     # alcohol_blacklisted) — sans ce fix, tout importait à False

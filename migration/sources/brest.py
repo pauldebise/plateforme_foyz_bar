@@ -37,10 +37,15 @@ half_pint_price[_foyz], pint_price[_foyz], pot_price[_foyz], stock, volume,
 alcohol_volume), draft_beer_current(id, beer_draught enum, draft_beer_id,
 date_start, date_end), payments(id, date, user_id, balance, type enum,
 logged_user_id), withdrawals/transfert(id, date, user_id, balance,
-logged_user_id). Aucun email : la clé de réconciliation est le pseudo
-(`name`). Les identifiants utilisateurs (`user_id`, `logged_user_id`) sont
-des badges (users.card_id) : le moteur les résout en comptes cibles et
-affiche le nom de l'opérateur quand le badge est connu. Les tables
+logged_user_id). Aucun email : la clé de réconciliation est l'identité
+(`real_name`, sinon le pseudo `name`). L'identifiant de connexion cible est
+le nom réel (`real_name`, ex « Paul Debise ») — c'est lui qui servait de
+login sur l'ancienne plateforme. Les mots de passe (`password`, hash bcrypt
+PHP) sont importés bruts dans `users.legacy_password` : vérifiés à la
+connexion puis convertis au format werkzeug. Les identifiants utilisateurs
+(`user_id`, `logged_user_id`) sont des badges (users.card_id) : le moteur
+les résout en comptes cibles et affiche le nom de l'opérateur quand le
+badge est connu. Les tables
 `article_draft_beers` / `article_extras` (tarifs par format des tireuses,
 extras comptoir) n'ont pas d'équivalent cible : les articles de tireuse sont
 régénérés depuis les tarifs des fûts.

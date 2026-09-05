@@ -125,6 +125,7 @@ USER_FIELDS = {
                "card_id"),
     "email": ("email", "mail", "courriel", "adresse_mail"),
     "password": ("mdp", "password", "password_hash", "mot_de_passe", "pass", "hash"),
+    "real_name": ("real_name", "vrai_nom", "nom_reel", "full_name", "nom_complet"),
     "balance": ("solde", "balance", "solde_euros", "credit", "solde_compte"),
     "team_status": ("statut", "statut_equipe", "team_status", "role_equipe", "status",
                     "is_foyz"),
@@ -296,19 +297,26 @@ def map_user_row(row, campus, money_unit):
     """Convertit une ligne source en compte canonique (montants en centimes).
 
     Retourne (dict | None, warning | None). None = ligne ignorée (identité absente).
-    L'identité cible est un seul champ `name` (nom / surnom) ; les sources qui
-    séparent prénom / nom sont combinées. La clé de réconciliation reste
-    l'email quand il existe (fusion inter-campus), sinon le nom.
+    L'identité cible est un seul champ `name` (identifiant de connexion) :
+    priorité au nom réel (`real_name`, identifiant de l'ancienne plateforme),
+    sinon le pseudo, sinon prénom + nom combinés. La clé de réconciliation
+    reste l'email quand il existe (fusion inter-campus), sinon le nom.
+    Le mot de passe source est conservé : hash réutilisable en cible
+    (format werkzeug) -> `password_hash`, sinon valeur brute (bcrypt, md5,
+    texte...) -> `legacy_password`, vérifiable à la connexion puis converti.
     """
-    name = pick(row, NAME_FIELDS)
-    if not name:
+    pseudo = pick(row, NAME_FIELDS)
+    if not pseudo:
         first = pick(row, FIRST_NAME_FIELDS) or ""
         last = pick(row, LAST_NAME_FIELDS) or ""
-        name = f"{first} {last}".strip()
+        pseudo = f"{first} {last}".strip()
     email = pick(row, USER_FIELDS["email"])
+    real_name = pick(row, USER_FIELDS["real_name"])
+    name = str(real_name).strip() if real_name is not None else ""
+    if not name:
+        name = str(pseudo).strip() if pseudo is not None else ""
     if not name and not email:
         return None, "identité absente (ni nom, ni email)"
-    name = str(name).strip() if name is not None else ""
     if not name:
         name = str(email)
     key = normalize_key(email) or normalize_key(name)
@@ -317,6 +325,9 @@ def map_user_row(row, campus, money_unit):
     password = pick(row, USER_FIELDS["password"])
     from ..util import looks_like_werkzeug_hash
     hash_val = str(password) if looks_like_werkzeug_hash(password) else None
+    legacy_password = None
+    if password is not None and hash_val is None:
+        legacy_password = str(password).strip()[:255] or None
     balance = to_cents(pick(row, USER_FIELDS["balance"]), money_unit,
                        context=f"solde {campus}")
     team_campus = pick(row, USER_FIELDS["team_campus"])
@@ -328,6 +339,7 @@ def map_user_row(row, campus, money_unit):
         "name": name[:255],
         "promotion": as_int(pick(row, USER_FIELDS["promotion"])),
         "password_hash": hash_val,
+        "legacy_password": legacy_password,
         "team_status": normalize_team_status(pick(row, USER_FIELDS["team_status"])),
         "team_campus": team_campus,
         "blacklist": as_bool(pick(row, USER_FIELDS["blacklist"])) or False,
