@@ -13,6 +13,7 @@ from app.utils import (
     ARTICLE_TYPES,
     CAMPUSSES,
     cents,
+    euros,
     login_required,
     new_token,
     paris_to_utc,
@@ -121,7 +122,39 @@ def compte(user_id):
         db.session.commit()
         flash("Profil mis à jour.", "success")
         return redirect(url_for("admin.compte", user_id=u.id))
-    return render_template("admin/compte.html", u=u)
+    return render_template("admin/compte.html", u=u, warnings=_compte_warnings(u))
+
+
+def _compte_warnings(u):
+    warnings = []
+    if u.team_status:
+        warnings.append("ce compte possède un accès équipe")
+    soldes = [f"{CAMPUSSES[w.campus]} : {euros(w.balance)}" for w in u.wallets if w.balance != 0]
+    if soldes:
+        warnings.append("solde non nul (" + ", ".join(soldes) + ")")
+    verres = [CAMPUSSES[w.campus] for w in u.wallets if w.glasses_outstanding]
+    if verres:
+        warnings.append("verres consignés non rendus (" + ", ".join(verres) + ")")
+    return warnings
+
+
+@bp.route("/comptes/<int:user_id>/supprimer", methods=["POST"])
+@login_required
+def compte_supprimer(user_id):
+    u = db.session.get(User, user_id)
+    if u is None:
+        abort(404)
+    if not S.check_admin_password(request.form.get("admin_password", "")):
+        flash("La suppression d'un compte exige le mot de passe administrateur.", "danger")
+        return redirect(url_for("admin.compte", user_id=u.id))
+    warnings = _compte_warnings(u)
+    if warnings:
+        flash("Attention : " + ", ".join(warnings) + ".", "warning")
+    name = u.name
+    db.session.delete(u)
+    db.session.commit()
+    flash(f"Compte de {name} supprimé (portefeuilles effacés, historique conservé et anonymisé).", "success")
+    return redirect(url_for("admin.comptes"))
 
 
 @bp.route("/equipe")

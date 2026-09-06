@@ -58,4 +58,37 @@
     </div>
   </div>
 </div>
+
+<hr class="mt-4">
+{% if warnings %}
+  <div class="alert alert-warning py-2">
+    <i class="bi bi-exclamation-triangle"></i> <strong>Attention :</strong> {{ warnings|join(" · ") }}.
+  </div>
+{% endif %}
+<button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#delete-account-modal">
+  <i class="bi bi-trash"></i> Supprimer ce compte
+</button>
+
+<div class="modal fade" id="delete-account-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" method="post" action="{{ url_for('admin.compte_supprimer', user_id=u.id) }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Supprimer le compte de {{ u.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <p class="form-text">Cette action est irréversible.</p>
+        <div class="mb-0">
+          <label class="form-label">Mot de passe administrateur</label>
+          <input class="form-control" type="password" name="admin_password" required autofocus>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-danger"><i class="bi bi-trash"></i> Supprimer</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
