@@ -4,6 +4,7 @@ from sqlalchemy import select
 from app.extensions import db
 from app.models import Article, Event
 from app.services import transactions as T
+from app.services.stats import top_article_ids
 from app.utils import utcnow
 
 bp = Blueprint("gateway", __name__)
@@ -41,8 +42,10 @@ def gateway(token):
         .where(Article.active.is_(True), Article.event_id == ev.id)
         .order_by(Article.name)
     ).all()
-    data = [
-        {
+    data = []
+    rank_of = {aid: i for i, aid in enumerate(top_article_ids(ev.campus))}
+    for a in articles:
+        item = {
             "id": a.id,
             "name": a.name,
             "type": a.article_type,
@@ -52,8 +55,10 @@ def gateway(token):
             "std": a.price_for(ev.campus, False),
             "team": a.price_for(ev.campus, True),
         }
-        for a in articles
-    ]
+        rank = rank_of.get(a.id)
+        if rank is not None:
+            item["rank"] = rank
+        data.append(item)
     return render_template("gateway/paiement.html", ev=ev, catalog=data)
 
 

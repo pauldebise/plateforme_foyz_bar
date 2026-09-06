@@ -3,7 +3,6 @@
 {% block content %}
 <div id="payment-config" data-campus="{{ current_campus }}" data-deposit-value="{{ deposit_value }}" data-deposit-enabled="{{ '1' if deposit_enabled else '0' }}" data-overdraft-limit="{{ overdraft_limit }}"></div>
 <script type="application/json" id="catalog-data">{{ catalog|tojson }}</script>
-<script type="application/json" id="top-articles">{{ top_ids|tojson }}</script>
 
 <div class="row g-4">
   <div class="col-lg-4">

@@ -54,8 +54,10 @@ def payment():
         a for a in articles
         if a.is_tap or a.price_for(campus()) or a.price_for(campus(), team=True)
     ]
-    data = [
-        {
+    data = []
+    rank_of = {aid: i for i, aid in enumerate(top_article_ids(campus()))}
+    for a in articles:
+        item = {
             "id": a.id,
             "name": a.name,
             "type": a.article_type,
@@ -66,9 +68,11 @@ def payment():
             "std": a.price_for(campus(), False),
             "team": a.price_for(campus(), True),
         }
-        for a in articles
-    ]
-    return render_template("team/payment.html", catalog=data, top_ids=top_article_ids(campus()))
+        rank = rank_of.get(a.id)
+        if rank is not None:
+            item["rank"] = rank
+        data.append(item)
+    return render_template("team/payment.html", catalog=data)
 
 
 @bp.route("/rechargement", methods=["GET", "POST"])

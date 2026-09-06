@@ -144,22 +144,29 @@ def students_stats(filters=None):
     return result
 
 
-def top_article_ids(campus=None, limit=9):
-    """IDs des articles les plus vendus (en quantité) sur la période d'historique,
-    du plus consommé au moins consommé."""
+def top_article_ids(campus=None, limit=None, days=45):
+    """Classement des articles par popularité récente, comme le tri des
+    étudiants : quantités vendues sur les `days` derniers jours (décroissant),
+    puis date de la dernière vente (décroissante). Les articles sans vente
+    récente n'apparaissent pas."""
+    since = utcnow() - timedelta(days=days)
     stmt = (
         select(TransactionLine.article_id, func.sum(TransactionLine.quantity).label("qty"))
         .join(Transaction, TransactionLine.transaction_id == Transaction.id)
         .where(
             Transaction.type.in_(["achat", "direct"]),
             Transaction.cancelled.is_(False),
-            Transaction.created_at >= history_cutoff(),
+            Transaction.created_at >= since,
             TransactionLine.article_id.isnot(None),
         )
         .group_by(TransactionLine.article_id)
-        .order_by(func.sum(TransactionLine.quantity).desc())
-        .limit(limit)
+        .order_by(
+            func.sum(TransactionLine.quantity).desc(),
+            func.max(Transaction.created_at).desc(),
+        )
     )
     if campus in ("brest", "paris"):
         stmt = stmt.where(Transaction.campus == campus)
+    if limit:
+        stmt = stmt.limit(limit)
     return [aid for aid in db.session.scalars(stmt)]

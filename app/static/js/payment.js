@@ -1,11 +1,6 @@
 let contributors = [];
 let cart = new Map();
 const CATALOG = JSON.parse(document.getElementById('catalog-data').textContent);
-const TOP_IDS = (() => {
-  const el = document.getElementById('top-articles');
-  if (!el) return null;
-  try { return JSON.parse(el.textContent); } catch { return null; }
-})();
 const CONFIG = document.getElementById('payment-config');
 const DEPOSIT_VALUE = parseInt(CONFIG.dataset.depositValue, 10);
 const DEPOSIT_ENABLED = CONFIG.dataset.depositEnabled === '1';
@@ -128,6 +123,15 @@ function catalogCard(label, icon, cls, items) {
   return card;
 }
 
+// Tri "popularité récente", comme la recherche d'étudiants : les articles les
+// plus vendus et les plus récemment vendus arrivent en tête, puis alphabétique.
+function popularitySort(a, b) {
+  const ra = a.rank ?? Number.MAX_SAFE_INTEGER;
+  const rb = b.rank ?? Number.MAX_SAFE_INTEGER;
+  if (ra !== rb) return ra - rb;
+  return a.name.localeCompare(b.name, 'fr', { numeric: true, sensitivity: 'base' });
+}
+
 const TAP_SIZE_ORDER = ['Demi', 'Pinte', 'Pot'];
 
 function tapGroups() {
@@ -170,35 +174,53 @@ function renderCatalog() {
   if (!els.catalog) return;
   const q = els.catalogSearch.value.trim().toLowerCase();
   els.catalog.innerHTML = '';
-  if (!q) {
-    const trending = TOP_IDS
-      ? TOP_IDS.map((id) => CATALOG.find((a) => a.id === id)).filter((a) => a && !a.tap)
-      : [];
-    const taps = tapGroups();
-    if (trending.length || taps.length) {
-      if (taps.length) {
-        const card = document.createElement('div');
-        card.className = 'card mb-2 border-warning';
-        card.innerHTML = `<div class="card-header py-1 small fw-bold"><i class="bi bi-cup-straw"></i> Tireuses</div><div class="card-body p-0"></div>`;
-        const body = card.querySelector('.card-body');
-        taps.forEach((g) => body.appendChild(tapRow(g)));
-        els.catalog.appendChild(card);
-      }
-      if (trending.length) {
-        els.catalog.appendChild(catalogCard(
-          'Articles tendances', '<i class="bi bi-fire"></i>', 'border-success', trending,
-        ));
-      }
-      clearCatalogActive();
+  if (q) {
+    const matches = CATALOG
+      .filter((a) => a.name.toLowerCase().includes(q))
+      .sort(popularitySort);
+    clearCatalogActive();
+    if (!matches.length) {
+      const none = document.createElement('div');
+      none.className = 'text-muted text-center py-4';
+      none.textContent = 'Aucun article ne correspond à cette recherche.';
+      els.catalog.appendChild(none);
       return;
     }
+    const card = document.createElement('div');
+    card.className = 'card mb-2';
+    card.innerHTML = '<div class="card-body p-0"></div>';
+    const body = card.querySelector('.card-body');
+    matches.forEach((a) => body.appendChild(catalogRow(a)));
+    els.catalog.appendChild(card);
+    return;
+  }
+  const trending = CATALOG
+    .filter((a) => a.rank != null && !a.tap)
+    .sort(popularitySort)
+    .slice(0, 9);
+  const taps = tapGroups();
+  if (trending.length || taps.length) {
+    if (taps.length) {
+      const card = document.createElement('div');
+      card.className = 'card mb-2 border-warning';
+      card.innerHTML = `<div class="card-header py-1 small fw-bold"><i class="bi bi-cup-straw"></i> Tireuses</div><div class="card-body p-0"></div>`;
+      const body = card.querySelector('.card-body');
+      taps.forEach((g) => body.appendChild(tapRow(g)));
+      els.catalog.appendChild(card);
+    }
+    if (trending.length) {
+      els.catalog.appendChild(catalogCard(
+        'Articles tendances', '<i class="bi bi-fire"></i>', 'border-success', trending,
+      ));
+    }
+    clearCatalogActive();
+    return;
   }
   const groups = {};
   CATALOG.forEach((a) => {
-    if (q && !a.name.toLowerCase().includes(q)) return;
     (groups[a.type] = groups[a.type] || []).push(a);
   });
-  const eventItems = CATALOG.filter((a) => a.event && (!q || a.name.toLowerCase().includes(q)));
+  const eventItems = CATALOG.filter((a) => a.event);
   if (eventItems.length) {
     const card = document.createElement('div');
     card.className = 'card mb-2 border-warning';
