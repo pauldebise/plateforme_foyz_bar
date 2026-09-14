@@ -1,25 +1,36 @@
 {% extends "base.html" %}
 {% block title %}Bières pression &amp; tireuses{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4"><i class="bi bi-beaker"></i> Bières pression &amp; tireuses</h1>
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h1 class="h3 mb-0"><i class="bi bi-beaker"></i> Bières pression &amp; tireuses</h1>
+  <div class="btn-group">
+    {% for key, label in CAMPUSSES.items() %}
+    <a class="btn {% if campus == key %}btn-primary{% else %}btn-outline-primary{% endif %}"
+       href="{{ url_for('admin.tireuses', campus=key) }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+</div>
 
 <div class="card mb-4">
   <div class="card-header">Tireuses — {{ CAMPUSSES[campus] }}</div>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
-      <thead class="table-light"><tr><th>Tireuse</th><th>Fût monté</th><th>Assigner un fût</th><th></th></tr></thead>
+      <thead class="table-light"><tr><th>Tireuse</th><th>Fût monté</th>{% if writable %}<th>Assigner un fût</th>{% endif %}<th></th></tr></thead>
       <tbody>
         {% for t in taps %}
         <tr>
           <td>
             <strong>{{ t.display_name }}</strong>
+            {% if writable %}
             <form class="d-flex gap-1 mt-1" method="post" action="{{ url_for('admin.tap_renommer', tap_id=t.id) }}">
               <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
               <input class="form-control form-control-sm" name="name" value="{{ t.name or '' }}" placeholder="Nom de la tireuse" maxlength="160" required>
               <button class="btn btn-sm btn-outline-secondary" title="Renommer"><i class="bi bi-pencil"></i></button>
             </form>
+            {% endif %}
           </td>
           <td>{% if t.keg %}{{ t.keg.name }}{% else %}<span class="text-muted">vide</span>{% endif %}</td>
+          {% if writable %}
           <td>
             <form class="d-flex gap-2" method="post" action="{{ url_for('admin.tap_assigner', tap_id=t.id) }}">
               <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
@@ -32,20 +43,26 @@
               <button class="btn btn-sm btn-outline-primary">Assigner</button>
             </form>
           </td>
+          {% endif %}
           <td class="text-end text-nowrap">
-            {% if t.keg %}
-            <form class="d-inline" method="post" action="{{ url_for('admin.tap_detacher', tap_id=t.id) }}">
-              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-              <button class="btn btn-sm btn-outline-secondary">Détacher</button>
-            </form>
+            {% if writable %}
+              {% if t.keg %}
+              <form class="d-inline" method="post" action="{{ url_for('admin.tap_detacher', tap_id=t.id) }}">
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-secondary">Détacher</button>
+              </form>
+              {% endif %}
+              <form class="d-inline" method="post" action="{{ url_for('admin.tap_supprimer', tap_id=t.id) }}" onsubmit="return confirm('Supprimer cette tireuse ? Ses articles pression seront désactivés.')">
+                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+                <button class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+              </form>
             {% endif %}
-            <form class="d-inline" method="post" action="{{ url_for('admin.tap_supprimer', tap_id=t.id) }}" onsubmit="return confirm('Supprimer cette tireuse ? Ses articles pression seront désactivés.')">
-              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-              <button class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
-            </form>
           </td>
         </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted py-4">Aucune tireuse sur ce campus.</td></tr>
         {% endfor %}
+        {% if writable %}
         <tr>
           <td colspan="4">
             <form class="row g-2 align-items-end" method="post" action="{{ url_for('admin.tap_nouveau') }}">
@@ -55,6 +72,7 @@
             </form>
           </td>
         </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -62,8 +80,10 @@
 
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span>Fûts enregistrés</span>
+    <span>Fûts enregistrés{% if not writable %} (consultation){% endif %}</span>
+    {% if writable %}
     <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#new-keg-modal"><i class="bi bi-plus-lg"></i> Nouveau fût</button>
+    {% endif %}
   </div>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
@@ -76,11 +96,13 @@
           <td>{{ '%.1f'|format(k.remaining_l) }} L / {{ '%.0f'|format(k.volume_l) }} L</td>
           <td>{% if k.taps|length %}{% for t in k.taps %}<span class="badge bg-primary">{{ t.display_name }} ({{ CAMPUSSES[t.campus] }})</span> {% endfor %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td class="text-end text-nowrap">
+            {% if writable %}
             <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.keg', keg_id=k.id) }}">Modifier</a>
             <form class="d-inline" method="post" action="{{ url_for('admin.keg_supprimer', keg_id=k.id) }}" onsubmit="return confirm('Supprimer ce fût et désactiver ses articles tireuse ?')">
               <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% else %}

@@ -13,17 +13,14 @@
     <div class="card mb-4">
       <div class="card-header">Informations</div>
       <div class="card-body">
+        {% if writable %}
         <form method="post" enctype="multipart/form-data">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="edit">
           <div class="mb-3"><label class="form-label">Nom</label><input class="form-control" name="name" value="{{ ev.name }}"></div>
           <div class="mb-3">
             <label class="form-label">Campus</label>
-            <select class="form-select" name="campus">
-              {% for key, label in CAMPUSSES.items() %}
-              <option value="{{ key }}" {% if ev.campus == key %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
+            <input class="form-control" value="{{ CAMPUSSES[ev.campus] }}" disabled>
           </div>
           <div class="row g-2 mb-3">
             <div class="col-6"><label class="form-label">Début</label><input class="form-control" type="datetime-local" name="starts_at" value="{{ ev.starts_at|dt('%Y-%m-%dT%H:%M') }}"></div>
@@ -41,9 +38,19 @@
             {{ 'Réouvrir' if ev.closed else 'Clôturer' }} l'événement
           </button>
         </form>
+        {% else %}
+        <dl class="row mb-0">
+          <dt class="col-sm-3">Nom</dt><dd class="col-sm-9">{{ ev.name }}</dd>
+          <dt class="col-sm-3">Campus</dt><dd class="col-sm-9">{{ CAMPUSSES[ev.campus] }}</dd>
+          <dt class="col-sm-3">Début</dt><dd class="col-sm-9">{{ ev.starts_at|dt }}</dd>
+          <dt class="col-sm-3">Fin</dt><dd class="col-sm-9">{{ ev.ends_at|dt }}</dd>
+        </dl>
+        {% if ev.poster %}<img class="event-poster mt-2" style="height: 140px;" src="/uploads/{{ ev.poster }}">{% endif %}
+        {% endif %}
       </div>
     </div>
 
+    {% if writable %}
     <div class="card">
       <div class="card-header"><i class="bi bi-door-open"></i> Passerelle organisateurs (accès encaissement simplifié)</div>
       <div class="card-body">
@@ -59,6 +66,7 @@
         <p class="small text-muted mt-2 mb-0">La passerelle est active à partir de 12 h avant le début et jusqu'à la fin (ou clôture manuelle).</p>
       </div>
     </div>
+    {% endif %}
   </div>
 
   <div class="col-lg-6">
@@ -71,16 +79,19 @@
             {{ a.name }}
             <span class="small text-muted">std {{ a.price_std_brest|eur }} / {{ a.price_std_paris|eur }} · équipe {{ a.price_team_brest|eur }} / {{ a.price_team_paris|eur }}</span>
           </div>
+          {% if writable %}
           <form method="post" onsubmit="return confirm('Supprimer cet article ?')">
             <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="del_article">
             <input type="hidden" name="article_id" value="{{ a.id }}">
             <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
           </form>
+          {% endif %}
         </div>
         {% else %}
         <p class="text-muted mb-0">Aucun article temporaire.</p>
         {% endfor %}
+        {% if writable %}
         <form class="row g-2 mt-3 align-items-end" method="post">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="add_article">
@@ -98,6 +109,7 @@
           </div>
           <div class="col-12 d-grid"><button class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-lg"></i> Ajouter l'article temporaire</button></div>
         </form>
+        {% endif %}
       </div>
     </div>
   </div>

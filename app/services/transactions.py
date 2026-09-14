@@ -34,6 +34,11 @@ def _get_wallet(user, campus):
     return user.wallet(campus)
 
 
+def wallet_view(user, campus):
+    """Portefeuille existant sans le créer (consultation d'un campus)."""
+    return next((w for w in user.wallets if w.campus == campus), None)
+
+
 def _split_shares(total, n):
     base = total // n
     shares = [base] * n
@@ -79,7 +84,7 @@ def search_students(query, campus=None, limit=15):
     users = db.session.scalars(stmt).unique().all()
     results = []
     for u in users:
-        w = u.wallet(campus) if campus else None
+        w = wallet_view(u, campus) if campus else None
         results.append(
             {
                 "id": u.id,

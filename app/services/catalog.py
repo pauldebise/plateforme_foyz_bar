@@ -57,8 +57,11 @@ def delete_tap(tap):
     db.session.commit()
 
 
-def refresh_tap_articles(keg):
-    for tap in db.session.scalars(select(Tap).where(Tap.keg_id == keg.id)):
+def refresh_tap_articles(keg, campus=None):
+    stmt = select(Tap).where(Tap.keg_id == keg.id)
+    if campus:
+        stmt = stmt.where(Tap.campus == campus)
+    for tap in db.session.scalars(stmt):
         assign_keg(tap, keg)
 
 

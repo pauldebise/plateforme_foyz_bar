@@ -13,7 +13,7 @@ d'une application web client-serveur en Python/Flask avec base de données relat
 (SQLAlchemy — SQLite en développement, PostgreSQL en production), organisée en trois espaces :
 
 1. **Interface publique** — accessible sans authentification ;
-2. **Interface équipe** — réservée aux membres et anciens membres, avec choix du campus ;
+2. **Interface équipe** — réservée aux membres et anciens membres, rattachés à leur campus ;
 3. **Interface administrateur** — réservée aux membres de mandat ;
 4. **Passerelle événement** — encaissement simplifié pour les associations organisatrices.
 
@@ -39,8 +39,13 @@ d'interprétation et les choix techniques sont listés en §6.
 
 ### 2.2 Interface équipe (§3 du CDC)
 
-L'accès exige un compte équipe ; le **campus de connexion** est choisi à l'authentification et
-détermine le portefeuille utilisé, les prix affichés et le rattachement des bilans.
+L'accès exige un compte équipe ; chaque membre est **rattaché à un campus** (`team_campus`).
+Le campus de travail est choisi librement à la connexion : les données de l'autre campus
+(encaissements, rechargements, statistiques, prix, tireuses) restent consultables en
+**lecture seule**, avec un indicateur « lecture seule » dans l'interface. Toute écriture
+(encaissement, rechargement, annulation, modification des prix, gestion des tireuses,
+onglets administrateur) est limitée au **campus d'appartenance**, quel que soit le campus
+de la connexion.
 
 | Onglet | Réalisation |
 |---|---|

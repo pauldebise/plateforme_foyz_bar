@@ -35,6 +35,30 @@ def campus():
     return session["campus"]
 
 
+def own_campus():
+    """Campus d'appartenance du membre : seul campus où il peut écrire."""
+    u = g.current_user
+    if u.team_campus in CAMPUSSES:
+        return u.team_campus
+    return campus()
+
+
+def can_write():
+    return campus() == own_campus()
+
+
+def require_write():
+    """Garde d'écriture : True (et un flash posé) si l'opération est refusée."""
+    if can_write():
+        return False
+    flash(
+        f"Campus {CAMPUSSES[campus()]} consulté en lecture seule : les opérations "
+        f"sont réservées au campus {CAMPUSSES[own_campus()]}.",
+        "danger",
+    )
+    return True
+
+
 @bp.route("/paiement")
 @login_required
 def payment():
@@ -72,13 +96,15 @@ def payment():
         if rank is not None:
             item["rank"] = rank
         data.append(item)
-    return render_template("team/payment.html", catalog=data)
+    return render_template("team/payment.html", catalog=data, read_only=not can_write())
 
 
 @bp.route("/rechargement", methods=["GET", "POST"])
 @login_required
 def rechargement():
     if request.method == "POST":
+        if require_write():
+            return redirect(url_for("team.rechargement"))
         try:
             user = _get_user_or_fail(request.form.get("user_id"))
             amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
@@ -90,13 +116,15 @@ def rechargement():
             return redirect(url_for("team.rechargement"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Montant invalide."), "danger")
-    return render_template("team/operation.html", op="rechargement")
+    return render_template("team/operation.html", op="rechargement", read_only=not can_write())
 
 
 @bp.route("/retrait", methods=["GET", "POST"])
 @login_required
 def retrait():
     if request.method == "POST":
+        if require_write():
+            return redirect(url_for("team.retrait"))
         try:
             user = _get_user_or_fail(request.form.get("user_id"))
             amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
@@ -105,13 +133,15 @@ def retrait():
             return redirect(url_for("team.retrait"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Montant invalide."), "danger")
-    return render_template("team/operation.html", op="retrait")
+    return render_template("team/operation.html", op="retrait", read_only=not can_write())
 
 
 @bp.route("/transfert", methods=["GET", "POST"])
 @login_required
 def transfert():
     if request.method == "POST":
+        if require_write():
+            return redirect(url_for("team.transfert"))
         try:
             src = _get_user_or_fail(request.form.get("from_id"))
             dst = _get_user_or_fail(request.form.get("to_id"))
@@ -121,7 +151,7 @@ def transfert():
             return redirect(url_for("team.transfert"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Transfert invalide."), "danger")
-    return render_template("team/operation.html", op="transfert")
+    return render_template("team/operation.html", op="transfert", read_only=not can_write())
 
 
 def _get_user_or_fail(raw_id):
@@ -138,6 +168,8 @@ def _get_user_or_fail(raw_id):
 @bp.route("/consignes/retour", methods=["POST"])
 @login_required
 def consigne_return():
+    if require_write():
+        return redirect(request.form.get("next") or url_for("team.payment"))
     try:
         user = _get_user_or_fail(request.form.get("user_id"))
         count = int(request.form.get("count", "1"))
@@ -198,6 +230,9 @@ def annuler():
     t = db.session.get(Transaction, tid) if tid and tid.isdigit() else None
     if t is None:
         flash("Transaction introuvable.", "danger")
+        return redirect(url_for("team.historique"))
+    if t.campus != own_campus():
+        flash("Cette transaction appartient à un autre campus : seule l'équipe concernée peut l'annuler.", "danger")
         return redirect(url_for("team.historique"))
     try:
         T.cancel_transaction(t, request.form.get("admin_password", ""))

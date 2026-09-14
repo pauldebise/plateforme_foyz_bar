@@ -45,9 +45,8 @@
         <div class="mb-3"><label class="form-label">Nom</label><input class="form-control" name="name" required placeholder="ex : Soirée BDE — Début d'année"></div>
         <div class="mb-3">
           <label class="form-label">Campus</label>
-          <select class="form-select" name="campus">
-            {% for key, label in CAMPUSSES.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
-          </select>
+          <input type="hidden" name="campus" value="{{ own_campus }}">
+          <input class="form-control" value="{{ CAMPUSSES[own_campus] }}" disabled>
         </div>
         <div class="row g-2 mb-3">
           <div class="col-6"><label class="form-label">Début</label><input class="form-control" type="datetime-local" name="starts_at" required></div>

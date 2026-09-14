@@ -5,6 +5,7 @@ from app.models import Article, User
 from app.services import transactions as T
 from app.services.stats import sales_stats
 from app.services.treasury import treasury
+from app.utils import CAMPUSSES
 
 bp = Blueprint("api", __name__)
 
@@ -13,6 +14,16 @@ bp = Blueprint("api", __name__)
 def require_session():
     if not g.get("current_user"):
         abort(401)
+
+
+def write_campus():
+    """Campus d'encaissement : celui de la session, à condition qu'il soit le
+    campus d'appartenance du membre (l'autre campus est en lecture seule)."""
+    campus = session.get("campus") or "brest"
+    own = g.current_user.team_campus
+    if own in CAMPUSSES and campus != own:
+        return None
+    return campus
 
 
 @bp.route("/students")
@@ -26,13 +37,14 @@ def wallet(user_id):
     u = db.session.get(User, user_id)
     if u is None:
         return jsonify(ok=False, error="Étudiant introuvable."), 404
+    # lecture seule : on ne crée pas de portefeuille pour l'autre campus
     campus = request.args.get("campus") or session.get("campus") or "brest"
-    w = u.wallet(campus)
+    w = T.wallet_view(u, campus)
     return jsonify(
         id=u.id,
         name=u.name,
-        balance=w.balance,
-        glasses=w.glasses_outstanding,
+        balance=w.balance if w else 0,
+        glasses=w.glasses_outstanding if w else 0,
         blacklist=u.blacklist,
         blacklist_alcohol=u.blacklist_alcohol,
         is_team=u.is_team,
@@ -42,10 +54,13 @@ def wallet(user_id):
 @bp.route("/purchase", methods=["POST"])
 def purchase():
     payload = request.get_json(silent=True) or {}
+    campus = write_campus()
+    if campus is None:
+        return jsonify(ok=False, error="Campus consulté en lecture seule : connectez-vous sur votre campus d'équipe."), 403
     try:
         t = T.create_purchase(
             operator_label=g.current_user.name,
-            campus=payload.get("campus") or session.get("campus") or "brest",
+            campus=campus,
             items=payload.get("items", []),
             contributor_ids=payload.get("contributors", []),
             deposit_glasses=payload.get("deposit_glasses", 0),
@@ -64,10 +79,13 @@ def glasses_return():
     u = db.session.get(User, payload.get("user_id"))
     if u is None:
         return jsonify(ok=False, error="Étudiant introuvable."), 404
+    campus = write_campus()
+    if campus is None:
+        return jsonify(ok=False, error="Campus consulté en lecture seule : connectez-vous sur votre campus d'équipe."), 403
     try:
         t = T.return_glasses(
             operator_label=g.current_user.name,
-            campus=payload.get("campus") or session.get("campus") or "brest",
+            campus=campus,
             user=u,
             count=payload.get("count", 0),
         )

@@ -58,31 +58,31 @@
             </div>
             <div class="col-md-4 color-swatch">
               <label class="form-label">Thème de couleur — Brest</label>
-              <input class="form-control form-control-color w-100" type="color" name="theme_color_brest" value="{{ values['theme_color_brest'] }}">
+              <input class="form-control form-control-color w-100" type="color" name="theme_color_brest" value="{{ values['theme_color_brest'] }}" {% if own_campus != 'brest' %}disabled{% endif %}>
             </div>
             <div class="col-md-4 color-swatch">
               <label class="form-label">Thème de couleur — Paris</label>
-              <input class="form-control form-control-color w-100" type="color" name="theme_color_paris" value="{{ values['theme_color_paris'] }}">
+              <input class="form-control form-control-color w-100" type="color" name="theme_color_paris" value="{{ values['theme_color_paris'] }}" {% if own_campus != 'paris' %}disabled{% endif %}>
             </div>
             <div class="col-md-6">
               <label class="form-label">Logo — Brest</label>
               {% if values['logo_brest'] %}<img src="/uploads/{{ values['logo_brest'] }}" class="brand-logo d-block mb-1">{% endif %}
-              <input class="form-control" type="file" name="logo_brest" accept=".jpg,.jpeg,.png,.webp,.svg">
+              <input class="form-control" type="file" name="logo_brest" accept=".jpg,.jpeg,.png,.webp,.svg" {% if own_campus != 'brest' %}disabled{% endif %}>
             </div>
             <div class="col-md-6">
               <label class="form-label">Logo — Paris</label>
               {% if values['logo_paris'] %}<img src="/uploads/{{ values['logo_paris'] }}" class="brand-logo d-block mb-1">{% endif %}
-              <input class="form-control" type="file" name="logo_paris" accept=".jpg,.jpeg,.png,.webp,.svg">
+              <input class="form-control" type="file" name="logo_paris" accept=".jpg,.jpeg,.png,.webp,.svg" {% if own_campus != 'paris' %}disabled{% endif %}>
             </div>
             <div class="col-md-6">
               <label class="form-label">Règlement intérieur — Brest (PDF)</label>
               {% if values['regulation_pdf_brest'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
-              <input class="form-control" type="file" name="regulation_pdf_brest" accept=".pdf">
+              <input class="form-control" type="file" name="regulation_pdf_brest" accept=".pdf" {% if own_campus != 'brest' %}disabled{% endif %}>
             </div>
             <div class="col-md-6">
               <label class="form-label">Règlement intérieur — Paris (PDF)</label>
               {% if values['regulation_pdf_paris'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
-              <input class="form-control" type="file" name="regulation_pdf_paris" accept=".pdf">
+              <input class="form-control" type="file" name="regulation_pdf_paris" accept=".pdf" {% if own_campus != 'paris' %}disabled{% endif %}>
             </div>
             <div class="col-12">
               <label class="form-label">Édition de la page d'accueil (interface publique)</label>

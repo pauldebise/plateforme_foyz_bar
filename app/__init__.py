@@ -83,6 +83,7 @@ def create_app():
         if rv is not None:
             return rv
         _load_current_user()
+        _sync_campus()
         _resolve_scope()
 
     def _csrf_check():
@@ -123,6 +124,15 @@ def create_app():
             else:
                 session.clear()
 
+    def _sync_campus():
+        """Le campus de travail est choisi à la connexion (l'autre campus que
+        celui d'appartenance reste consultable en lecture seule). Ce fixup ne
+        fait que garantir un campus valide si la session en est dépourvue."""
+        u = getattr(g, "current_user", None)
+        if u is None or session.get("campus") in CAMPUSSES:
+            return
+        session["campus"] = u.team_campus if u.team_campus in CAMPUSSES else "brest"
+
     def _resolve_scope():
         bp = request.blueprint or ""
         if bp in ("team", "admin", "api"):
@@ -161,6 +171,13 @@ def create_app():
         from app.services.settings import get_setting, int_setting, bool_setting
 
         campus = session.get("campus") or ""
+        current = getattr(g, "current_user", None)
+        # campus d'appartenance du membre : seul campus où il peut écrire
+        own = (
+            current.team_campus
+            if current is not None and current.team_campus in CAMPUSSES
+            else campus
+        )
         return {
             "csrf_token": lambda: ensure_csrf(),
             "site_name": get_setting("site_name") or "Foy'z & Bar",
@@ -171,6 +188,7 @@ def create_app():
             "logo": get_setting(f"logo_{campus}") or "",
             "current_user": getattr(g, "current_user", None),
             "current_campus": session.get("campus", ""),
+            "own_campus": own,
             "CAMPUSSES": CAMPUSSES,
             "ARTICLE_TYPES": ARTICLE_TYPES,
             "PAYMENT_METHODS": PAYMENT_METHODS,

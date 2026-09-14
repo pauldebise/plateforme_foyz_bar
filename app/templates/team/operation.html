@@ -54,7 +54,11 @@
       </div>
       {% endif %}
 
+      {% if read_only %}
+      <button class="btn btn-primary" disabled><i class="bi bi-lock"></i> Lecture seule</button>
+      {% else %}
       <button class="btn btn-primary">Valider</button>
+      {% endif %}
     </form>
   </div>
 </div>

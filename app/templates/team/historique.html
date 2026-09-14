@@ -74,8 +74,10 @@
           <td class="text-end">
             {% if t.cancelled %}
               <span class="badge bg-secondary">Annulée</span>
-            {% else %}
+            {% elif t.campus == own_campus %}
               <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancel-modal" data-tid="{{ t.id }}" data-total="{{ t.total|eur }}">Annuler</button>
+            {% else %}
+              <span class="small text-muted" title="Transaction de {{ CAMPUSSES[t.campus] }}">campus {{ CAMPUSSES[t.campus] }}</span>
             {% endif %}
           </td>
         </tr>

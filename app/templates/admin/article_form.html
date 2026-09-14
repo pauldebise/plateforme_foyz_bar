@@ -32,19 +32,19 @@
         </div>
         <div class="col-md-3">
           <label class="form-label">Prix standard Brest (€)</label>
-          <input class="form-control" name="price_std_brest" value="{{ '%.2f'|format(a.price_std_brest / 100) if a else '0.00' }}" required>
+          <input class="form-control" name="price_std_brest" value="{{ '%.2f'|format(a.price_std_brest / 100) if a else '0.00' }}" {% if own != 'brest' %}disabled{% endif %} required>
         </div>
         <div class="col-md-3">
           <label class="form-label">Prix standard Paris (€)</label>
-          <input class="form-control" name="price_std_paris" value="{{ '%.2f'|format(a.price_std_paris / 100) if a else '0.00' }}" required>
+          <input class="form-control" name="price_std_paris" value="{{ '%.2f'|format(a.price_std_paris / 100) if a else '0.00' }}" {% if own != 'paris' %}disabled{% endif %} required>
         </div>
         <div class="col-md-3">
           <label class="form-label">Prix équipe Brest (€)</label>
-          <input class="form-control" name="price_team_brest" value="{{ '%.2f'|format(a.price_team_brest / 100) if a else '0.00' }}" required>
+          <input class="form-control" name="price_team_brest" value="{{ '%.2f'|format(a.price_team_brest / 100) if a else '0.00' }}" {% if own != 'brest' %}disabled{% endif %} required>
         </div>
         <div class="col-md-3">
           <label class="form-label">Prix équipe Paris (€)</label>
-          <input class="form-control" name="price_team_paris" value="{{ '%.2f'|format(a.price_team_paris / 100) if a else '0.00' }}" required>
+          <input class="form-control" name="price_team_paris" value="{{ '%.2f'|format(a.price_team_paris / 100) if a else '0.00' }}" {% if own != 'paris' %}disabled{% endif %} required>
         </div>
         <div class="col-12">
           <div class="form-check form-switch">

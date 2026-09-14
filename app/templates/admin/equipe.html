@@ -23,7 +23,13 @@
           <td><strong>{{ u.name }}</strong></td>
           <td>{% if u.team_status == 'mandat' %}<span class="badge bg-success">mandat</span>{% else %}<span class="badge bg-secondary">ancien</span>{% endif %}</td>
           <td>{{ CAMPUSSES.get(u.team_campus, '—') }}</td>
-          <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.membre', user_id=u.id) }}">Gérer</a></td>
+          <td class="text-end">
+            {% if u.team_campus in (None, own_campus) %}
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.membre', user_id=u.id) }}">Gérer</a>
+            {% else %}
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.membre', user_id=u.id) }}">Voir</a>
+            {% endif %}
+          </td>
         </tr>
         {% else %}
         <tr><td colspan="4" class="text-center text-muted py-4">Aucun membre d'équipe.</td></tr>

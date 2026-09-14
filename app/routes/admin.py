@@ -53,6 +53,23 @@ def session_campus():
     return campus if campus in CAMPUSSES else "brest"
 
 
+def own_campus():
+    """Campus d'appartenance du membre : seul campus où il peut écrire,
+    même s'il est connecté sur l'autre campus (lecture seule)."""
+    u = g.current_user
+    if u is not None and u.team_campus in CAMPUSSES:
+        return u.team_campus
+    return session_campus()
+
+
+def view_campus():
+    """Campus affiché sur les pages de gestion : le campus de la connexion
+    sauf consultation explicite de l'autre campus via ?campus=… — la page
+    est en lecture seule dès qu'il diffère du campus d'appartenance."""
+    campus = request.args.get("campus")
+    return campus if campus in CAMPUSSES else session_campus()
+
+
 @bp.route("/comptes")
 @login_required
 def comptes():
@@ -163,7 +180,7 @@ def equipe():
     members = db.session.scalars(
         select(User).where(User.team_status.is_not(None)).order_by(User.name)
     ).unique().all()
-    return render_template("admin/equipe.html", members=members)
+    return render_template("admin/equipe.html", members=members, own_campus=own_campus())
 
 
 @bp.route("/equipe/<int:user_id>", methods=["GET", "POST"])
@@ -172,12 +189,19 @@ def membre(user_id):
     u = db.session.get(User, user_id)
     if u is None:
         abort(404)
+    own = own_campus()
+    # chaque équipe gère les membres de son campus ; un membre sans campus
+    # attribué peut être rattaché par n'importe quelle équipe
+    editable = u.team_campus in (None, own)
     if request.method == "POST":
+        if not editable:
+            abort(403)
         status = request.form.get("team_status", "")
         if status not in ("mandat", "ancien", ""):
             status = ""
         u.team_status = status or None
-        u.team_campus = request.form.get("team_campus") if u.team_status else None
+        # le membre est rattaché au campus de l'équipe qui le gère
+        u.team_campus = own if u.team_status else None
         password = request.form.get("password") or ""
         if password:
             if len(password) < 6:
@@ -189,7 +213,7 @@ def membre(user_id):
         db.session.commit()
         flash("Membre mis à jour.", "success")
         return redirect(url_for("admin.membre", user_id=u.id))
-    return render_template("admin/membre.html", u=u)
+    return render_template("admin/membre.html", u=u, editable=editable, own_campus=own)
 
 
 @bp.route("/articles")
@@ -205,12 +229,12 @@ def articles():
 @login_required
 def article_nouveau():
     if request.method == "POST":
-        a = _article_from_form(Article())
+        a = _article_from_form(Article(), own_campus())
         db.session.add(a)
         db.session.commit()
         flash("Article créé.", "success")
         return redirect(url_for("admin.articles"))
-    return render_template("admin/article_form.html", a=None)
+    return render_template("admin/article_form.html", a=None, own=own_campus())
 
 
 @bp.route("/articles/<int:article_id>", methods=["GET", "POST"])
@@ -223,11 +247,11 @@ def article(article_id):
         flash("Les articles tireuse et évènement se gèrent dans leurs onglets dédiés.", "warning")
         return redirect(url_for("admin.articles"))
     if request.method == "POST":
-        _article_from_form(a)
+        _article_from_form(a, own_campus())
         db.session.commit()
         flash("Article mis à jour.", "success")
         return redirect(url_for("admin.articles"))
-    return render_template("admin/article_form.html", a=a)
+    return render_template("admin/article_form.html", a=a, own=own_campus())
 
 
 @bp.route("/articles/<int:article_id>/supprimer", methods=["POST"])
@@ -241,41 +265,49 @@ def article_supprimer(article_id):
     return redirect(url_for("admin.articles"))
 
 
-def _article_from_form(a):
+def _article_from_form(a, writable_campus):
     a.name = (request.form.get("name") or "Sans nom").strip()
     a.article_type = request.form.get("article_type", "biere")
     if a.article_type not in ARTICLE_TYPES:
         a.article_type = "biere"
     volume = request.form.get("volume_cl", "").strip()
     a.volume_cl = int(volume) if volume.isdigit() else None
-    a.price_std_brest = cents(request.form.get("price_std_brest", "0"))
-    a.price_std_paris = cents(request.form.get("price_std_paris", "0"))
-    a.price_team_brest = cents(request.form.get("price_team_brest", "0"))
-    a.price_team_paris = cents(request.form.get("price_team_paris", "0"))
     a.is_alcohol = request.form.get("is_alcohol") == "on"
     a.active = request.form.get("active", "on") == "on"
+    # les prix de l'autre campus ne sont pas modifiables : sur un article
+    # existant ils sont conservés, à la création ils restent à 0 (l'article
+    # n'y sera vendable qu'une fois les prix saisis par l'équipe concernée)
+    if writable_campus == "brest":
+        a.price_std_brest = cents(request.form.get("price_std_brest", "0"))
+        a.price_team_brest = cents(request.form.get("price_team_brest", "0"))
+    if writable_campus == "paris":
+        a.price_std_paris = cents(request.form.get("price_std_paris", "0"))
+        a.price_team_paris = cents(request.form.get("price_team_paris", "0"))
     return a
 
 
 @bp.route("/tireuses")
 @login_required
 def tireuses():
-    campus = session_campus()
+    campus = view_campus()
+    writable = campus == own_campus()
     kegs = db.session.scalars(select(Keg).order_by(Keg.active.desc(), Keg.name)).unique().all()
     taps = db.session.scalars(select(Tap).where(Tap.campus == campus).order_by(Tap.number)).all()
     all_taps = db.session.scalars(select(Tap)).all()
     free_kegs = [k for k in kegs if k.remaining_l > 0.01 and not any(t.keg_id == k.id for t in all_taps)]
-    return render_template("admin/tireuses.html", kegs=kegs, taps=taps, free_kegs=free_kegs, campus=campus)
+    return render_template(
+        "admin/tireuses.html",
+        kegs=kegs, taps=taps, free_kegs=free_kegs,
+        campus=campus, writable=writable, own_campus=own_campus(),
+    )
 
 
 @bp.route("/tireuses/kegs/nouveau", methods=["POST"])
 @login_required
 def keg_nouveau():
-    keg = _keg_from_form(Keg())
+    keg = _keg_from_form(Keg(), own_campus())
     keg.remaining_l = keg.volume_l
     db.session.add(keg)
-    for c in CAMPUSSES:
-        keg.price_row(c)
     db.session.commit()
     flash("Fût enregistré.", "success")
     return redirect(url_for("admin.tireuses"))
@@ -288,13 +320,13 @@ def keg(keg_id):
     if keg is None:
         abort(404)
     if request.method == "POST":
-        _keg_from_form(keg)
+        _keg_from_form(keg, own_campus())
         db.session.commit()
         if request.form.get("refresh_articles") == "on":
-            C.refresh_tap_articles(keg)
+            C.refresh_tap_articles(keg, campus=own_campus())
         flash("Fût mis à jour.", "success")
         return redirect(url_for("admin.tireuses"))
-    return render_template("admin/keg_form.html", keg=keg)
+    return render_template("admin/keg_form.html", keg=keg, own=own_campus())
 
 
 @bp.route("/tireuses/kegs/<int:keg_id>/supprimer", methods=["POST"])
@@ -302,6 +334,14 @@ def keg(keg_id):
 def keg_supprimer(keg_id):
     keg = db.session.get(Keg, keg_id)
     if keg:
+        mounted_elsewhere = [
+            t for t in db.session.scalars(select(Tap).where(Tap.keg_id == keg.id))
+            if t.campus != own_campus()
+        ]
+        if mounted_elsewhere:
+            labels = ", ".join(f"{t.display_name} ({CAMPUSSES[t.campus]})" for t in mounted_elsewhere)
+            flash(f"Suppression impossible : ce fût est monté sur {labels}. Demandez à l'équipe concernée de le détacher.", "danger")
+            return redirect(url_for("admin.tireuses"))
         for tap in list(db.session.scalars(select(Tap).where(Tap.keg_id == keg.id))):
             C.detach_keg(tap)
         db.session.delete(keg)
@@ -310,7 +350,7 @@ def keg_supprimer(keg_id):
     return redirect(url_for("admin.tireuses"))
 
 
-def _keg_from_form(k):
+def _keg_from_form(k, writable_campus):
     k.name = (request.form.get("name") or "Sans nom").strip()
     try:
         k.alcohol_degree = float(request.form.get("alcohol_degree", "0").replace(",", "."))
@@ -321,6 +361,9 @@ def _keg_from_form(k):
     k.active = request.form.get("active", "on") == "on"
     for c in CAMPUSSES:
         row = k.price_row(c)
+        if c != writable_campus:
+            # les prix de l'autre campus sont consultables mais non modifiables
+            continue
         row.price_half_std = cents(request.form.get(f"{c}_half_std", "0"))
         row.price_pint_std = cents(request.form.get(f"{c}_pint_std", "0"))
         row.price_pot_std = cents(request.form.get(f"{c}_pot_std", "0"))
@@ -334,7 +377,7 @@ def _keg_from_form(k):
 @login_required
 def tap_nouveau():
     name = (request.form.get("name") or "").strip()
-    campus = session_campus()
+    campus = own_campus()
     if not name:
         flash("Le nom de la tireuse est obligatoire.", "danger")
         return redirect(url_for("admin.tireuses"))
@@ -352,7 +395,7 @@ def tap_nouveau():
 
 def _campus_tap_or_404(tap_id):
     tap = db.session.get(Tap, tap_id)
-    if tap is None or tap.campus != session_campus():
+    if tap is None or tap.campus != own_campus():
         return None
     return tap
 
@@ -424,14 +467,14 @@ def evenements():
         ev.id: len(db.session.scalars(select(Article).where(Article.event_id == ev.id)).all())
         for ev in events
     }
-    return render_template("admin/evenements.html", events=events, article_counts=counts)
+    return render_template("admin/evenements.html", events=events, article_counts=counts, own_campus=own_campus())
 
 
 @bp.route("/evenements/nouveau", methods=["POST"])
 @login_required
 def evenement_nouveau():
     name = (request.form.get("name") or "").strip()
-    campus = request.form.get("campus", "brest")
+    campus = own_campus()
     try:
         starts = paris_to_utc(datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"))
         ends = paris_to_utc(datetime.strptime(request.form.get("ends_at", ""), "%Y-%m-%dT%H:%M"))
@@ -442,7 +485,7 @@ def evenement_nouveau():
         flash("Nom et horaires cohérents requis.", "danger")
         return redirect(url_for("admin.evenements"))
     poster = save_upload(request.files.get("poster"), allowed=(".jpg", ".jpeg", ".png", ".webp"))
-    ev = Event(name=name, campus=campus if campus in CAMPUSSES else "brest", starts_at=starts, ends_at=ends, token=new_token(), poster=poster)
+    ev = Event(name=name, campus=campus, starts_at=starts, ends_at=ends, token=new_token(), poster=poster)
     db.session.add(ev)
     db.session.commit()
     flash("Événement créé.", "success")
@@ -455,11 +498,14 @@ def evenement(event_id):
     ev = db.session.get(Event, event_id)
     if ev is None:
         abort(404)
+    writable = ev.campus == own_campus()
     if request.method == "POST":
+        if not writable:
+            abort(403)
         action = request.form.get("action", "edit")
         if action == "edit":
             ev.name = (request.form.get("name") or ev.name).strip()
-            ev.campus = request.form.get("campus", ev.campus)
+            ev.campus = own_campus()
             try:
                 ev.starts_at = paris_to_utc(datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"))
                 ev.ends_at = paris_to_utc(datetime.strptime(request.form.get("ends_at", ""), "%Y-%m-%dT%H:%M"))
@@ -498,7 +544,7 @@ def evenement(event_id):
     temp_articles = db.session.scalars(
         select(Article).where(Article.event_id == ev.id).order_by(Article.name)
     ).all()
-    return render_template("admin/evenement.html", ev=ev, temp_articles=temp_articles)
+    return render_template("admin/evenement.html", ev=ev, temp_articles=temp_articles, writable=writable, own_campus=own_campus())
 
 
 @bp.route("/journaux")
@@ -533,6 +579,7 @@ def journaux():
 @bp.route("/module-dev", methods=["GET", "POST"])
 @login_required
 def module_dev():
+    own = own_campus()
     if request.method == "POST":
         action = request.form.get("action", "settings")
         if action == "settings":
@@ -540,31 +587,29 @@ def module_dev():
                 "overdraft_limit_cents", "deposit_value_cents", "deposit_enabled",
                 "max_history_days", "login_logs_retention_days", "session_timeout_minutes",
                 "max_postits_private", "max_postits_public", "homepage_text",
-                "theme_color_public", "theme_color_brest", "theme_color_paris", "site_name",
+                "theme_color_public", "site_name",
                 "link_hosting", "link_database", "link_repository",
             ):
                 if key in request.form:
                     S.set_setting(key, request.form[key])
+            # thème/logos/règlements par campus : seul le campus de l'équipe
+            # connectée est modifiable
+            if f"theme_color_{own}" in request.form:
+                S.set_setting(f"theme_color_{own}", request.form[f"theme_color_{own}"])
             try:
                 S.set_setting("overdraft_limit_cents", cents(request.form.get("overdraft_limit_cents", "0")))
                 S.set_setting("deposit_value_cents", cents(request.form.get("deposit_value_cents", "0")))
             except Exception:
                 pass
-            pdf_b = save_upload(request.files.get("regulation_pdf_brest"), allowed=(".pdf",))
-            pdf_p = save_upload(request.files.get("regulation_pdf_paris"), allowed=(".pdf",))
-            logo_b = save_upload(request.files.get("logo_brest"), allowed=(".jpg", ".jpeg", ".png", ".webp", ".svg"))
-            logo_p = save_upload(request.files.get("logo_paris"), allowed=(".jpg", ".jpeg", ".png", ".webp", ".svg"))
-            if pdf_b:
-                S.set_setting("regulation_pdf_brest", pdf_b)
-            if pdf_p:
-                S.set_setting("regulation_pdf_paris", pdf_p)
-            if logo_b:
-                S.set_setting("logo_brest", logo_b)
-            if logo_p:
-                S.set_setting("logo_paris", logo_p)
+            pdf_own = save_upload(request.files.get(f"regulation_pdf_{own}"), allowed=(".pdf",))
+            logo_own = save_upload(request.files.get(f"logo_{own}"), allowed=(".jpg", ".jpeg", ".png", ".webp", ".svg"))
+            if pdf_own:
+                S.set_setting(f"regulation_pdf_{own}", pdf_own)
+            if logo_own:
+                S.set_setting(f"logo_{own}", logo_own)
             flash("Paramètres enregistrés.", "success")
         elif action == "reset_theme_colors":
-            for key in ("theme_color_public", "theme_color_brest", "theme_color_paris"):
+            for key in ("theme_color_public", f"theme_color_{own}"):
                 S.set_setting(key, S.DEFAULTS[key])
             flash("Couleurs réinitialisées aux valeurs par défaut.", "success")
         elif action == "password":
@@ -594,4 +639,4 @@ def module_dev():
         return redirect(url_for("admin.module_dev"))
     links = db.session.scalars(select(UsefulLink).order_by(UsefulLink.position)).all()
     values = {k: S.get_setting(k) for k in S.DEFAULTS}
-    return render_template("admin/module_dev.html", values=values, links=links)
+    return render_template("admin/module_dev.html", values=values, links=links, own_campus=own)

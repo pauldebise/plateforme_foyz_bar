@@ -3,6 +3,20 @@
 {% block content %}
 <h1 class="h3 mb-4"><i class="bi bi-person-badge"></i> Gestion du membre : {{ u.name }}</h1>
 
+{% if not editable %}
+<div class="card" style="max-width: 560px;">
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-4">Statut équipe</dt>
+      <dd class="col-sm-8">{% if u.team_status %}<span class="badge bg-{{ 'success' if u.team_status == 'mandat' else 'secondary' }}">{{ u.team_status }}</span>{% else %}<span class="text-muted">Pas d'accès équipe</span>{% endif %}</dd>
+      <dt class="col-sm-4">Campus</dt>
+      <dd class="col-sm-8">{{ CAMPUSSES.get(u.team_campus, '—') }}</dd>
+      <dt class="col-sm-4">Mot de passe</dt>
+      <dd class="col-sm-8">{% if u.password_hash %}défini{% else %}<span class="text-muted">non défini</span>{% endif %}</dd>
+    </dl>
+  </div>
+</div>
+{% else %}
 <div class="row g-4">
   <div class="col-lg-6">
     <div class="card">
@@ -20,13 +34,8 @@
             {% if u.blacklist %}<div class="form-text text-danger">Attention : ce compte est blacklisté, il ne peut pas se connecter.</div>{% endif %}
           </div>
           <div class="mb-3">
-            <label class="form-label">Campus de mandat</label>
-            <select class="form-select" name="team_campus">
-              <option value="">—</option>
-              {% for key, label in CAMPUSSES.items() %}
-              <option value="{{ key }}" {% if u.team_campus == key %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
+            <label class="form-label">Campus</label>
+            <input class="form-control" value="{{ CAMPUSSES[own_campus] }}" disabled>
           </div>
           <button class="btn btn-primary">Enregistrer</button>
         </form>
@@ -41,7 +50,6 @@
         <form method="post" enctype="multipart/form-data">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="team_status" value="{{ u.team_status or '' }}">
-          <input type="hidden" name="team_campus" value="{{ u.team_campus or '' }}">
           <div class="mb-3">
             <label class="form-label">Nouveau mot de passe</label>
             <input class="form-control" type="password" name="password" placeholder="{% if u.password_hash %}laisser vide pour conserver{% else %}définir un mot de passe{% endif %}">
@@ -53,4 +61,5 @@
     </div>
   </div>
 </div>
+{% endif %}
 {% endblock %}

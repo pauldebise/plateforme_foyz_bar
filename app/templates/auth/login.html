@@ -17,14 +17,13 @@
           <input class="form-control" type="password" name="password" autocomplete="current-password" required>
         </div>
         <div class="mb-4">
-          <label class="form-label d-block">Lieu de connexion</label>
+          <label class="form-label d-block">Campus</label>
           <div class="btn-group w-100" role="group">
             {% for key, label in CAMPUSSES.items() %}
             <input type="radio" class="btn-check" name="campus" value="{{ key }}" id="c-{{ key }}" {% if campus == key %}checked{% endif %}>
             <label class="btn btn-outline-primary" for="c-{{ key }}"><i class="bi bi-geo-alt"></i> {{ label }}</label>
             {% endfor %}
           </div>
-          <div class="form-text">Détermine le portefeuille utilisé pour les encaissements et les bilans.</div>
         </div>
         <button class="btn btn-primary w-100">Se connecter</button>
       </form>

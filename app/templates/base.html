@@ -31,6 +31,9 @@
         {% if logo %}<img src="/uploads/{{ logo }}" alt="" class="brand-logo">{% endif %}
         <a class="brand-name fw-bold text-white text-decoration-none" href="{{ url_for('team.payment') }}">{{ site_name }}</a>
         <span class="badge bg-light text-dark flex-shrink-0">{{ CAMPUSSES[current_campus] }}</span>
+        {% if own_campus and current_campus != own_campus %}
+        <span class="badge bg-warning text-dark flex-shrink-0" title="Consultation en lecture seule">lecture seule</span>
+        {% endif %}
       </div>
       <button class="btn btn-outline-light btn-sm d-lg-none w-100 my-2" data-bs-toggle="collapse" data-bs-target="#sideNav"><i class="bi bi-list"></i> Menu</button>
       <nav id="sideNav" class="collapse d-lg-block mt-2">
