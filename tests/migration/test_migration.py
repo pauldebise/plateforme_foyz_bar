@@ -74,6 +74,27 @@ def test_normalize_and_dates():
             "ISO tz -> UTC")
 
 
+def test_slug_username():
+    cases = {
+        "Paul Debise": "paul.debise",
+        "Marie Claire Dupont": "marie.claire.dupont",
+        "  ÉLÈVE Dupont ": "eleve.dupont",
+        "Jean-Luc Picard": "jean.luc.picard",
+        "O'Brien": "obrien",
+        "a  b\tc": "a.b.c",
+    }
+    for raw, expected in cases.items():
+        _expect(util.slug_username(raw) == expected, f"slug {raw!r} -> {expected}")
+    _expect(util.slug_username("") is None, "slug vide -> None")
+    _expect(util.slug_username(None) is None, "slug None -> None")
+    _expect(len(util.slug_username("x" * 100)) == 64, "slug borné à 64")
+    # miroir app <-> migration : le login et l'import doivent produire les
+    # mêmes identifiants
+    from app.utils import slug_username as app_slug
+    for raw, expected in cases.items():
+        _expect(app_slug(raw) == expected, f"miroir app slug {raw!r}")
+
+
 def test_logfilter():
     _expect(logfilter.is_log_table("log_actions"), "log_actions = log")
     _expect(logfilter.is_log_table("logs_actions"), "logs_actions = log")
@@ -145,21 +166,35 @@ def test_user_password_and_real_name_mapping():
          "balance": "-26.18", "is_foyz": 1, "promo": "CI2028"},
         "brest", "euros")
     _expect(warning is None, "ligne utilisateur valide")
-    _expect(user["name"] == "Paul Debise",
-            f"identifiant de connexion = real_name ({user['name']})")
+    _expect(user["name"] == "Paul Debise", f"nom réel affiché ({user['name']})")
+    _expect(user["nickname"] == "aime secretement massé Paul DEBISE chips vachement bete",
+            f"pseudo conservé en surnom ({user['nickname']})")
+    _expect(user["username"] == "paul.debise",
+            f"identifiant de connexion = slug du nom réel ({user['username']})")
     _expect(user["key"] == "paul debise", "clé de réconciliation = nom réel")
     _expect(user["password_hash"] is None, "bcrypt -> pas un hash werkzeug")
     _expect(user["legacy_password"] == "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC",
             "bcrypt conservé brut dans legacy_password")
-    # Hash werkzeug source -> réutilisé tel quel en cible, rien en legacy
+    # Hash werkzeug source -> réutilisé tel quel en cible, rien en legacy ;
+    # pseudo confondu avec le nom réel -> pas de surnom redondant
     werkzeug_hash = "pbkdf2:sha256:600000$sel$deadbeef"
     reuser, _ = map_user_row({"name": "x", "mdp": werkzeug_hash}, "brest", "euros")
+    _expect(reuser["name"] == "x" and reuser["nickname"] is None,
+            "pseudo seul : nom = pseudo, pas de surnom")
+    _expect(reuser["username"] == "x", "identifiant = pseudo slughé")
     _expect(reuser["password_hash"] == werkzeug_hash and reuser["legacy_password"] is None,
             "hash werkzeug -> password_hash")
     # Sans mot de passe ni real_name : pseudo seul, rien importé
     plain, _ = map_user_row({"name": "y"}, "brest", "euros")
     _expect(plain["name"] == "y" and plain["password_hash"] is None
             and plain["legacy_password"] is None, "sans mot de passe -> legacy None")
+    # prénom + nom séparés (Paris) : nom réel composé, pseudo conservé
+    paris, _ = map_user_row({"prenom": "Marie", "nom": "Le Goff", "pseudo": "marie.legoff"},
+                            "paris", "euros")
+    _expect(paris["name"] == "Marie Le Goff", f"prénom+nom -> nom réel ({paris['name']})")
+    _expect(paris["nickname"] == "marie.legoff", "pseudo Paris conservé en surnom")
+    _expect(paris["username"] == "marie.le.goff",
+            f"identifiant multi-mots ({paris['username']})")
 
 
 def test_bit_literals_and_html():
@@ -311,8 +346,19 @@ def test_e2e_run_and_invariants():
     # fusion : l'email commun doit donner un compte avec DEUX portefeuilles
     merged = c.execute(
         "SELECT COUNT(*) FROM users u JOIN wallets w ON w.user_id = u.id "
-        "WHERE u.name LIKE 'marie%' GROUP BY u.id HAVING COUNT(*) = 2"
+        "WHERE u.username LIKE 'marie%' GROUP BY u.id HAVING COUNT(*) = 2"
     ).fetchall()
+    # identifiants : username = slug du nom réel, surnom = pseudo source
+    # (Brest prioritaire à la fusion)
+    leo = c.execute(
+        "SELECT name, nickname FROM users WHERE username = 'leo.martin'"
+    ).fetchone()
+    marie = c.execute(
+        "SELECT nickname FROM users WHERE username = 'marie.le.goff'"
+    ).fetchone()
+    usernames = [r[0] for r in c.execute("SELECT username FROM users").fetchall()]
+    users_with_login = [u for u in usernames if u]
+    _expect(len(users_with_login) == len(set(users_with_login)), "identifiants uniques")
     staging_left = c.execute(
         "SELECT COUNT(*) FROM sqlite_master WHERE name='staging_paris_raw'"
     ).fetchone()[0]
@@ -340,17 +386,18 @@ def test_e2e_run_and_invariants():
     taps_map = dict(c.execute(
         "SELECT t.number, k.name FROM taps t JOIN kegs k ON k.id = t.keg_id").fetchall())
     motif = c.execute(
-        "SELECT blacklist_reason FROM users WHERE name='baptiste.chevalier'").fetchone()[0]
+        "SELECT blacklist_reason FROM users WHERE username='baptiste.chevalier'").fetchone()[0]
     alcool_bit = c.execute(
-        "SELECT blacklist_alcohol FROM users WHERE name='manon.robin'").fetchone()[0]
+        "SELECT blacklist_alcohol FROM users WHERE username='manon.robin'").fetchone()[0]
     # ---- opérations éclatées Brest : payments / withdrawals / transfert
     pay = c.execute(
         "SELECT t.total, t.payment_method, t.operator_label, u.name "
         "FROM transactions t LEFT JOIN users u ON u.id = t.to_user_id "
         "WHERE t.campus='brest' AND t.type='rechargement' AND t.total=2000 "
         "AND t.payment_method='cb'").fetchall()
-    _expect(len(pay) == 1 and pay[0][2] == "camille.rousseau" and pay[0][3] == "léo.martin",
-            f"rechargement payments + opérateur résolu en nom ({pay})")
+    _expect(len(pay) == 1 and pay[0][2] == "Camille Rousseau (camille.rousseau)"
+            and pay[0][3] == "Léo Martin",
+            f"rechargement payments + opérateur résolu en nom long ({pay})")
     check_pay = c.execute(
         "SELECT payment_method FROM transactions WHERE campus='brest' "
         "AND type='rechargement' AND note LIKE 'moyen de paiement source : Check'"
@@ -361,17 +408,17 @@ def test_e2e_run_and_invariants():
         "SELECT u.name, c.amount, c.balance_after FROM contributions c "
         "JOIN users u ON u.id = c.user_id JOIN transactions t ON t.id = c.transaction_id "
         "WHERE t.campus='brest' AND t.type='rechargement' AND t.total=2000").fetchall()
-    _expect(pay_contrib == [("léo.martin", 2000, 0)],
+    _expect(pay_contrib == [("Léo Martin", 2000, 0)],
             f"contribution rechargement importé ({pay_contrib})")
     wd = c.execute(
         "SELECT t.total, u.name FROM transactions t JOIN users u ON u.id = t.from_user_id "
         "WHERE t.campus='brest' AND t.type='retrait' AND t.total=1500").fetchall()
-    _expect(wd == [(1500, "anaïs.costa")], f"retrait withdrawals importé ({wd})")
+    _expect(wd == [(1500, "Anaïs Costa")], f"retrait withdrawals importé ({wd})")
     tr = c.execute(
         "SELECT t.total, uf.name, ut.name FROM transactions t "
         "JOIN users uf ON uf.id = t.from_user_id JOIN users ut ON ut.id = t.to_user_id "
         "WHERE t.campus='brest' AND t.type='transfert' AND t.total=500").fetchall()
-    _expect(tr == [(500, "léo.martin", "hugo.petit")], f"transfert apparié ({tr})")
+    _expect(tr == [(500, "Léo Martin", "Hugo Petit")], f"transfert apparié ({tr})")
     tr_contrib = c.execute(
         "SELECT c.amount FROM contributions c JOIN transactions t ON t.id = c.transaction_id "
         "WHERE t.campus='brest' AND t.type='transfert' AND t.total=500 "
@@ -398,6 +445,8 @@ def test_e2e_run_and_invariants():
                      + manifest["brest_transfer_txns"]),
             f"transactions {txns}")
     _expect(len(merged) == 1, "compte fusionné avec 2 portefeuilles")
+    _expect(leo == ("Léo Martin", "léo.martin"), f"nom réel + surnom importés ({leo})")
+    _expect(marie == ("marie.le goff",), f"surnom Brest prioritaire à la fusion ({marie})")
     _expect(staging_left == 0, "staging supprimée après commit")
     _expect(n_articles == manifest["brest_articles"] + manifest["paris_articles"]
             + manifest["brest_tap_articles"], f"articles importés {n_articles}")
@@ -480,8 +529,8 @@ def test_e2e_preexisting_target_delta():
     manifest = _prepare(src / "sources")
     _fresh_db(db_path)
     c = sqlite3.connect(db_path)
-    c.execute("INSERT INTO users (name, blacklist, blacklist_alcohol, created_at) "
-              "VALUES ('Existant User',0,0,'2026-01-01 00:00:00')")
+    c.execute("INSERT INTO users (username, name, blacklist, blacklist_alcohol, created_at) "
+              "VALUES ('existant.user', 'Existant User',0,0,'2026-01-01 00:00:00')")
     uid = c.execute("SELECT last_insert_rowid()").fetchone()[0]
     c.execute("INSERT INTO wallets (user_id, campus, balance, glasses_outstanding) "
               "VALUES (?, 'brest', 500, 0)", (uid,))

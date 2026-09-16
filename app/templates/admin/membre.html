@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Membre — {{ u.name }}{% endblock %}
+{% block title %}Membre — {{ u.display_name }}{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4"><i class="bi bi-person-badge"></i> Gestion du membre : {{ u.name }}</h1>
+<h1 class="h3 mb-4"><i class="bi bi-person-badge"></i> Gestion du membre : {{ u.display_name }}</h1>
 
 {% if not editable %}
 <div class="card" style="max-width: 560px;">
@@ -47,6 +47,7 @@
     <div class="card">
       <div class="card-header">Identifiants de connexion</div>
       <div class="card-body">
+        <p class="form-text">Identifiant : <strong>{{ u.username }}</strong> (prenom.nom, modifiable dans l'onglet Comptes).</p>
         <form method="post" enctype="multipart/form-data">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="team_status" value="{{ u.team_status or '' }}">

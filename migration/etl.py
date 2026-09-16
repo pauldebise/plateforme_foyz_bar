@@ -6,11 +6,13 @@ Déroulé (le tout DANS la transaction ouverte par la CLI) :
   3. passe « référence » : types d'articles Brest (id -> nom), préchargés pour
      résoudre le type des articles et des lignes de vente ;
   4. passe « comptes » : Brest (streaming dump) + Paris (staging) -> index par
-     clé de réconciliation (email, sinon pseudo, sinon prenom.nom) ;
+     clé de réconciliation (email, sinon nom réel) ;
    5. fusion des comptes présents sur les deux campus, insertion des users +
-      wallets (un par campus, solde = solde source du campus ; motif de
-      blacklist importé, mot de passe conservé : hash werkzeug réutilisable
-      ou valeur legacy brute — bcrypt/md5 — vérifiée à la connexion) ;
+      wallets (un par campus, solde = solde source du campus ; identifiant de
+      connexion prenom.nom dédoublonné, surnom d'usage conservé pour
+      l'affichage ; motif de blacklist importé, mot de passe conservé : hash
+      werkzeug réutilisable ou valeur legacy brute — bcrypt/md5 — vérifiée à
+      la connexion) ;
   6. passe « catalogue » : articles (prix public/équipe), fûts pressions
      (kegs + keg_prices) et état courant des tireuses (taps + articles de
      tireuse régénérés comme app.services.catalog) ;
@@ -40,15 +42,15 @@ from .sources import (TAP_NUMBERS, TAP_SIZES, map_article_row, map_keg_row,
                       map_transaction_row, map_user_row)
 from .sources import paris as paris_contract
 from . import staging
-from .util import normalize_key, utcnow as now_utc
+from .util import normalize_key, slug_username, utcnow as now_utc
 
 _USERS_SQL = (
-    "INSERT INTO users (name, promotion, password_hash, legacy_password, "
-    "team_status, team_campus, blacklist, blacklist_alcohol, blacklist_reason, "
-    "created_at) "
-    "VALUES (:name, :promotion, :password_hash, :legacy_password, "
-    ":team_status, :team_campus, :blacklist, :blacklist_alcohol, :blacklist_reason, "
-    ":created_at) RETURNING id"
+    "INSERT INTO users (username, nickname, name, promotion, password_hash, "
+    "legacy_password, team_status, team_campus, blacklist, blacklist_alcohol, "
+    "blacklist_reason, created_at) "
+    "VALUES (:username, :nickname, :name, :promotion, :password_hash, "
+    ":legacy_password, :team_status, :team_campus, :blacklist, :blacklist_alcohol, "
+    ":blacklist_reason, :created_at) RETURNING id"
 )
 _WALLET_SQL = (
     "INSERT INTO wallets (user_id, campus, balance, glasses_outstanding) "
@@ -262,13 +264,13 @@ class Migrator:
         self.key_order = {"brest": [], "paris": []}
         self.id_map = {"brest": {}, "paris": {}}         # src_id -> key
         self.target_id_by_key = {}
-        self.target_names = {}                           # id cible -> nom (opérateurs)
+        self.target_names = {}                           # id cible -> libellé affiché (opérateurs)
         self.txn_id_map = {"brest": {}, "paris": {}}     # src txn id -> target id
         self.type_names = {}                             # article_types id -> nom
         self.article_id_map = {}                         # src article id -> cible
         self.keg_id_map = {}                             # src keg id -> (cible, obj)
         self.tap_candidates = {}                         # tap n° -> (clé_tri, obj)
-        self.names_taken = set()
+        self.usernames_taken = set()
         self.counts = defaultdict(int)
         self.initial_totals = audit.capture_target(conn)
 
@@ -313,28 +315,24 @@ class Migrator:
             self.key_order[campus].append(key)
             self.source_sums[campus] += user["balance_cents"]
 
-    def _unique_name(self, base):
-        """Rend le nom / surnom unique (insensible à la casse/accents)."""
+    def _unique_username(self, base):
+        """Rend l'identifiant de connexion unique : suffixe numérique en cas de
+        collision (insensible à la casse/accents car déjà slughé)."""
         if not base:
-            return None
-        base = str(base).strip()[:255]
-        norm = normalize_key(base)
-        if norm is None:
-            return None
+            return "user"
         candidate, i = base, 1
-        while normalize_key(candidate) in self.names_taken:
+        while candidate in self.usernames_taken:
             i += 1
-            suffix = f" {i}"
-            candidate = base[: 255 - len(suffix)] + suffix
-        self.names_taken.add(normalize_key(candidate))
+            candidate = f"{base}{i}"
+        self.usernames_taken.add(candidate)
         return candidate
 
     def insert_users_and_wallets(self):
-        # pré-charger les noms déjà en base (cible non vierge)
+        # pré-charger les identifiants déjà en base (cible non vierge)
         rows = self.conn.execute(
-            sa.text("SELECT name FROM users")
+            sa.text("SELECT username FROM users")
         ).fetchall()
-        self.names_taken = {normalize_key(r[0]) for r in rows if r[0]}
+        self.usernames_taken = {r[0] for r in rows if r[0]}
         if self.initial_totals.users:
             self.counts["users_preexistants"] = self.initial_totals.users
 
@@ -350,6 +348,9 @@ class Migrator:
             secondary = self.accounts[campuses[1]][key][0] if len(campuses) == 2 else None
 
             name = primary["name"] or (secondary["name"] if secondary else None) or key
+            # Surnom d'usage : Brest prioritaire (considéré identique sur les
+            # deux campus ; en cas de divergence le pseudo Brest gagne).
+            nickname = primary["nickname"] or (secondary["nickname"] if secondary else None)
             team_status = primary["team_status"] or (secondary["team_status"] if secondary else None)
             team_campus = primary["team_campus"] or (secondary["team_campus"] if secondary else None)
             if team_status and not team_campus:
@@ -365,8 +366,18 @@ class Migrator:
             else:
                 self.counts["passwords_a_reinitialiser"] += 1
 
+            # Identifiant de connexion : slug du nom réel (Brest prioritaire),
+            # dédoublonné par suffixe numérique sur l'unicité username.
+            username = self._unique_username(
+                primary["username"]
+                or (secondary["username"] if secondary else None)
+                or slug_username(name)
+                or "user"
+            )
             params = {
-                "name": self._unique_name(name) or "?",
+                "name": name,
+                "nickname": nickname,
+                "username": username,
                 "promotion": promotion,
                 "password_hash": password_hash,
                 "legacy_password": legacy_password,
@@ -383,7 +394,11 @@ class Migrator:
                 self.counts["motifs_blacklist"] += 1
             user_id = self.conn.execute(sa.text(_USERS_SQL), params).scalar_one()
             self.target_id_by_key[key] = user_id
-            self.target_names[user_id] = params["name"]
+            # Libellé opérateur = nom long complet (nom réel + surnom), comme
+            # partout ailleurs dans l'application.
+            self.target_names[user_id] = (
+                f"{params['name']} ({params['nickname']})" if params["nickname"] else params["name"]
+            )
 
             for c in campuses:
                 source_user, _ = self.accounts[c][key]

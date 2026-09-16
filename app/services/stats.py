@@ -133,7 +133,7 @@ def students_stats(filters=None):
         if team_only == "non_team" and u.is_team:
             continue
         result.append({
-            "name": u.name,
+            "name": u.display_name,
             "promotion": u.promotion,
             "is_team": u.is_team,
             "nb": e["nb"],

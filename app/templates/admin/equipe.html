@@ -20,7 +20,7 @@
       <tbody>
         {% for u in members %}
         <tr>
-          <td><strong>{{ u.name }}</strong></td>
+          <td><strong>{{ u.display_name }}</strong></td>
           <td>{% if u.team_status == 'mandat' %}<span class="badge bg-success">mandat</span>{% else %}<span class="badge bg-secondary">ancien</span>{% endif %}</td>
           <td>{{ CAMPUSSES.get(u.team_campus, '—') }}</td>
           <td class="text-end">

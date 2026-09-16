@@ -4,7 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, current_app, g, jsonify, redirect, render_template, request, session, url_for, send_from_directory, abort
-from sqlalchemy import func, select
+from sqlalchemy import select
 from werkzeug.security import generate_password_hash
 
 from app.config import get_config, UPLOAD_DIR
@@ -17,9 +17,9 @@ def ensure_dev_admin():
     from app.services.settings import get_setting, set_admin_password
 
     password = current_app.config.get("DEFAULT_ADMIN_PASSWORD", "admin")
-    admin = db.session.scalars(select(User).where(func.lower(User.name) == "admin")).first()
+    admin = db.session.scalars(select(User).where(User.username == "admin")).first()
     if admin is None:
-        admin = User(name="admin", team_status="mandat", team_campus="brest")
+        admin = User(name="admin", username="admin", team_status="mandat", team_campus="brest")
         db.session.add(admin)
     if not admin.password_hash:
         admin.password_hash = generate_password_hash(password)
@@ -30,6 +30,8 @@ def ensure_dev_admin():
 
 def ensure_schema_upgrades():
     from sqlalchemy import inspect, text
+
+    from app.utils import slug_username
 
     inspector = inspect(db.engine)
     table_columns = {
@@ -42,6 +44,40 @@ def ensure_schema_upgrades():
     if "users" in table_columns and "legacy_password" not in table_columns["users"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN legacy_password VARCHAR(255)"))
+    if "users" in table_columns:
+        cols = table_columns["users"]
+        with db.engine.begin() as conn:
+            if "username" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR(64)"))
+            if "nickname" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN nickname VARCHAR(255)"))
+        # Backfill des identifiants manquants (nouvelle colonne, ou comptes
+        # créés hors app) : slug du nom, dédoublonné par suffixe numérique.
+        with db.engine.begin() as conn:
+            taken = {
+                r[0] for r in conn.execute(text(
+                    "SELECT username FROM users WHERE username IS NOT NULL AND username != ''"
+                ))
+            }
+            for user_id, name in conn.execute(text(
+                "SELECT id, name FROM users WHERE username IS NULL OR username = ''"
+            )).fetchall():
+                base = slug_username(name) or "user"
+                candidate, i = base, 1
+                while candidate in taken:
+                    i += 1
+                    candidate = f"{base}{i}"
+                taken.add(candidate)
+                conn.execute(text("UPDATE users SET username = :u WHERE id = :i"),
+                             {"u": candidate, "i": user_id})
+        # L'unicité migre de name (désormais doublable : homonymes) vers username.
+        indexes = {ix["name"]: ix for ix in inspector.get_indexes("users")}
+        with db.engine.begin() as conn:
+            if indexes.get("ix_users_name", {}).get("unique"):
+                conn.execute(text("DROP INDEX ix_users_name"))
+                conn.execute(text("CREATE INDEX ix_users_name ON users (name)"))
+            if "ix_users_username" not in indexes:
+                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)"))
 
 
 def create_app():

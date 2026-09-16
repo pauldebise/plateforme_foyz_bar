@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Compte de {{ u.name }}{% endblock %}
+{% block title %}Compte de {{ u.display_name }}{% endblock %}
 {% block content %}
-<h1 class="h3 mb-1"><i class="bi bi-person"></i> {{ u.name }}</h1>
+<h1 class="h3 mb-1"><i class="bi bi-person"></i> {{ u.display_name }}</h1>
 <p class="text-muted">
+  Identifiant de connexion : <strong>{{ u.username }}</strong> ·
   Solde Brest : <strong>{{ u.wallet('brest').balance|eur }}</strong> ·
   Solde Paris : <strong>{{ u.wallet('paris').balance|eur }}</strong> ·
   Verres consignés : Brest {{ u.wallet('brest').glasses_outstanding }} / Paris {{ u.wallet('paris').glasses_outstanding }}
@@ -15,7 +16,13 @@
       <div class="card-body">
         <form method="post">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-          <div class="mb-3"><label class="form-label">Nom / surnom</label><input class="form-control" name="name" value="{{ u.name }}" required></div>
+          <div class="mb-3"><label class="form-label">Nom réel complet</label><input class="form-control" name="name" value="{{ u.name }}" required></div>
+          <div class="mb-3"><label class="form-label">Surnom <span class="text-muted small">(facultatif, utilisé à l'affichage)</span></label><input class="form-control" name="nickname" value="{{ u.nickname or '' }}"></div>
+          <div class="mb-3">
+            <label class="form-label">Identifiant de connexion</label>
+            <input class="form-control" name="username" value="{{ u.username }}">
+            <div class="form-text">Minuscules sans accents (prenom.nom). Uniquement pour la connexion.</div>
+          </div>
           <div class="mb-3"><label class="form-label">Promotion</label><input class="form-control" name="promotion" type="number" value="{{ u.promotion if u.promotion else '' }}"></div>
           <div class="form-check form-switch mb-2">
             <input class="form-check-input" type="checkbox" name="blacklist" id="bl" {% if u.blacklist %}checked{% endif %}>
@@ -73,7 +80,7 @@
   <div class="modal-dialog">
     <form class="modal-content" method="post" action="{{ url_for('admin.compte_supprimer', user_id=u.id) }}">
       <div class="modal-header">
-        <h5 class="modal-title">Supprimer le compte de {{ u.name }}</h5>
+        <h5 class="modal-title">Supprimer le compte de {{ u.display_name }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">

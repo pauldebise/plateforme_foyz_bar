@@ -42,7 +42,7 @@ def wallet(user_id):
     w = T.wallet_view(u, campus)
     return jsonify(
         id=u.id,
-        name=u.name,
+        name=u.display_name,
         balance=w.balance if w else 0,
         glasses=w.glasses_outstanding if w else 0,
         blacklist=u.blacklist,
@@ -59,7 +59,7 @@ def purchase():
         return jsonify(ok=False, error="Campus consulté en lecture seule : connectez-vous sur votre campus d'équipe."), 403
     try:
         t = T.create_purchase(
-            operator_label=g.current_user.name,
+            operator_label=g.current_user.display_name,
             campus=campus,
             items=payload.get("items", []),
             contributor_ids=payload.get("contributors", []),
@@ -84,7 +84,7 @@ def glasses_return():
         return jsonify(ok=False, error="Campus consulté en lecture seule : connectez-vous sur votre campus d'équipe."), 403
     try:
         t = T.return_glasses(
-            operator_label=g.current_user.name,
+            operator_label=g.current_user.display_name,
             campus=campus,
             user=u,
             count=payload.get("count", 0),

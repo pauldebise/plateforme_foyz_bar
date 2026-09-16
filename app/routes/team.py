@@ -28,7 +28,7 @@ def require_team_session():
 
 
 def operator():
-    return g.current_user.name
+    return g.current_user.display_name
 
 
 def campus():
@@ -112,7 +112,7 @@ def rechargement():
                 operator_label=operator(), campus=campus(), user=user,
                 amount_cents=amount, payment_method=request.form.get("method", ""),
             )
-            flash(f"Rechargement de {t.total / 100:.2f} € pour {user.name} enregistré.", "success")
+            flash(f"Rechargement de {t.total / 100:.2f} € pour {user.display_name} enregistré.", "success")
             return redirect(url_for("team.rechargement"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Montant invalide."), "danger")
@@ -129,7 +129,7 @@ def retrait():
             user = _get_user_or_fail(request.form.get("user_id"))
             amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
             T.create_withdrawal(operator_label=operator(), campus=campus(), user=user, amount_cents=amount)
-            flash(f"Retrait de {amount / 100:.2f} € pour {user.name} enregistré.", "success")
+            flash(f"Retrait de {amount / 100:.2f} € pour {user.display_name} enregistré.", "success")
             return redirect(url_for("team.retrait"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Montant invalide."), "danger")
@@ -147,7 +147,7 @@ def transfert():
             dst = _get_user_or_fail(request.form.get("to_id"))
             amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
             T.create_transfer(operator_label=operator(), campus=campus(), from_user=src, to_user=dst, amount_cents=amount)
-            flash(f"Transfert de {amount / 100:.2f} € de {src.name} vers {dst.name} effectué.", "success")
+            flash(f"Transfert de {amount / 100:.2f} € de {src.display_name} vers {dst.display_name} effectué.", "success")
             return redirect(url_for("team.transfert"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Transfert invalide."), "danger")
@@ -174,7 +174,7 @@ def consigne_return():
         user = _get_user_or_fail(request.form.get("user_id"))
         count = int(request.form.get("count", "1"))
         t = T.return_glasses(operator_label=operator(), campus=campus(), user=user, count=count)
-        flash(f"{t.deposit_glasses} verre(s) rendu(s) : {t.total / 100:.2f} € crédités à {user.name}.", "success")
+        flash(f"{t.deposit_glasses} verre(s) rendu(s) : {t.total / 100:.2f} € crédités à {user.display_name}.", "success")
     except (T.OperationError, ValueError) as e:
         flash(getattr(e, "message", "Erreur."), "danger")
     return redirect(request.form.get("next") or url_for("team.payment"))
@@ -208,7 +208,10 @@ def historique():
     if fuser:
         like = f"%{fuser}%"
         ids = set(
-            db.session.scalars(select(User.id).where(User.name.ilike(like))).all()
+            db.session.scalars(select(User.id).where(or_(
+                User.name.ilike(like),
+                User.nickname.ilike(like),
+            ))).all()
         )
         if ids:
             query = query.filter(Transaction.contributions.any(Contribution.user_id.in_(ids)))
@@ -391,7 +394,7 @@ def notes_action():
 
     if action == "create":
         if content:
-            n = Note(content=content, is_public=scope_public, author_id=g.current_user.id, author_name=g.current_user.name)
+            n = Note(content=content, is_public=scope_public, author_id=g.current_user.id, author_name=g.current_user.display_name[:120])
             db.session.add(n)
             db.session.commit()
             _trim_notes(scope_public)

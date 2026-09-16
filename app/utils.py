@@ -1,4 +1,6 @@
+import re
 import secrets
+import unicodedata
 from datetime import datetime, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo
@@ -60,6 +62,24 @@ def cents(value):
     if value is None:
         return 0
     return int(round(float(str(value).replace(",", ".")) * 100))
+
+
+def slug_username(value):
+    """Identifiant de connexion (users.username) : minuscule, sans accents,
+    tout séparateur ramené à un point — ex : "Marie Claire Dupont" ->
+    "marie.claire.dupont". Borné à 64 caractères. None si rien ne reste.
+
+    Miroir strict de migration.util.slug_username (le module migration reste
+    volontairement sans dépendance Flask) : toute évolution doit être répercutée
+    des deux côtés, sinon login et import généreraient des identifiants divergents.
+    """
+    if value is None:
+        return None
+    text = unicodedata.normalize("NFKD", str(value).strip().lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"['\u2019\u02bc]", "", text)  # apostrophes jointes : o'brien -> obrien
+    text = re.sub(r"[^a-z0-9]+", ".", text).strip(".")
+    return (text[:64].rstrip(".")) or None
 
 
 def login_required(view):

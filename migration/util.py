@@ -77,6 +77,24 @@ def normalize_key(value):
     return text or None
 
 
+def slug_username(value):
+    """Identifiant de connexion cible (users.username) : minuscule, sans
+    accents, tout séparateur ramené à un point — ex : "Marie Claire Dupont" ->
+    "marie.claire.dupont". Borné à 64 caractères. None si rien ne reste.
+
+    Miroir strict de app.utils.slug_username (ce module reste volontairement
+    sans dépendance Flask) : toute évolution doit être répercutée des deux
+    côtés, sinon login et import généreraient des identifiants divergents.
+    """
+    if value is None:
+        return None
+    text = unicodedata.normalize("NFKD", str(value).strip().lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"['\u2019\u02bc]", "", text)  # apostrophes jointes : o'brien -> obrien
+    text = re.sub(r"[^a-z0-9]+", ".", text).strip(".")
+    return (text[:64].rstrip(".")) or None
+
+
 def unescape_html(value):
     """Décode les entités HTML des chaînes sources (mysqldump &#x27; etc.)."""
     if value is None or not isinstance(value, str):

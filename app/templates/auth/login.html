@@ -9,8 +9,8 @@
       <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <div class="mb-3">
-          <label class="form-label">Nom / surnom</label>
-          <input class="form-control" name="name" autocomplete="username" required autofocus>
+          <label class="form-label">Identifiant</label>
+          <input class="form-control" name="username" autocomplete="username" required autofocus>
         </div>
         <div class="mb-3">
           <label class="form-label">Mot de passe</label>

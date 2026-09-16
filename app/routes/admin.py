@@ -2,7 +2,7 @@ import os
 from datetime import datetime, timedelta
 
 from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
@@ -17,6 +17,7 @@ from app.utils import (
     login_required,
     new_token,
     paris_to_utc,
+    slug_username,
     utcnow,
 )
 
@@ -77,7 +78,11 @@ def comptes():
     stmt = select(User).order_by(User.name).limit(200)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(User.name.ilike(like))
+        stmt = stmt.where(or_(
+            User.name.ilike(like),
+            User.nickname.ilike(like),
+            User.username.ilike(like),
+        ))
     users = db.session.scalars(stmt).unique().all()
     return render_template("admin/comptes.html", users=users, q=q)
 
@@ -86,18 +91,27 @@ def comptes():
 @login_required
 def comptes_nouveau():
     name = (request.form.get("name") or "").strip()
+    nickname = (request.form.get("nickname") or "").strip() or None
+    raw_username = (request.form.get("username") or "").strip()
     promotion = request.form.get("promotion", "").strip()
     if not name:
-        flash("Nom / surnom obligatoire.", "danger")
+        flash("Nom obligatoire.", "danger")
+        return redirect(url_for("admin.comptes"))
+    # Identifiant fourni, sinon déduit du nom ; toujours normalisé (slug).
+    username = slug_username(raw_username or name)
+    if not username:
+        flash("Identifiant invalide (lettres et chiffres uniquement).", "danger")
         return redirect(url_for("admin.comptes"))
     existing = db.session.scalars(
-        select(User).where(func.lower(User.name) == name.lower())
+        select(User).where(User.username == username)
     ).first()
     if existing:
-        flash("Ce nom / surnom est déjà utilisé.", "danger")
+        flash(f"L'identifiant « {username} » est déjà utilisé.", "danger")
         return redirect(url_for("admin.comptes"))
     u = User(
         name=name,
+        nickname=nickname,
+        username=username,
         promotion=int(promotion) if promotion.isdigit() else None,
     )
     db.session.add(u)
@@ -105,7 +119,7 @@ def comptes_nouveau():
     for c in CAMPUSSES:
         u.wallet(c)
     db.session.commit()
-    flash(f"Compte de {u.name} créé (portefeuilles Brest et Paris initialisés).", "success")
+    flash(f"Compte de {u.display_name} créé (identifiant {u.username}, portefeuilles Brest et Paris initialisés).", "success")
     return redirect(url_for("admin.compte", user_id=u.id))
 
 
@@ -117,14 +131,22 @@ def compte(user_id):
         abort(404)
     if request.method == "POST":
         new_name = (request.form.get("name") or "").strip()
-        if new_name and new_name.lower() != u.name.lower():
+        if new_name and new_name != u.name:
+            u.name = new_name
+        new_nickname = (request.form.get("nickname") or "").strip() or None
+        u.nickname = new_nickname
+        new_username = slug_username(request.form.get("username") or "")
+        if not new_username:
+            flash("Identifiant invalide (lettres et chiffres uniquement).", "danger")
+            return redirect(url_for("admin.compte", user_id=u.id))
+        if new_username != u.username:
             existing = db.session.scalars(
-                select(User).where(func.lower(User.name) == new_name.lower())
+                select(User).where(User.username == new_username)
             ).first()
             if existing:
-                flash("Ce nom / surnom est déjà utilisé.", "danger")
+                flash(f"L'identifiant « {new_username} » est déjà utilisé.", "danger")
                 return redirect(url_for("admin.compte", user_id=u.id))
-            u.name = new_name
+            u.username = new_username
         promotion = request.form.get("promotion", "").strip()
         u.promotion = int(promotion) if promotion.isdigit() else None
         u.blacklist = request.form.get("blacklist") == "on"
@@ -167,7 +189,7 @@ def compte_supprimer(user_id):
     warnings = _compte_warnings(u)
     if warnings:
         flash("Attention : " + ", ".join(warnings) + ".", "warning")
-    name = u.name
+    name = u.display_name
     db.session.delete(u)
     db.session.commit()
     flash(f"Compte de {name} supprimé (portefeuilles effacés, historique conservé et anonymisé).", "success")
@@ -570,7 +592,11 @@ def journaux():
             pass
     if fuser:
         query = query.filter(LoginLog.name.ilike(f"%{fuser}%") | LoginLog.user_id.in_(
-            select(User.id).where(User.name.ilike(f"%{fuser}%"))
+            select(User.id).where(or_(
+                User.name.ilike(f"%{fuser}%"),
+                User.nickname.ilike(f"%{fuser}%"),
+                User.username.ilike(f"%{fuser}%"),
+            ))
         ))
     logs = query.order_by(LoginLog.created_at.desc()).limit(500).all()
     return render_template("admin/journaux.html", logs=logs, filters=request.args)

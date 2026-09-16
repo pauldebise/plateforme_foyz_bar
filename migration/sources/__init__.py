@@ -10,7 +10,7 @@ veille de la bascule sans toucher au moteur ETL.
 import re
 import unicodedata
 
-from ..util import liters_to_cl, normalize_key, parse_dt, to_cents, unescape_html
+from ..util import liters_to_cl, normalize_key, parse_dt, slug_username, to_cents, unescape_html
 
 # ---------------------------------------------------------------- alias utils
 
@@ -113,7 +113,8 @@ def normalize_team_status(value):
 
 # ------------------------------------------------------------ alias tables
 
-# Identité : un seul champ cible `name` (nom / surnom, identifiant de connexion).
+# Surnom d'usage source (pseudo) : migré vers `users.nickname` (affichage),
+# sauf s'il est confondu avec le nom réel.
 NAME_FIELDS = ("name", "pseudo", "username", "login", "identifiant", "nom_surnom",
                "real_name")
 # Certaines sources séparent prénom / nom : combinés si aucun champ `name`.
@@ -297,28 +298,38 @@ def map_user_row(row, campus, money_unit):
     """Convertit une ligne source en compte canonique (montants en centimes).
 
     Retourne (dict | None, warning | None). None = ligne ignorée (identité absente).
-    L'identité cible est un seul champ `name` (identifiant de connexion) :
-    priorité au nom réel (`real_name`, identifiant de l'ancienne plateforme),
-    sinon le pseudo, sinon prénom + nom combinés. La clé de réconciliation
-    reste l'email quand il existe (fusion inter-campus), sinon le nom.
-    Le mot de passe source est conservé : hash réutilisable en cible
-    (format werkzeug) -> `password_hash`, sinon valeur brute (bcrypt, md5,
-    texte...) -> `legacy_password`, vérifiable à la connexion puis converti.
+    Identité cible en trois champs :
+    - `name` : nom réel complet, affiché partout (real_name, sinon prénom+nom,
+      sinon pseudo, sinon email) ;
+    - `nickname` : le surnom d'usage (pseudo source), conservé s'il diffère du
+      nom réel ;
+    - `username` : base de l'identifiant de connexion prenom.nom (slug du nom
+      réel) ; le dédoublonnage par suffixe numérique est fait en aval, à
+      l'insertion, où l'unicité est connue.
+    La clé de réconciliation reste l'email quand il existe (fusion
+    inter-campus), sinon le nom réel. Le mot de passe source est conservé :
+    hash réutilisable en cible (format werkzeug) -> `password_hash`, sinon
+    valeur brute (bcrypt, md5, texte...) -> `legacy_password`, vérifiable à la
+    connexion puis converti.
     """
     pseudo = pick(row, NAME_FIELDS)
-    if not pseudo:
-        first = pick(row, FIRST_NAME_FIELDS) or ""
-        last = pick(row, LAST_NAME_FIELDS) or ""
-        pseudo = f"{first} {last}".strip()
     email = pick(row, USER_FIELDS["email"])
     real_name = pick(row, USER_FIELDS["real_name"])
-    name = str(real_name).strip() if real_name is not None else ""
-    if not name:
+    first = pick(row, FIRST_NAME_FIELDS) or ""
+    last = pick(row, LAST_NAME_FIELDS) or ""
+    if real_name is not None and str(real_name).strip():
+        name = str(real_name).strip()
+    elif str(first).strip() or str(last).strip():
+        name = f"{str(first).strip()} {str(last).strip()}".strip()
+    else:
         name = str(pseudo).strip() if pseudo is not None else ""
     if not name and not email:
         return None, "identité absente (ni nom, ni email)"
     if not name:
         name = str(email)
+    nickname = str(pseudo).strip()[:255] if pseudo is not None else None
+    if nickname and normalize_key(nickname) == normalize_key(name):
+        nickname = None
     key = normalize_key(email) or normalize_key(name)
     if not key:
         return None, "clé de réconciliation vide"
@@ -337,6 +348,8 @@ def map_user_row(row, campus, money_unit):
         "key": key,
         "email": email,
         "name": name[:255],
+        "nickname": nickname,
+        "username": slug_username(name) or slug_username(email),
         "promotion": as_int(pick(row, USER_FIELDS["promotion"])),
         "password_hash": hash_val,
         "legacy_password": legacy_password,

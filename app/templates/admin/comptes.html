@@ -26,7 +26,7 @@
       <tbody>
         {% for u in users %}
         <tr>
-          <td><strong>{{ u.name }}</strong></td>
+          <td><strong>{{ u.display_name }}</strong><br><span class="text-muted small">{{ u.username }}</span></td>
           <td>{{ u.promotion if u.promotion else '—' }}</td>
           <td>{{ u.wallet('brest').balance|eur }}</td>
           <td>{{ u.wallet('paris').balance|eur }}</td>
@@ -59,7 +59,13 @@
       </div>
       <div class="modal-body">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-        <div class="mb-3"><label class="form-label">Nom / surnom</label><input class="form-control" name="name" required></div>
+        <div class="mb-3"><label class="form-label">Nom réel complet</label><input class="form-control" name="name" required placeholder="Ex : Paul Debise"></div>
+        <div class="mb-3"><label class="form-label">Surnom <span class="text-muted small">(facultatif, utilisé à l'affichage)</span></label><input class="form-control" name="nickname" placeholder="Ex : Chips"></div>
+        <div class="mb-3">
+          <label class="form-label">Identifiant de connexion</label>
+          <input class="form-control" name="username" placeholder="prenom.nom — laisser vide pour le déduire du nom">
+          <div class="form-text">Minuscules sans accents. Uniquement pour la connexion.</div>
+        </div>
         <div class="mb-3"><label class="form-label">Promotion (année de sortie)</label><input class="form-control" name="promotion" type="number"></div>
         <p class="form-text mb-0">Deux portefeuilles (Brest &amp; Paris) sont créés à 0,00 €.</p>
       </div>

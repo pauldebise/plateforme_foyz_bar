@@ -76,9 +76,16 @@ python run.py                   # http://127.0.0.1:5000
 
 ### Connexion
 
-Un seul champ d'identité : **nom / surnom** (`users.name`, unique), utilisé pour
-l'affichage et comme identifiant de connexion. Les comptes sont créés par
-l'administrateur (onglet Comptes) ou importés par le module de migration (§6).
+Trois champs d'identité distincts :
+- **`users.username`** — identifiant de connexion `prenom.nom` (unique, minuscule
+  sans accents, séparateurs ramenés à des points), utilisé *exclusivement* pour
+  la connexion ; la saisie tolère casse, accents et espaces ;
+- **`users.name`** — nom réel complet, base de l'affichage ;
+- **`users.nickname`** — surnom d'usage (facultatif, non unique), intégré à
+  l'affichage (« Paul Debise (Chips) ») et aux recherches, mais **pas** au login.
+
+Les comptes sont créés par l'administrateur (onglet Comptes) ou importés par le
+module de migration (§6).
 
 ## 3. Déploiement en production
 
@@ -250,9 +257,11 @@ audit comptable systématique.
 - **Mots de passe** : les hachages compatibles (werkzeug) sont repris tels
   quels ; les autres (bcrypt de l'ancienne plateforme, md5, texte brut) sont
   importés bruts dans `users.legacy_password` et vérifiés à la connexion
-  (puis convertis au format cible au premier login). Les identifiants de
-  connexion reprennent le nom réel source (`real_name`, ex « Paul Debise »),
-  sinon le pseudo.
+  (puis convertis au format cible au premier login). L'identifiant de connexion
+  est le slug `prenom.nom` du nom réel source (`real_name`, ex « Paul Debise »
+  -> `paul.debise` ; prénom+nom combinés pour Paris), dédoublonné par suffixe
+  numérique en cas d'homonyme. Le pseudo source est conservé en `users.nickname`
+  (surnom d'usage, affiché mais inutilisable au login).
 
 ### Commandes utiles
 
@@ -261,7 +270,8 @@ make migrate-audit   # comparaison soldes sources / cibles sans injection (exit 
 make migrate-dry     # répétition générale (ROLLBACK + fichiers intacts)
 make migrate-run     # bascule réelle
 make migrate-keep    # bascule réelle avec archivage des sources
-python -m tests.migration.test_migration   # suite de tests du module (16 tests)
+python -m tests.migration.test_migration   # suite de tests du module (17 tests)
+python -m tests.test_identifiers           # login/identifiants + évolution du schéma
 ```
 
 Les contrats de mapping (tables/colonnes des anciens schémas) sont centralisés

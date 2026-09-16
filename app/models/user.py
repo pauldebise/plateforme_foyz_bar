@@ -8,7 +8,14 @@ class User(db.Model):
     __tablename__ = "users"
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    name: db.Mapped[str] = db.mapped_column(db.String(255), unique=True, index=True)
+    # Identifiant de connexion, exclusivement : minuscule sans accents,
+    # séparateurs ramenés à des points (cf. app.utils.slug_username).
+    username: db.Mapped[str] = db.mapped_column(db.String(64), unique=True, index=True)
+    # Nom réel complet, utilisé pour l'affichage via display_name.
+    name: db.Mapped[str] = db.mapped_column(db.String(255), index=True)
+    # Surnom d'usage (pseudo de l'ancienne plateforme), facultatif et non
+    # unique : intégré à l'affichage et utilisable comme libellé de recherche.
+    nickname: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
     promotion: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
     password_hash: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     # Mot de passe hérité de l'ancienne plateforme (bcrypt/md5/texte brut),
@@ -29,6 +36,12 @@ class User(db.Model):
     @property
     def is_team(self):
         return self.team_status in ("mandat", "ancien")
+
+    @property
+    def display_name(self):
+        """Nom long complet affiché partout (comptes, caisse, stats, historique) :
+        le nom réel, enrichi du surnom s'il existe (« Paul Debise (chips) »)."""
+        return f"{self.name} ({self.nickname})" if self.nickname else self.name
 
     def wallet(self, campus):
         for w in self.wallets:
@@ -54,4 +67,4 @@ class Wallet(db.Model):
 
     @property
     def owner_name(self):
-        return self.user.name if self.user else "?"
+        return self.user.display_name if self.user else "?"

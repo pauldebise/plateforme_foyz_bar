@@ -57,7 +57,7 @@
         {% endif %}
       </nav>
       <div class="sidebar-footer mt-auto">
-        <div class="small text-white-50 mb-2"><i class="bi bi-person-circle"></i> {{ current_user.name }}</div>
+        <div class="small text-white-50 mb-2"><i class="bi bi-person-circle"></i> {{ current_user.display_name }}</div>
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <button class="btn btn-outline-light btn-sm w-100"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
