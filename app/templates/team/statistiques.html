@@ -112,11 +112,23 @@
 <div class="card mt-4">
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="bi bi-person"></i> Consommation par étudiant</span>
-    <span class="small text-muted">Les commandes partagées sont réparties entre les participants · hors consignes</span>
+    <form method="get" action="{{ url_for('team.statistiques') }}" class="d-flex gap-2 align-items-center flex-wrap">
+      {% for k, v in students.link_args.items() if k not in ('q', 'per_page') %}
+      <input type="hidden" name="{{ k }}" value="{{ v }}">
+      {% endfor %}
+      <input class="form-control form-control-sm" type="search" name="q" value="{{ students.search }}" placeholder="Rechercher un étudiant…" style="max-width: 200px;">
+      <select class="form-select form-select-sm" name="per_page" style="max-width: 110px;">
+        {% for n in (25, 50, 100) %}
+        <option value="{{ n }}" {% if students.per_page == n %}selected{% endif %}>{{ n }} / page</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-primary"><i class="bi bi-funnel"></i> Filtrer</button>
+    </form>
   </div>
   <div class="card-body pb-0">
-    {% if students %}
-    <canvas id="chart-students" height="{{ 40 + students|length * 22 if students|length <= 10 else 260 }}"></canvas>
+    <p class="text-muted small mb-2">Les commandes partagées sont réparties entre les participants · hors consignes</p>
+    {% if students.top %}
+    <canvas id="chart-students" height="{{ 40 + students.top|length * 22 }}"></canvas>
     {% else %}
     <p class="text-muted">Aucune consommation sur la période sélectionnée.</p>
     {% endif %}
@@ -127,7 +139,7 @@
         <tr><th>Étudiant</th><th>Promo</th><th>Profil</th><th class="text-end">Achats</th><th class="text-end">Articles</th><th class="text-end">Total dépensé</th></tr>
       </thead>
       <tbody>
-        {% for s in students %}
+        {% for s in students.rows %}
         <tr>
           <td class="fw-semibold">{{ s.name }}</td>
           <td>{{ s.promotion if s.promotion else '—' }}</td>
@@ -141,6 +153,26 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="small text-muted">{{ students.total }} étudiant{{ 's' if students.total > 1 }} · page {{ students.page }} / {{ students.pages }}</span>
+    {% if students.pages > 1 %}
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {{ 'disabled' if students.page <= 1 }}">
+          <a class="page-link" href="{{ url_for('team.statistiques', page=students.page - 1, **students.link_args) }}"><i class="bi bi-chevron-left"></i></a>
+        </li>
+        {% for p in range(1, students.pages + 1) %}
+        <li class="page-item {{ 'active' if p == students.page }}">
+          <a class="page-link" href="{{ url_for('team.statistiques', page=p, **students.link_args) }}">{{ p }}</a>
+        </li>
+        {% endfor %}
+        <li class="page-item {{ 'disabled' if students.page >= students.pages }}">
+          <a class="page-link" href="{{ url_for('team.statistiques', page=students.page + 1, **students.link_args) }}"><i class="bi bi-chevron-right"></i></a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
@@ -171,14 +203,13 @@ new Chart(document.getElementById('chart-trend'), {
   options: { scales: { y: { beginAtZero: true } } }
 });
 
-const STUDENTS = {{ students|tojson }};
-const topStudents = STUDENTS.slice(0, 10);
-if (topStudents.length) {
+const STUDENTS = {{ students.top|tojson }};
+if (STUDENTS.length) {
   new Chart(document.getElementById('chart-students'), {
     type: 'bar',
     data: {
-      labels: topStudents.map(s => s.name),
-      datasets: [{ label: 'Total dépensé (€)', data: topStudents.map(s => s.spent / 100), backgroundColor: 'rgba(0,82,156,.75)', borderRadius: 4 }]
+      labels: STUDENTS.map(s => s.name),
+      datasets: [{ label: 'Total dépensé (€)', data: STUDENTS.map(s => s.spent / 100), backgroundColor: 'rgba(0,82,156,.75)', borderRadius: 4 }]
     },
     options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
   });

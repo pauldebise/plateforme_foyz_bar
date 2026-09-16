@@ -258,8 +258,25 @@ def statistiques():
         "campus": request.args.get("campus", ""),
         "team_only": request.args.get("team_only", ""),
     }
+    search = request.args.get("q", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    try:
+        per_page = int(request.args.get("per_page", 25))
+    except ValueError:
+        per_page = 25
+    per_page = min(max(per_page, 10), 100)
     stats = sales_stats(filters)
-    students = students_stats(filters)
+    students = students_stats(filters, search=search, page=page, per_page=per_page)
+    students["search"] = search
+    students["per_page"] = per_page
+    students["link_args"] = {k: v for k, v in filters.items() if v}
+    if search:
+        students["link_args"]["q"] = search
+    if per_page != 25:
+        students["link_args"]["per_page"] = str(per_page)
     return render_template(
         "team/statistiques.html",
         stats=stats,

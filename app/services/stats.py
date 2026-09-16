@@ -84,7 +84,7 @@ def sales_stats(filters=None):
     }
 
 
-def students_stats(filters=None):
+def students_stats(filters=None, search="", page=1, per_page=0):
     filters = filters or {}
     cutoff = history_cutoff()
     stmt = select(Transaction).where(
@@ -141,7 +141,23 @@ def students_stats(filters=None):
             "spent": round(e["spent"]),
         })
     result.sort(key=lambda s: -s["spent"])
-    return result
+    if search:
+        needle = search.casefold()
+        result = [s for s in result if needle in s["name"].casefold()]
+    top = result[:10]
+    if not per_page:
+        return {"rows": result, "top": top, "total": len(result), "page": 1, "pages": 1}
+    total = len(result)
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(max(1, page), pages)
+    start = (page - 1) * per_page
+    return {
+        "rows": result[start:start + per_page],
+        "top": top,
+        "total": total,
+        "page": page,
+        "pages": pages,
+    }
 
 
 def top_article_ids(campus=None, limit=None, days=45):
