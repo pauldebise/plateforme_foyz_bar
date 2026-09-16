@@ -1,3 +1,4 @@
+import unicodedata
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -6,7 +7,14 @@ from sqlalchemy import func, select
 from app.extensions import db
 from app.models import Contribution, Transaction, TransactionLine, User
 from app.services.transactions import history_cutoff
-from app.utils import to_paris, utcnow
+from app.utils import ARTICLE_TYPES, to_paris, utcnow
+
+
+def _fold(value):
+    """Minuscule sans accents, pour une recherche insensible à la casse et
+    aux diacritiques."""
+    text = unicodedata.normalize("NFKD", str(value or "").casefold())
+    return "".join(ch for ch in text if not unicodedata.combining(ch))
 
 
 def _parse_date(value, end_of_day=False):
@@ -142,8 +150,8 @@ def students_stats(filters=None, search="", page=1, per_page=0):
         })
     result.sort(key=lambda s: -s["spent"])
     if search:
-        needle = search.casefold()
-        result = [s for s in result if needle in s["name"].casefold()]
+        needle = _fold(search)
+        result = [s for s in result if needle in _fold(s["name"])]
     top = result[:10]
     if not per_page:
         return {"rows": result, "top": top, "total": len(result), "page": 1, "pages": 1}
@@ -158,6 +166,79 @@ def students_stats(filters=None, search="", page=1, per_page=0):
         "page": page,
         "pages": pages,
     }
+
+
+def top_articles_stats(filters=None, search=""):
+    """Classement des articles les plus vendus sur la période filtrée.
+    Regroupe par article (identifiant, sinon nom) et renvoie volume et
+    recettes, triés par volume décroissant puis recettes."""
+    filters = filters or {}
+    cutoff = history_cutoff()
+    stmt = (
+        select(TransactionLine, Transaction)
+        .join(Transaction, TransactionLine.transaction_id == Transaction.id)
+        .where(
+            Transaction.type.in_(["achat", "direct"]),
+            Transaction.cancelled.is_(False),
+            Transaction.created_at >= cutoff,
+        )
+    )
+    campus = filters.get("campus")
+    if campus in ("brest", "paris"):
+        stmt = stmt.where(Transaction.campus == campus)
+    date_from = _parse_date(filters.get("date_from"))
+    date_to = _parse_date(filters.get("date_to"), end_of_day=True)
+    if date_from:
+        stmt = stmt.where(Transaction.created_at >= date_from)
+    if date_to:
+        stmt = stmt.where(Transaction.created_at <= date_to)
+    category = filters.get("category")
+    if category:
+        stmt = stmt.where(TransactionLine.article_type == category)
+
+    rows = db.session.execute(stmt).all()
+
+    matching_users = set()
+    promotion = filters.get("promotion")
+    team_only = filters.get("team_only", "")
+    if promotion or team_only:
+        cstmt = select(Contribution.user_id).join(User, Contribution.user_id == User.id)
+        if promotion:
+            try:
+                cstmt = cstmt.where(User.promotion == int(promotion))
+            except ValueError:
+                cstmt = cstmt.where(db.false())
+        if team_only == "team":
+            cstmt = cstmt.where(User.team_status.is_not(None))
+        elif team_only == "non_team":
+            cstmt = cstmt.where(User.team_status.is_(None))
+        matching_users = set(db.session.scalars(cstmt))
+
+    articles = {}
+    for line, t in rows:
+        if (promotion or team_only) and not any(
+            c.user_id in matching_users for c in t.contributions
+        ):
+            continue
+        key = line.article_id if line.article_id is not None else f"name:{line.article_name}"
+        entry = articles.setdefault(
+            key,
+            {"name": line.article_name, "type": line.article_type, "qty": 0, "revenue": 0},
+        )
+        entry["qty"] += line.quantity
+        entry["revenue"] += line.line_total
+
+    result = list(articles.values())
+    if search:
+        needle = _fold(search)
+        result = [
+            a for a in result
+            if needle in _fold(a["name"])
+            or needle in _fold(a["type"])
+            or needle in _fold(ARTICLE_TYPES.get(a["type"], ""))
+        ]
+    result.sort(key=lambda a: (-a["qty"], -a["revenue"]))
+    return result
 
 
 def top_article_ids(campus=None, limit=None, days=45):

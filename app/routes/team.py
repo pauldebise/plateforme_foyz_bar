@@ -10,7 +10,7 @@ from app.models import Article, Contribution, Note, Tap, Transaction, User
 from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
 from app.services.settings import int_setting
-from app.services.stats import sales_stats, students_stats, top_article_ids
+from app.services.stats import sales_stats, students_stats, top_article_ids, top_articles_stats
 from app.services.treasury import treasury
 from app.utils import ARTICLE_TYPES, CAMPUSSES, PAYMENT_METHODS, login_required, utcnow
 
@@ -268,7 +268,16 @@ def statistiques():
     except ValueError:
         per_page = 25
     per_page = min(max(per_page, 10), 100)
+    article_search = request.args.get("aq", "").strip()
+    try:
+        article_limit = int(request.args.get("alimit", 10))
+    except ValueError:
+        article_limit = 10
+    article_limit = min(max(article_limit, 10), 500)
     stats = sales_stats(filters)
+    articles = top_articles_stats(filters, search=article_search)
+    article_total = len(articles)
+    articles = articles[:article_limit]
     students = students_stats(filters, search=search, page=page, per_page=per_page)
     students["search"] = search
     students["per_page"] = per_page
@@ -280,6 +289,10 @@ def statistiques():
     return render_template(
         "team/statistiques.html",
         stats=stats,
+        articles=articles,
+        article_search=article_search,
+        article_limit=article_limit,
+        article_total=article_total,
         students=students,
         filters=filters,
     )

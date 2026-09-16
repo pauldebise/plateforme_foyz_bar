@@ -111,6 +111,45 @@
 
 <div class="card mt-4">
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-trophy"></i> Articles les plus vendus</span>
+    <form method="get" action="{{ url_for('team.statistiques') }}" class="d-flex gap-2 align-items-center flex-wrap">
+      {% for k, v in filters.items() if v %}
+      <input type="hidden" name="{{ k }}" value="{{ v }}">
+      {% endfor %}
+      <input class="form-control form-control-sm" type="search" name="aq" value="{{ article_search }}" placeholder="Rechercher un article…" style="max-width: 200px;">
+      <select class="form-select form-select-sm" name="alimit" style="max-width: 120px;">
+        {% for n in (10, 25, 50, 100) %}
+        <option value="{{ n }}" {% if article_limit == n %}selected{% endif %}>Top {{ n }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-primary"><i class="bi bi-funnel"></i> Filtrer</button>
+    </form>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr><th>#</th><th>Article</th><th>Catégorie</th><th class="text-end">Volume</th><th class="text-end">Recettes</th></tr>
+      </thead>
+      <tbody>
+        {% for a in articles %}
+        <tr>
+          <td class="text-muted">{{ loop.index }}</td>
+          <td class="fw-semibold">{{ a.name }}</td>
+          <td>{{ ARTICLE_TYPES.get(a.type, a.type) }}</td>
+          <td class="text-end">{{ a.qty }}</td>
+          <td class="text-end fw-bold">{{ a.revenue|eur }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-3">Aucun article vendu sur la période sélectionnée.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer"><span class="small text-muted">{{ articles|length }} / {{ article_total }} article{{ 's' if article_total > 1 }} affiché{{ 's' if articles|length > 1 }}</span></div>
+</div>
+
+<div class="card mt-4">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="bi bi-person"></i> Consommation par étudiant</span>
     <form method="get" action="{{ url_for('team.statistiques') }}" class="d-flex gap-2 align-items-center flex-wrap">
       {% for k, v in students.link_args.items() if k not in ('q', 'per_page') %}
