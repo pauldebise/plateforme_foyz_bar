@@ -248,9 +248,11 @@ def annuler():
 @bp.route("/statistiques")
 @login_required
 def statistiques():
+    # Par défaut : dernier mois seulement, pour charger la page plus vite.
+    today = utcnow().date()
     filters = {
-        "date_from": request.args.get("date_from", ""),
-        "date_to": request.args.get("date_to", ""),
+        "date_from": request.args.get("date_from") or (today - timedelta(days=30)).isoformat(),
+        "date_to": request.args.get("date_to") or today.isoformat(),
         "category": request.args.get("category", ""),
         "promotion": request.args.get("promotion", ""),
         "campus": request.args.get("campus", ""),
