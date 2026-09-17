@@ -20,8 +20,8 @@ services:
       - "8000:8000"
     environment:
       FLASK_ENV: production
-      SECRET_KEY: ${SECRET_KEY:-change-me-with-a-long-random-string}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY est obligatoire (32 caractères minimum, openssl rand -hex 32)}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD est obligatoire}
       DATABASE_URL: postgresql+psycopg2://foyz:foyz@db:5432/foyz
     volumes:
       - uploads:/data/uploads

@@ -70,9 +70,15 @@ pip install -r requirements.txt
 > (inutile en local avec SQLite).
 
 ```bash
+cp .env.example .env            # puis éditer : FLASK_ENV=development, ADMIN_PASSWORD=<local>
 flask --app wsgi.py init-db     # crée les tables + le mot de passe administrateur
 python run.py                   # http://127.0.0.1:5000
 ```
+
+> En production, l'application **refuse de démarrer** si `SECRET_KEY` est absente
+> ou trop courte (< 32 caractères), ou si `ADMIN_PASSWORD` est absente ou triviale
+> (« admin »). En développement (`FLASK_ENV=development`), ces valeurs par défaut
+> sont tolérées mais signalées dans les logs.
 
 ### Connexion
 
@@ -179,9 +185,9 @@ dans `.env` (cookies `Secure`).
 | Variable        | Rôle                                                        | Défaut            |
 |-----------------|-------------------------------------------------------------|-------------------|
 | `FLASK_ENV`     | `production` ou `development`                               | `production`      |
-| `SECRET_KEY`    | Signature des sessions — **à changer impérativement**       | valeur de dev     |
+| `SECRET_KEY`    | Signature des sessions — **obligatoire en production** (32 car. min.) | valeur de dev (refusée en production) |
 | `DATABASE_URL`  | URI SQLAlchemy (SQLite ou PostgreSQL)                       | SQLite locale     |
-| `ADMIN_PASSWORD`| Mot de passe administrateur initial (créé par `init-db`)    | `admin`           |
+| `ADMIN_PASSWORD`| Mot de passe administrateur initial (créé par `init-db`) — **obligatoire en production** | `admin` (refusé en production) |
 | `HTTPS_ONLY`    | `1` = cookies `Secure` (derrière HTTPS)                     | `0`               |
 | `UPLOAD_DIR`    | Dossier des fichiers téléversés                             | `instance/uploads`|
 

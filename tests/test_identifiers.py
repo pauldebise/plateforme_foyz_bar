@@ -28,6 +28,7 @@ _TMP = Path(tempfile.mkdtemp(prefix="foyz_ident_"))
 os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'app.db'}"
 os.environ["UPLOAD_DIR"] = str(_TMP / "uploads")
 os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
+os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef0123456789abcdef"
 os.environ.pop("FLASK_ENV", None)
 
 from sqlalchemy import inspect, select, text  # noqa: E402

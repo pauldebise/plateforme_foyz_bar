@@ -7,7 +7,7 @@ from flask import Flask, current_app, g, jsonify, redirect, render_template, req
 from sqlalchemy import select
 from werkzeug.security import generate_password_hash
 
-from app.config import get_config, UPLOAD_DIR
+from app.config import get_config, validate_config, UPLOAD_DIR
 from app.extensions import db
 from app.utils import CAMPUSSES, ARTICLE_TYPES, PAYMENT_METHODS, TRANSACTION_TYPES, euros, to_paris
 
@@ -84,6 +84,7 @@ def create_app():
     load_dotenv()
     app = Flask(__name__)
     app.config.from_object(get_config())
+    validate_config(app)
 
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
