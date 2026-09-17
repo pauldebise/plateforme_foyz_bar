@@ -895,6 +895,52 @@ def audit():
     )
 
 
+@bp.route("/sante")
+@login_required
+def sante():
+    from app.config import INSTANCE_DIR
+    from app.models import Transaction
+    from app.services import health as H
+
+    checks = H.system_checks()
+    schema = H.schema_state()
+    disks = []
+    for label, path in (
+        ("Téléversements", current_app.config["UPLOAD_FOLDER"]),
+        ("Dossier instance", INSTANCE_DIR),
+        ("Sauvegardes", current_app.config["BACKUP_DIR"]),
+    ):
+        info = H.disk_info(path)
+        if info:
+            disks.append({"label": label, "path": str(path), **info})
+    activity = {
+        "comptes": db.session.scalar(select(func.count()).select_from(User)),
+        "membres": db.session.scalar(
+            select(func.count()).select_from(User).where(User.team_status.is_not(None))
+        ),
+        "transactions": db.session.scalar(select(func.count()).select_from(Transaction)),
+        "transactions_24h": db.session.scalar(
+            select(func.count())
+            .select_from(Transaction)
+            .where(Transaction.created_at >= utcnow() - timedelta(days=1))
+        ),
+        "db_size": H.database_size(),
+    }
+    last_logins = db.session.scalars(
+        select(LoginLog).order_by(LoginLog.created_at.desc()).limit(5)
+    ).all()
+    return render_template(
+        "admin/sante.html",
+        checks=checks,
+        schema=schema,
+        backups=H.backups_info(),
+        disks=disks,
+        activity=activity,
+        version=current_app.config.get("APP_VERSION", "?"),
+        last_logins=last_logins,
+    )
+
+
 @bp.route("/module-dev", methods=["GET", "POST"])
 @login_required
 def module_dev():

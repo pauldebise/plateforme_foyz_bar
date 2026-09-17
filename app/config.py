@@ -38,6 +38,12 @@ class Config:
     LANGUAGES: ClassVar[list[str]] = ["fr"]
     TIMEZONE = "Europe/Paris"
     DEFAULT_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "admin"
+    # Version applicative affichée dans le tableau de bord (surchargée par
+    # APP_VERSION au déploiement, par exemple le tag Git).
+    APP_VERSION = os.environ.get("APP_VERSION") or "1.0"
+    # Dossier des sauvegardes (lecture seule côté application : tableau de
+    # bord). Les scripts ops utilisent la même variable d'environnement.
+    BACKUP_DIR = Path(os.environ.get("BACKUP_DIR") or (BASE_DIR / "backups"))
     # Proxy de confiance devant l'application : "" (aucun) ou "cloudflare"
     # (l'IP client est alors lue dans CF-Connecting-IP au lieu de remote_addr).
     TRUSTED_PROXY = os.environ.get("TRUSTED_PROXY", "").strip().lower()

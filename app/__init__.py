@@ -430,26 +430,9 @@ def create_app():
         Sans authentification et sans donnée sensible : un simple état. 503 si
         la base ou les téléversements sont indisponibles (le healthcheck Docker
         s'appuie dessus)."""
-        from sqlalchemy import text
+        from app.services import health as H
 
-        from app.schema import current_revision, head_revision
-
-        checks = {}
-        try:
-            with db.engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-            checks["database"] = "ok"
-        except Exception:
-            checks["database"] = "error"
-        uploads = Path(app.config["UPLOAD_FOLDER"])
-        checks["uploads"] = "ok" if uploads.is_dir() and os.access(uploads, os.W_OK) else "error"
-        try:
-            current = current_revision()
-            checks["schema"] = (
-                "ok" if current == head_revision() else f"outdated:{current or 'none'}"
-            )
-        except Exception:
-            checks["schema"] = "unknown"
+        checks = H.system_checks()
         degraded = "error" in (checks["database"], checks["uploads"])
         return jsonify(status="degraded" if degraded else "ok", **checks), (
             503 if degraded else 200
