@@ -6,7 +6,8 @@ conformément au cahier des charges (`docs/main.tex`).
 
 - Backend : **Python 3 / Flask 3** (architecture modulaire en blueprints)
 - Base de données : **SQLAlchemy 2** — SQLite en développement, PostgreSQL en production
-- Front-end : **Bootstrap 5 + Chart.js** (CDN), templates Jinja2, JavaScript vanilla
+- Front-end : **Bootstrap 5 + Chart.js** auto-hébergés (`app/static/vendor/`, aucune
+  dépendance CDN : la caisse fonctionne hors ligne), templates Jinja2, JavaScript vanilla
 - Sécurité : sessions signées, CSRF, hachage des mots de passe (scrypt), anti-bruteforce,
   expiration de session par inactivité, mots de passe administrateur pour les opérations sensibles
 
@@ -237,8 +238,17 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 - Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
   annulations de transactions, retrait du statut « blacklist alcool ».
 - Registre des connexions (compte, campus, IP, succès/échec) avec purge automatique.
-- En-têtes `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`.
-- Téléversements restreints (type de fichier, nom sécurisé, dossier dédié).
+- En-têtes `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+  `Content-Security-Policy` stricte (`script-src 'self'`, aucun script inline) ;
+  `Cache-Control: no-store, private` sur toutes les pages authentifiées ; HSTS
+  quand `HTTPS_ONLY=1`.
+- Téléversements restreints (type de fichier, nom sécurisé, dossier dédié) ;
+  **SVG refusé** (script exécutable sur l'origine) et fichiers servis avec
+  `Content-Security-Policy: default-src 'none'`.
+- Entrées bornées (longueurs de colonnes, `cents()` refuse `inf`/`nan` et les
+  montants hors limites) ; suppression de compte limitée au campus d'appartenance.
+- Mots de passe hérités : conversion automatique au premier login, puis audit et
+  purge — `flask --app wsgi.py legacy-passwords [--purge] [--weak-only]`.
 
 ## 5. Maintenance
 
