@@ -24,6 +24,11 @@ archives
 # Documentation et dépôt
 docs
 .git
+.github
+.ruff_cache
+.pre-commit-config.yaml
+requirements-dev.txt
+pyproject.toml
 AUDIT_TECHNIQUE.md
 PLAN_ACTION.md
 

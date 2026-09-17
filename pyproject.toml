@@ -1,0 +1,24 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    ".venv",
+    "instance",
+    "bdd_a_migrer",
+    "uploads",
+    "migrations/versions",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "B", "SIM", "UP", "RUF"]
+ignore = [
+    "E501",   # longueur de ligne : laissée au formateur
+    "RUF001", # caractères unicode ambigus : typographie française volontaire
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

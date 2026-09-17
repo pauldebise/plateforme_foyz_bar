@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualite:
+    name: Lint, format et audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Installer les outils
+        run: pip install -r requirements-dev.txt
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Format (ruff)
+        run: ruff format --check .
+      - name: Audit des dépendances (pip-audit)
+        run: pip-audit -r requirements.txt
+
+  tests:
+    name: Tests (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [sqlite, postgresql]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: foyz
+          POSTGRES_PASSWORD: foyz
+          POSTGRES_DB: foyz_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Installer l'application
+        run: pip install -r requirements-dev.txt
+      - name: Suites SQLite
+        if: matrix.database == 'sqlite'
+        run: python -m tests.run_all
+      - name: Suites PostgreSQL
+        if: matrix.database == 'postgresql'
+        env:
+          PG_URL: postgresql+psycopg2://foyz:foyz@127.0.0.1:5432/foyz_test
+        run: python -m tests.run_all --postgres "$PG_URL"
+
+  docker:
+    name: Construction de l'image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build
+        run: docker build -t foyz-bar:ci .

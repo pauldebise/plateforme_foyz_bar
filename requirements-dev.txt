@@ -1,0 +1,7 @@
+-r requirements.txt
+
+# Outils de développement : lint/format (ruff), audit des dépendances
+# (pip-audit) et hooks Git locaux (pre-commit). Utilisés par la CI.
+ruff==0.16.8
+pip-audit==2.10.1
+pre-commit==4.6.2

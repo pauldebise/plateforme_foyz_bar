@@ -351,6 +351,9 @@ make migrate-audit   # comparaison soldes sources / cibles sans injection (exit 
 make migrate-dry     # répétition générale (ROLLBACK + fichiers intacts)
 make migrate-run     # bascule réelle
 make migrate-keep    # bascule réelle avec archivage des sources
+make tests                                 # toutes les suites (SQLite)
+make tests-postgres                        # suites applicatives sur PostgreSQL jetable
+make lint                                  # ruff check + ruff format --check
 python -m tests.migration.test_migration   # suite de tests du module (27 tests)
 python -m tests.test_identifiers           # login/identifiants + évolution du schéma
 ```
@@ -473,3 +476,20 @@ Mesures sur une copie de la base réelle (465 000 lignes, 1 an) :
 
 Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
 `EXPLAIN QUERY PLAN` sur la requête de classement.
+
+### 7.5 Tests, lint et intégration continue
+
+- Suites exécutables sans pytest : `make tests` (12 suites, SQLite).
+- PostgreSQL 16 jetable : `make tests-postgres` (ou
+  `python -m tests.run_all --postgres <url>`). Le schéma public est recréé puis
+  migré (`alembic upgrade head`) avant chaque suite — à ne pointer que vers une
+  base de test, jamais une base réelle.
+- Lint et format : `make lint` (ruff, ligne 100) ; application : `make format`.
+- Audit des dépendances : `make audit` (pip-audit sur `requirements.txt`).
+- Hooks Git locaux : `pre-commit install` (ruff, ruff-format, compileall).
+- CI GitHub Actions (`.github/workflows/ci.yml`) : job qualité (ruff check,
+  ruff format --check, pip-audit), job tests SQLite **et** PostgreSQL 16
+  (service), job `docker build`. Chaque PR est validée automatiquement.
+- Portabilité : les suites migration, exploitation/restauration et performance
+  restent spécifiques à SQLite (fichiers sources, copies locales) ; les autres
+  tournent sur les deux moteurs.

@@ -1,0 +1,16 @@
+# Hooks Git locaux : mêmes vérifications que la CI, exécutées avant commit.
+# Installation : pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: compileall
+        name: compileall (syntaxe Python)
+        entry: .venv/bin/python -m compileall -q app migration ops tests
+        language: system
+        pass_filenames: false
