@@ -1,13 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Hors ligne — {{ site_name }}{% endblock %}
+{% block title %}{{ _("Hors ligne") }} — {{ site_name }}{% endblock %}
 {% block content %}
 <div class="text-center py-5">
-  <h1 class="h3 mb-3"><i class="bi bi-wifi-off"></i> Pas de connexion</h1>
+  <h1 class="h3 mb-3"><i class="bi bi-wifi-off"></i> {{ _("Pas de connexion") }}</h1>
   <p class="text-muted mb-4">
-    Cette page n'est pas disponible hors ligne. La caisse reste utilisable :
-    les ventes sont enregistrées sur l'appareil puis transmises dès le retour
-    du réseau.
+    {{ _("Cette page n'est pas disponible hors ligne. La caisse reste utilisable : les ventes sont enregistrées sur l'appareil puis transmises dès le retour du réseau.") }}
   </p>
-  <a class="btn btn-primary" href="{{ url_for('team.payment') }}"><i class="bi bi-cash-coin"></i> Aller à la caisse</a>
+  <a class="btn btn-primary" href="{{ url_for('team.payment') }}"><i class="bi bi-cash-coin"></i> {{ _("Aller à la caisse") }}</a>
 </div>
 {% endblock %}

@@ -1,23 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Connexion — {{ site_name }}{% endblock %}
+{% block title %}{{ _("Connexion") }} — {{ site_name }}{% endblock %}
 {% block content %}
 <div class="login-hero">
   <div class="card">
     <div class="card-body p-4">
-      <h1 class="h4 text-center mb-1"><i class="bi bi-person-lock"></i> Interface équipe</h1>
-      <p class="text-center text-muted small mb-4">Réservé aux membres actifs et anciens membres des équipes Foy'z / Bar</p>
+      <h1 class="h4 text-center mb-1"><i class="bi bi-person-lock"></i> {{ _("Interface équipe") }}</h1>
+      <p class="text-center text-muted small mb-4">{{ _("Réservé aux membres actifs et anciens membres des équipes Foy'z / Bar") }}</p>
       <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <div class="mb-3">
-          <label class="form-label" for="login-username">Identifiant</label>
+          <label class="form-label" for="login-username">{{ _("Identifiant") }}</label>
           <input class="form-control" id="login-username" name="username" autocomplete="username" required autofocus>
         </div>
         <div class="mb-3">
-          <label class="form-label" for="login-password">Mot de passe</label>
+          <label class="form-label" for="login-password">{{ _("Mot de passe") }}</label>
           <input class="form-control" id="login-password" type="password" name="password" autocomplete="current-password" required>
         </div>
         <div class="mb-4">
-          <label class="form-label d-block">Campus</label>
+          <label class="form-label d-block">{{ _("Campus") }}</label>
           <div class="btn-group w-100" role="group">
             {% for key, label in CAMPUSSES.items() %}
             <input type="radio" class="btn-check" name="campus" value="{{ key }}" id="c-{{ key }}" {% if campus == key %}checked{% endif %}>
@@ -25,7 +25,7 @@
             {% endfor %}
           </div>
         </div>
-        <button class="btn btn-primary w-100">Se connecter</button>
+        <button class="btn btn-primary w-100">{{ _("Se connecter") }}</button>
       </form>
     </div>
   </div>

@@ -2,7 +2,7 @@
 {% block content %}
 <div class="text-center py-5">
   <h1 class="display-1">403</h1>
-  <p class="lead">Accès refusé : onglet réservé aux membres de mandat de l'équipe.</p>
-  <a class="btn btn-primary" href="{{ url_for('team.payment') if current_user else url_for('public.home') }}">Retour</a>
+  <p class="lead">{{ _("Accès refusé : onglet réservé aux membres de mandat de l'équipe.") }}</p>
+  <a class="btn btn-primary" href="{{ url_for('team.payment') if current_user else url_for('public.home') }}">{{ _("Retour") }}</a>
 </div>
 {% endblock %}

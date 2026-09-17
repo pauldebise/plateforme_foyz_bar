@@ -26,9 +26,7 @@ TEXT = "F&B"
 
 
 def _png(width, height, rows):
-    raw = b"".join(
-        b"\x00" + bytes(channel for pixel in row for channel in pixel) for row in rows
-    )
+    raw = b"".join(b"\x00" + bytes(channel for pixel in row for channel in pixel) for row in rows)
 
     def chunk(kind, data):
         return (

@@ -525,6 +525,13 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
   `python -m tests.run_all --postgres <url>`). Le schéma public est recréé puis
   migré (`alembic upgrade head`) avant chaque suite — à ne pointer que vers une
   base de test, jamais une base réelle.
+- Langues : français (référence) et **anglais** sur les pages publiques, la
+  connexion et les erreurs (sélecteur FR/EN dans la barre latérale publique,
+  mémorisé en session ; `Accept-Language` sinon). L'interface équipe reste en
+  français. Catalogues dans `translations/` : après modification des chaînes,
+  `pybabel extract -F babel.cfg -o translations/messages.pot .` puis
+  `pybabel update -i translations/messages.pot -d translations` (et `pybabel
+  compile -d translations` — les `.mo` sont versionnés pour le déploiement).
 - Lint et format : `make lint` (ruff, ligne 100) ; application : `make format`.
 - Audit des dépendances : `make audit` (pip-audit sur `requirements.txt`).
 - Hooks Git locaux : `pre-commit install` (ruff, ruff-format, compileall).

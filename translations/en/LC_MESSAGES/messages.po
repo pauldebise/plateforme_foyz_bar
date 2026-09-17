@@ -1,0 +1,223 @@
+# English translations for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-09-17 15:26+0200\n"
+"PO-Revision-Date: 2026-09-17 15:27+0200\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language: en\n"
+"Language-Team: en <LL@li.org>\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: app/templates/base.html:81
+msgid "Accueil"
+msgstr "Home"
+
+#: app/templates/base.html:82 app/templates/public/catalogue.html:2
+msgid "Prix"
+msgstr "Prices"
+
+#: app/templates/base.html:83 app/templates/public/reglement.html:2
+msgid "Règlement intérieur"
+msgstr "Rules"
+
+#: app/templates/base.html:84 app/templates/public/liens.html:3
+msgid "Liens utiles"
+msgstr "Useful links"
+
+#: app/templates/base.html:85 app/templates/public/trombinoscopes.html:2
+#: app/templates/public/trombinoscopes.html:4
+msgid "Trombinoscopes"
+msgstr "Teams"
+
+#: app/templates/auth/login.html:7 app/templates/base.html:93
+msgid "Interface équipe"
+msgstr "Staff area"
+
+#: app/templates/auth/login.html:2
+msgid "Connexion"
+msgstr "Log in"
+
+#: app/templates/auth/login.html:8
+msgid "Réservé aux membres actifs et anciens membres des équipes Foy'z / Bar"
+msgstr "For current and former members of the Foy'z / Bar teams"
+
+#: app/templates/auth/login.html:12
+msgid "Identifiant"
+msgstr "Username"
+
+#: app/templates/auth/login.html:16
+msgid "Mot de passe"
+msgstr "Password"
+
+#: app/templates/auth/login.html:20
+msgid "Campus"
+msgstr "Campus"
+
+#: app/templates/auth/login.html:28
+msgid "Se connecter"
+msgstr "Log in"
+
+#: app/templates/errors/403.html:5
+msgid "Accès refusé : onglet réservé aux membres de mandat de l'équipe."
+msgstr "Access denied: this tab is restricted to current board members."
+
+#: app/templates/errors/403.html:6
+msgid "Retour"
+msgstr "Back"
+
+#: app/templates/errors/404.html:5
+msgid "Page introuvable."
+msgstr "Page not found."
+
+#: app/templates/errors/404.html:6 app/templates/errors/500.html:6
+msgid "Retour à l'accueil"
+msgstr "Back to home"
+
+#: app/templates/errors/500.html:5
+msgid "Erreur interne du serveur. L'équipe technique a été prévenue."
+msgstr "Internal server error. The technical team has been notified."
+
+#: app/templates/public/catalogue.html:4
+msgid "Prix standards"
+msgstr "Standard prices"
+
+#: app/templates/public/catalogue.html:13
+msgid "Article"
+msgstr "Item"
+
+#: app/templates/public/catalogue.html:13
+msgid "Volume"
+msgstr "Volume"
+
+#: app/templates/public/catalogue.html:13
+msgid "Prix Brest"
+msgstr "Brest price"
+
+#: app/templates/public/catalogue.html:13
+msgid "Prix Paris"
+msgstr "Paris price"
+
+#: app/templates/public/catalogue.html:31
+msgid "Le catalogue est vide pour le moment."
+msgstr "The catalogue is empty for now."
+
+#: app/templates/public/home.html:4
+msgid "Les Foy'z & Bar de l'ENSTA"
+msgstr "The ENSTA Foy'z & Bar"
+
+#: app/templates/public/home.html:13
+msgid "Événements"
+msgstr "Events"
+
+#: app/templates/public/home.html:21
+msgid "Affiche"
+msgstr "Poster"
+
+#: app/templates/public/home.html:28
+msgid "Aucun événement prévu pour le moment."
+msgstr "No event scheduled at the moment."
+
+#: app/templates/public/home.html:39
+msgid "Notes des équipes"
+msgstr "Team notes"
+
+#: app/templates/public/home.html:52
+msgid "Aucune note publique actuellement."
+msgstr "No public note at the moment."
+
+#: app/templates/public/home.html:59
+msgid "Le bar en un clin d'œil"
+msgstr "The bar at a glance"
+
+#: app/templates/public/home.html:61
+msgid ""
+"Consultez le catalogue complet et les <strong>prix standards</strong> de "
+"chaque campus :"
+msgstr ""
+"Browse the full catalogue and the <strong>standard prices</strong> for "
+"each campus:"
+
+#: app/templates/public/home.html:62
+msgid "Voir les prix"
+msgstr "See the prices"
+
+#: app/templates/public/home.html:65
+msgid ""
+"La monnaie utilisée au Foy'z/Bar est une monnaie virtuelle : créditez "
+"votre compte sur place (Carte bancaire, Lydia, Espèces, HelloAsso) puis "
+"réglez vos consommations."
+msgstr ""
+"The Foy'z/Bar uses a virtual currency: top up your account on site (card,"
+" Lydia, cash, HelloAsso), then pay for your drinks."
+
+#: app/templates/public/hors_ligne.html:2
+msgid "Hors ligne"
+msgstr "Offline"
+
+#: app/templates/public/hors_ligne.html:5
+msgid "Pas de connexion"
+msgstr "No connection"
+
+#: app/templates/public/hors_ligne.html:7
+msgid ""
+"Cette page n'est pas disponible hors ligne. La caisse reste utilisable : "
+"les ventes sont enregistrées sur l'appareil puis transmises dès le retour"
+" du réseau."
+msgstr ""
+"This page is not available offline. The till remains usable: sales are "
+"stored on the device and sent as soon as the connection returns."
+
+#: app/templates/public/hors_ligne.html:9
+msgid "Aller à la caisse"
+msgstr "Go to the till"
+
+#: app/templates/public/liens.html:18
+msgid "Aucun lien pour le moment."
+msgstr "No link at the moment."
+
+#: app/templates/public/reglement.html:4
+msgid "Règlements intérieurs"
+msgstr "Rules of procedure"
+
+#: app/templates/public/reglement.html:13
+msgid "Dernière version du règlement intérieur du Foy'z/Bar de"
+msgstr "Latest version of the Foy'z/Bar rules of"
+
+#: app/templates/public/reglement.html:14
+msgid "Télécharger / consulter"
+msgstr "Download / view"
+
+#: app/templates/public/reglement.html:15
+msgid "Règlement"
+msgstr "Rules"
+
+#: app/templates/public/reglement.html:17
+msgid "Le règlement n'a pas encore été publié."
+msgstr "The rules have not been published yet."
+
+#: app/templates/public/trombinoscopes.html:5
+msgid "Les équipes de mandat du Foy'z & Bar."
+msgstr "The current Foy'z & Bar teams."
+
+#: app/templates/public/trombinoscopes.html:9
+msgid "Équipe"
+msgstr "Team"
+
+#: app/templates/public/trombinoscopes.html:16
+msgid "Photo de"
+msgstr "Photo of"
+
+#: app/templates/public/trombinoscopes.html:25
+msgid "Aucun membre présenté pour le moment."
+msgstr "No member on display at the moment."
+

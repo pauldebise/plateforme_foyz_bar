@@ -1,0 +1,216 @@
+# Translations template for PROJECT.
+# Copyright (C) 2026 ORGANIZATION
+# This file is distributed under the same license as the PROJECT project.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2026.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PROJECT VERSION\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2026-09-17 15:26+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.18.0\n"
+
+#: app/templates/base.html:81
+msgid "Accueil"
+msgstr ""
+
+#: app/templates/base.html:82 app/templates/public/catalogue.html:2
+msgid "Prix"
+msgstr ""
+
+#: app/templates/base.html:83 app/templates/public/reglement.html:2
+msgid "Règlement intérieur"
+msgstr ""
+
+#: app/templates/base.html:84 app/templates/public/liens.html:3
+msgid "Liens utiles"
+msgstr ""
+
+#: app/templates/base.html:85 app/templates/public/trombinoscopes.html:2
+#: app/templates/public/trombinoscopes.html:4
+msgid "Trombinoscopes"
+msgstr ""
+
+#: app/templates/auth/login.html:7 app/templates/base.html:93
+msgid "Interface équipe"
+msgstr ""
+
+#: app/templates/auth/login.html:2
+msgid "Connexion"
+msgstr ""
+
+#: app/templates/auth/login.html:8
+msgid "Réservé aux membres actifs et anciens membres des équipes Foy'z / Bar"
+msgstr ""
+
+#: app/templates/auth/login.html:12
+msgid "Identifiant"
+msgstr ""
+
+#: app/templates/auth/login.html:16
+msgid "Mot de passe"
+msgstr ""
+
+#: app/templates/auth/login.html:20
+msgid "Campus"
+msgstr ""
+
+#: app/templates/auth/login.html:28
+msgid "Se connecter"
+msgstr ""
+
+#: app/templates/errors/403.html:5
+msgid "Accès refusé : onglet réservé aux membres de mandat de l'équipe."
+msgstr ""
+
+#: app/templates/errors/403.html:6
+msgid "Retour"
+msgstr ""
+
+#: app/templates/errors/404.html:5
+msgid "Page introuvable."
+msgstr ""
+
+#: app/templates/errors/404.html:6 app/templates/errors/500.html:6
+msgid "Retour à l'accueil"
+msgstr ""
+
+#: app/templates/errors/500.html:5
+msgid "Erreur interne du serveur. L'équipe technique a été prévenue."
+msgstr ""
+
+#: app/templates/public/catalogue.html:4
+msgid "Prix standards"
+msgstr ""
+
+#: app/templates/public/catalogue.html:13
+msgid "Article"
+msgstr ""
+
+#: app/templates/public/catalogue.html:13
+msgid "Volume"
+msgstr ""
+
+#: app/templates/public/catalogue.html:13
+msgid "Prix Brest"
+msgstr ""
+
+#: app/templates/public/catalogue.html:13
+msgid "Prix Paris"
+msgstr ""
+
+#: app/templates/public/catalogue.html:31
+msgid "Le catalogue est vide pour le moment."
+msgstr ""
+
+#: app/templates/public/home.html:4
+msgid "Les Foy'z & Bar de l'ENSTA"
+msgstr ""
+
+#: app/templates/public/home.html:13
+msgid "Événements"
+msgstr ""
+
+#: app/templates/public/home.html:21
+msgid "Affiche"
+msgstr ""
+
+#: app/templates/public/home.html:28
+msgid "Aucun événement prévu pour le moment."
+msgstr ""
+
+#: app/templates/public/home.html:39
+msgid "Notes des équipes"
+msgstr ""
+
+#: app/templates/public/home.html:52
+msgid "Aucune note publique actuellement."
+msgstr ""
+
+#: app/templates/public/home.html:59
+msgid "Le bar en un clin d'œil"
+msgstr ""
+
+#: app/templates/public/home.html:61
+msgid ""
+"Consultez le catalogue complet et les <strong>prix standards</strong> de "
+"chaque campus :"
+msgstr ""
+
+#: app/templates/public/home.html:62
+msgid "Voir les prix"
+msgstr ""
+
+#: app/templates/public/home.html:65
+msgid ""
+"La monnaie utilisée au Foy'z/Bar est une monnaie virtuelle : créditez "
+"votre compte sur place (Carte bancaire, Lydia, Espèces, HelloAsso) puis "
+"réglez vos consommations."
+msgstr ""
+
+#: app/templates/public/hors_ligne.html:2
+msgid "Hors ligne"
+msgstr ""
+
+#: app/templates/public/hors_ligne.html:5
+msgid "Pas de connexion"
+msgstr ""
+
+#: app/templates/public/hors_ligne.html:7
+msgid ""
+"Cette page n'est pas disponible hors ligne. La caisse reste utilisable : "
+"les ventes sont enregistrées sur l'appareil puis transmises dès le retour"
+" du réseau."
+msgstr ""
+
+#: app/templates/public/hors_ligne.html:9
+msgid "Aller à la caisse"
+msgstr ""
+
+#: app/templates/public/liens.html:18
+msgid "Aucun lien pour le moment."
+msgstr ""
+
+#: app/templates/public/reglement.html:4
+msgid "Règlements intérieurs"
+msgstr ""
+
+#: app/templates/public/reglement.html:13
+msgid "Dernière version du règlement intérieur du Foy'z/Bar de"
+msgstr ""
+
+#: app/templates/public/reglement.html:14
+msgid "Télécharger / consulter"
+msgstr ""
+
+#: app/templates/public/reglement.html:15
+msgid "Règlement"
+msgstr ""
+
+#: app/templates/public/reglement.html:17
+msgid "Le règlement n'a pas encore été publié."
+msgstr ""
+
+#: app/templates/public/trombinoscopes.html:5
+msgid "Les équipes de mandat du Foy'z & Bar."
+msgstr ""
+
+#: app/templates/public/trombinoscopes.html:9
+msgid "Équipe"
+msgstr ""
+
+#: app/templates/public/trombinoscopes.html:16
+msgid "Photo de"
+msgstr ""
+
+#: app/templates/public/trombinoscopes.html:25
+msgid "Aucun membre présenté pour le moment."
+msgstr ""
+

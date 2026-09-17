@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="text-center mb-5">
-  <h1 class="fw-bold">Les Foy'z &amp; Bar de l'ENSTA</h1>
+  <h1 class="fw-bold">{{ _("Les Foy'z & Bar de l'ENSTA") }}</h1>
   <p class="text-muted mb-0">{{ homepage_text.split('\n')[0] }}</p>
 </section>
 
@@ -10,7 +10,7 @@
   <div class="col-lg-6">
     <div class="card h-100">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-calendar-event"></i> Événements — {{ CAMPUSSES[campus] }}</span>
+        <span><i class="bi bi-calendar-event"></i> {{ _("Événements") }} — {{ CAMPUSSES[campus] }}</span>
         <span class="badge" style="background: var(--primary);">{{ CAMPUSSES[campus] }}</span>
       </div>
       <div class="card-body">
@@ -18,14 +18,14 @@
           <div class="row g-3">
             {% for e in events[:6] %}
             <div class="col-md-6">
-              {% if e.poster %}<img class="event-poster" src="/uploads/{{ e.poster }}" alt="Affiche {{ e.name }}">{% else %}<div class="event-poster d-flex align-items-center justify-content-center text-muted"><i class="bi bi-image fs-1"></i></div>{% endif %}
+              {% if e.poster %}<img class="event-poster" src="/uploads/{{ e.poster }}" alt="{{ _('Affiche') }} {{ e.name }}">{% else %}<div class="event-poster d-flex align-items-center justify-content-center text-muted"><i class="bi bi-image fs-1"></i></div>{% endif %}
               <h3 class="h6 mt-2 mb-0">{{ e.name }}</h3>
               <p class="small text-muted mb-0"><i class="bi bi-geo-alt"></i> {{ CAMPUSSES[e.campus] }} · {{ e.starts_at|dt }} → {{ e.ends_at|dt }}</p>
             </div>
             {% endfor %}
           </div>
         {% else %}
-          <p class="text-muted mb-0">Aucun événement prévu pour le moment.</p>
+          <p class="text-muted mb-0">{{ _("Aucun événement prévu pour le moment.") }}</p>
         {% endif %}
       </div>
     </div>
@@ -36,7 +36,7 @@
 <div class="row g-4">
   <div class="col-lg-7">
     <div class="card h-100">
-      <div class="card-header"><i class="bi bi-info-circle"></i> Notes des équipes</div>
+      <div class="card-header"><i class="bi bi-info-circle"></i> {{ _("Notes des équipes") }}</div>
       <div class="card-body">
         <p class="text-muted">{{ homepage_text }}</p>
         {% if notes %}
@@ -49,21 +49,20 @@
             {% endfor %}
           </div>
         {% else %}
-          <p class="text-muted mb-0">Aucune note publique actuellement.</p>
+          <p class="text-muted mb-0">{{ _("Aucune note publique actuellement.") }}</p>
         {% endif %}
       </div>
     </div>
   </div>
   <div class="col-lg-5">
     <div class="card h-100">
-      <div class="card-header"><i class="bi bi-cup-straw"></i> Le bar en un clin d'œil</div>
+      <div class="card-header"><i class="bi bi-cup-straw"></i> {{ _("Le bar en un clin d'œil") }}</div>
       <div class="card-body">
-        <p>Consultez le catalogue complet et les <strong>prix standards</strong> de chaque campus :</p>
-        <a class="btn btn-primary" href="{{ url_for('public.catalogue') }}"><i class="bi bi-tags"></i> Voir les prix</a>
+        <p>{% trans %}Consultez le catalogue complet et les <strong>prix standards</strong> de chaque campus :{% endtrans %}</p>
+        <a class="btn btn-primary" href="{{ url_for('public.catalogue') }}"><i class="bi bi-tags"></i> {{ _("Voir les prix") }}</a>
         <hr>
         <p class="small text-muted mb-0">
-          La monnaie utilisée au Foy'z/Bar est une monnaie virtuelle : créditez votre compte sur place
-          (Carte bancaire, Lydia, Espèces, HelloAsso) puis réglez vos consommations.
+          {{ _("La monnaie utilisée au Foy'z/Bar est une monnaie virtuelle : créditez votre compte sur place (Carte bancaire, Lydia, Espèces, HelloAsso) puis réglez vos consommations.") }}
         </p>
       </div>
     </div>

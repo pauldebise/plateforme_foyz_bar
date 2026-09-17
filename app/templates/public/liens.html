@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h1 class="h3 mb-4"><i class="bi bi-link-45deg"></i> Liens utiles</h1>
+<h1 class="h3 mb-4"><i class="bi bi-link-45deg"></i> {{ _("Liens utiles") }}</h1>
 <div class="row g-3">
   {% for l in links %}
   <div class="col-md-6">
@@ -15,7 +15,7 @@
     </a>
   </div>
   {% else %}
-  <p class="text-muted">Aucun lien pour le moment.</p>
+  <p class="text-muted">{{ _("Aucun lien pour le moment.") }}</p>
   {% endfor %}
 </div>
 {% endblock %}

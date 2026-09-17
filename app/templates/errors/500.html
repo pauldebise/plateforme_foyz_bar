@@ -2,7 +2,7 @@
 {% block content %}
 <div class="text-center py-5">
   <h1 class="display-1">500</h1>
-  <p class="lead">Erreur interne du serveur. L'équipe technique a été prévenue.</p>
-  <a class="btn btn-primary" href="{{ url_for('public.home') }}">Retour à l'accueil</a>
+  <p class="lead">{{ _("Erreur interne du serveur. L'équipe technique a été prévenue.") }}</p>
+  <a class="btn btn-primary" href="{{ url_for('public.home') }}">{{ _("Retour à l'accueil") }}</a>
 </div>
 {% endblock %}
