@@ -515,6 +515,10 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
 - CI GitHub Actions (`.github/workflows/ci.yml`) : job qualité (ruff check,
   ruff format --check, pip-audit), job tests SQLite **et** PostgreSQL 16
   (service), job `docker build`. Chaque PR est validée automatiquement.
+- Test de charge « soirée » : `python -m tests.test_charge` (3 caissiers ×
+  25 ventes) ; `FOYZ_CHARGE_SCALE=4` pour ~1 200 transactions. Référence locale
+  SQLite : 12 caissiers, p95 246 ms, ~170 ventes/s. La conservation des soldes,
+  le découvert et l'idempotence sont vérifiés après la charge.
 - Portabilité : les suites migration, exploitation/restauration et performance
   restent spécifiques à SQLite (fichiers sources, copies locales) ; les autres
   tournent sur les deux moteurs.
