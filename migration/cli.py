@@ -3,6 +3,7 @@
     python -m migration --run            # migration + audit + suppression des sources
     python -m migration --dry-run        # cycle complet puis ROLLBACK (sources intactes)
     python -m migration --audit-only     # comparaison soldes sources/cibles sans injection
+    python -m migration --purge-archives 30   # destruction des archives anciennes (D14)
 
 Options : --source-dir, --database-url, --chunk-rows, --money-unit,
 --keep-archives, --force-import (rejeu d'un lot déjà marqué comme migré).
@@ -22,7 +23,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
 from . import audit, detect, report, settings, staging
-from .cleaner import dispose
+from .cleaner import dispose, purge_archives
 from .errors import AccountingError, MigrationError, SourceError
 from .etl import Migrator, SourceReader
 from .report import line, section
@@ -60,6 +61,8 @@ def parse_args(argv=None):
                       help="cycle complet puis ROLLBACK systématique, fichiers intacts")
     mode.add_argument("--audit-only", action="store_true",
                       help="compare les soldes sources/cibles sans réinjecter de données")
+    mode.add_argument("--purge-archives", type=int, metavar="JOURS",
+                      help="détruit les archives de migration plus anciennes que JOURS jours")
     parser.add_argument("--source-dir", type=Path, default=settings.DEFAULT_SOURCE_DIR,
                         help=f"dossier des dumps (défaut : {settings.DEFAULT_SOURCE_DIR.name}/)")
     parser.add_argument("--database-url", default=None,
@@ -82,7 +85,12 @@ def parse_args(argv=None):
     if not (settings.MIN_CHUNK_ROWS <= args.chunk_rows <= settings.MAX_CHUNK_ROWS):
         parser.error(f"--chunk-rows doit être entre {settings.MIN_CHUNK_ROWS} "
                      f"et {settings.MAX_CHUNK_ROWS}.")
-    args.mode = "run" if args.run else ("dry-run" if args.dry_run else "audit-only")
+    if args.purge_archives is not None:
+        if args.purge_archives < 1:
+            parser.error("--purge-archives JOURS doit être >= 1.")
+        args.mode = "purge-archives"
+    else:
+        args.mode = "run" if args.run else ("dry-run" if args.dry_run else "audit-only")
     return args
 
 
@@ -351,8 +359,18 @@ def _run_audit_only(args, engine, files):
         return 1
 
 
+def _run_purge_archives(args):
+    section("PURGE DES ARCHIVES DE MIGRATION")
+    report.kv("Dossier source", str(args.source_dir))
+    report.kv("Rétention", f"{args.purge_archives} jour(s)")
+    purge_archives(args.source_dir, args.purge_archives, log=print)
+    return 0
+
+
 def main(argv=None):
     args = parse_args(argv)
+    if args.mode == "purge-archives":
+        return _run_purge_archives(args)
     try:
         files = detect.scan(args.source_dir)
         url = _resolve_url(args)

@@ -6,7 +6,7 @@ manifest détecté sont supprimés ou archivés — jamais d'autre contenu.
 """
 
 import shutil
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .errors import SourceError
@@ -63,3 +63,36 @@ def dispose(source_files, keep_archives=False, source_dir=None, consumed=None):
         print(f"  {moved} fichier(s) source(s) supprimé(s) — bdd_a_migrer/ nettoyé.")
     line()
     return archive_dir if keep_archives else None
+
+
+def purge_archives(source_dir, days, dry_run=False, now=None, log=print):
+    """Détruit les archives de migration plus anciennes que `days` jours (D14).
+
+    Les archives contiennent des données personnelles (anciennes bases) : elles
+    ne doivent pas rester indéfiniment. Seuls les sous-dossiers horodatés
+    `AAAAMMJJ-HHMMSS` sont concernés ; tout autre contenu est ignoré.
+    """
+    archives_dir = Path(source_dir) / ARCHIVE_DIRNAME
+    if not archives_dir.is_dir():
+        log(f"  Aucune archive dans {archives_dir}")
+        return []
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=days)
+    removed = []
+    for entry in sorted(archives_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        try:
+            stamp = datetime.strptime(entry.name, "%Y%m%d-%H%M%S").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if stamp >= cutoff:
+            continue
+        size = sum(f.stat().st_size for f in entry.rglob("*") if f.is_file())
+        if dry_run:
+            log(f"  [simulation] {entry.name} ({size // 1024} KiB)")
+        else:
+            shutil.rmtree(entry)
+            log(f"  Détruit : {entry.name} ({size // 1024} KiB)")
+        removed.append(str(entry))
+    log(f"  {len(removed)} archive(s) de plus de {days} jour(s).")
+    return removed

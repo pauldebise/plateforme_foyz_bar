@@ -1,5 +1,6 @@
 """Constantes et réglages du pipeline de migration."""
 
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -21,6 +22,10 @@ STAGING_TABLE = "staging_paris_raw"
 
 # Nom du sous-dossier d'archivage (--keep-archives), horodaté à l'exécution.
 ARCHIVE_DIRNAME = "archives"
+
+# Durée de conservation des archives de migration (données personnelles des
+# anciennes bases) avant destruction : 30 jours par défaut (D14).
+ARCHIVE_RETENTION_DAYS = max(1, int(os.environ.get("ARCHIVE_RETENTION_DAYS") or 30))
 
 # Unité par défaut des montants sources : euros (décimaux) convertis en centimes.
 DEFAULT_MONEY_UNIT = "euros"
