@@ -269,9 +269,11 @@ audit comptable systématique.
 
 1. Passer les anciens sites en maintenance (gel des écritures).
 2. Copier les dumps dans `bdd_a_migrer/` (créé automatiquement) :
-   - Brest : dump MySQL `brest_*.sql` (~500 Mo, majoritairement des logs — traités
-     en streaming par batchs, sans chargement en RAM) ;
+   - Brest : dump MySQL `brest_*.sql` **uniquement** (~500 Mo, majoritairement
+     des logs — traités en streaming par batchs, sans chargement en RAM) ;
    - Paris : export léger `paris_*.json` / `*.jsonl` / `*.csv` / `*.sql`.
+   Toute autre extension (`brest_*.json`, `.zip`, …) est refusée avant
+   démarrage : rien n'est lu ni supprimé par surprise.
 3. `make migrate-dry` — cycle complet (parsing, conversions, injection, audit) puis
    **ROLLBACK systématique** : la base et les fichiers restent intacts.
 4. `make migrate-run` — exécution réelle ; si et seulement si l'audit comptable
@@ -281,12 +283,24 @@ audit comptable systématique.
    dans `bdd_a_migrer/archives/<horodatage>/` au lieu d'être supprimées.
 5. Redémarrer la plateforme.
 
+Le lot migré est marqué dans la table `migration_campaign` (même transaction que
+les données) : rejouer exactement le même lot est **refusé** (idempotence) — sauf
+`--force-import`, réservé aux experts. Le marqueur est annulé par un `ROLLBACK`,
+donc une reprise après échec reste possible.
+
 ### Garanties
 
 - **Montants** : exclusivement en centimes entiers (`INTEGER`), toute source
   flottante ou à fraction de centime est rejetée (`--money-unit euros|cents`).
-- **Invariable comptable** : `Σ soldes sources = Σ soldes cibles` (écart global
-  ET par campus strictement nul), vérifié dans la transaction avant `COMMIT`.
+- **Audit de mapping (indépendant)** : `Σ soldes BRUTS sources = Σ soldes
+  projetés` (écart global ET par campus strictement nul). Un compte sans
+  identité ou une clé de réconciliation portée par plusieurs lignes (homonymes,
+  doublons de carte) **bloque la bascule** avec le détail des clés en collision
+  et leurs montants. Sur le dump Brest réel (16/09), cela détecte 214 collisions
+  et 3 849,08 € non projetés par l'ancien mapping.
+- **Invariable comptable** : `Σ soldes projetés = Σ soldes cibles après − avant`
+  (écart global ET par campus strictement nul), vérifié dans la transaction
+  avant `COMMIT`.
 - **Catalogue** : les articles Brest (codes-barres, prix public/équipe, volumes)
   sont importés avec leur type (table `article_types` ; « Boisson Chaude/Froide »
   rattachées aux consommables `snack`, seul vocabulaire cible non alcoolisé —
@@ -305,8 +319,18 @@ audit comptable systématique.
   ventes) est conservé pour justifier les soldes. Les tables non reconnues ne
   sont **pas** migrées (liste blanche) et figurent au rapport.
 - **Réconciliation** : les étudiants présents sur les deux campus (email, sinon
-  nom) sont fusionnés en un compte unique avec deux portefeuilles
-  (un par campus) ; l'historique reste rattaché à son `campus` d'origine.
+  nom normalisé + date de naissance, sinon nom normalisé) sont fusionnés en un
+  compte unique avec deux portefeuilles (un par campus) ; l'historique reste
+  rattaché à son `campus` d'origine. La date de naissance (quand elle existe)
+  discrimine les homonymes.
+- **Comptes désactivés** : `users.disabled` de la source est conservé
+  (`disabled` en cible) et la connexion est refusée.
+- **Consignes** : `users.ecocups` (verres empruntés) est migré dans
+  `wallets.glasses_outstanding` ; hors du périmètre de l'audit **monétaire**.
+- **Transferts** : les demi-lignes Brest sont appariées par
+  (date, opérateur, montant) — la source n'offre pas de lien explicite ; les
+  groupes ambigus sont appariés dans l'ordre des identifiants et comptés au
+  rapport.
 - **Mots de passe** : les hachages compatibles (werkzeug) sont repris tels
   quels ; les autres (bcrypt de l'ancienne plateforme, md5, texte brut) sont
   importés bruts dans `users.legacy_password` et vérifiés à la connexion
@@ -323,7 +347,7 @@ make migrate-audit   # comparaison soldes sources / cibles sans injection (exit 
 make migrate-dry     # répétition générale (ROLLBACK + fichiers intacts)
 make migrate-run     # bascule réelle
 make migrate-keep    # bascule réelle avec archivage des sources
-python -m tests.migration.test_migration   # suite de tests du module (17 tests)
+python -m tests.migration.test_migration   # suite de tests du module (27 tests)
 python -m tests.test_identifiers           # login/identifiants + évolution du schéma
 ```
 
