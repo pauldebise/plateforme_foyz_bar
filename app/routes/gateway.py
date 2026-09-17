@@ -25,7 +25,7 @@ bp = Blueprint("gateway", __name__)
 # Le lien passerelle n'est pas authentifié : on borne son usage par jeton et
 # par IP (ouverture de la page et surtout encaissements).
 _page_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=120)
-_pay_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=20)
+_pay_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=60)
 
 
 def _limiter_key(token):
