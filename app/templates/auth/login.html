@@ -9,12 +9,12 @@
       <form method="post" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <div class="mb-3">
-          <label class="form-label">Identifiant</label>
-          <input class="form-control" name="username" autocomplete="username" required autofocus>
+          <label class="form-label" for="login-username">Identifiant</label>
+          <input class="form-control" id="login-username" name="username" autocomplete="username" required autofocus>
         </div>
         <div class="mb-3">
-          <label class="form-label">Mot de passe</label>
-          <input class="form-control" type="password" name="password" autocomplete="current-password" required>
+          <label class="form-label" for="login-password">Mot de passe</label>
+          <input class="form-control" id="login-password" type="password" name="password" autocomplete="current-password" required>
         </div>
         <div class="mb-4">
           <label class="form-label d-block">Campus</label>
