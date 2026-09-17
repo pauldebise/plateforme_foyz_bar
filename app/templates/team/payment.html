@@ -4,6 +4,14 @@
 <div id="payment-config" data-campus="{{ current_campus }}" data-deposit-value="{{ deposit_value }}" data-deposit-enabled="{{ '1' if deposit_enabled else '0' }}" data-overdraft-limit="{{ overdraft_limit }}"></div>
 <script type="application/json" id="catalog-data">{{ catalog|tojson }}</script>
 
+<div id="offline-banner" class="alert alert-warning d-none" role="status" aria-live="polite">
+  <div class="d-flex justify-content-between align-items-center gap-2">
+    <span><i class="bi bi-cloud-arrow-up"></i> <span id="offline-banner-text"></span></span>
+    <button type="button" class="btn btn-sm btn-outline-dark text-nowrap" data-offline-flush>Synchroniser</button>
+  </div>
+  <ul id="offline-errors" class="small mb-0 mt-1"></ul>
+</div>
+
 <div class="row g-4">
   <div class="col-lg-4">
     <div class="card mb-4" id="contributors-card">
@@ -163,5 +171,6 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script src="{{ url_for('static', filename='js/offline.js') }}"></script>
 <script src="{{ url_for('static', filename='js/payment.js') }}"></script>
 {% endblock %}

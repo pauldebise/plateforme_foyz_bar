@@ -346,6 +346,8 @@ def create_app():
         "frame-ancestors 'self'; "
         "base-uri 'self'; "
         "form-action 'self'; "
+        "worker-src 'self'; "
+        "manifest-src 'self'; "
         "object-src 'none'"
     )
 
@@ -428,6 +430,63 @@ def create_app():
         if "_csrf_token" not in session:
             session["_csrf_token"] = secrets.token_hex(16)
         return session["_csrf_token"]
+
+    @app.get("/manifest.webmanifest")
+    def manifest():
+        """Manifeste PWA : installation de la caisse sur l'écran d'accueil."""
+        from app.services.settings import get_setting
+
+        theme = safe_color(get_setting("theme_color_public"))
+        return (
+            jsonify(
+                name=get_setting("site_name") or "Foy'z & Bar",
+                short_name="Foy'z",
+                description=(
+                    "Plateforme des Foy'z & Bar de l'ENSTA : caisse, soldes et événements."
+                ),
+                lang="fr",
+                start_url="/",
+                scope="/",
+                display="standalone",
+                background_color="#ffffff",
+                theme_color=theme,
+                icons=[
+                    {
+                        "src": url_for("static", filename="icons/icon-192.png"),
+                        "sizes": "192x192",
+                        "type": "image/png",
+                    },
+                    {
+                        "src": url_for("static", filename="icons/icon-512.png"),
+                        "sizes": "512x512",
+                        "type": "image/png",
+                    },
+                    {
+                        "src": url_for("static", filename="favicon.svg"),
+                        "sizes": "any",
+                        "type": "image/svg+xml",
+                    },
+                ],
+                shortcuts=[
+                    {"name": "Caisse", "url": url_for("team.payment")},
+                    {"name": "Prix", "url": url_for("public.catalogue")},
+                ],
+            ),
+            200,
+            {"Content-Type": "application/manifest+json"},
+        )
+
+    @app.get("/sw.js")
+    def service_worker():
+        """Service worker à la racine (portée complète) : jamais mis en cache."""
+        response = send_from_directory(app.static_folder, "js/sw.js")
+        response.headers["Service-Worker-Allowed"] = "/"
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+    @app.get("/hors-ligne")
+    def offline_page():
+        return render_template("public/hors_ligne.html")
 
     @app.route("/uploads/<path:filename>")
     def uploaded_file(filename):

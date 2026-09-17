@@ -7,9 +7,12 @@ conformément au cahier des charges (`docs/main.tex`).
 - Backend : **Python 3 / Flask 3** (architecture modulaire en blueprints)
 - Base de données : **SQLAlchemy 2** — SQLite en développement, PostgreSQL en production
 - Front-end : **Bootstrap 5 + Chart.js** auto-hébergés (`app/static/vendor/`, aucune
-  dépendance CDN : la caisse fonctionne hors ligne), templates Jinja2, JavaScript vanilla
+  dépendance CDN), templates Jinja2, JavaScript vanilla ; **PWA installable** avec
+  service worker et file d'attente hors ligne pour la caisse (les ventes rejouées
+  sont dédupliquées par la clé d'idempotence)
 - Sécurité : sessions signées, CSRF, hachage des mots de passe (scrypt), anti-bruteforce,
-  expiration de session par inactivité, mots de passe administrateur pour les opérations sensibles
+  expiration de session par inactivité, **MFA TOTP facultatif**, politique de mot de
+  passe, journal d'audit, mots de passe administrateur pour les opérations sensibles
 
 ---
 
@@ -535,3 +538,18 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
 - Portabilité : les suites migration, exploitation/restauration et performance
   restent spécifiques à SQLite (fichiers sources, copies locales) ; les autres
   tournent sur les deux moteurs.
+
+### 7.6 PWA et mode hors ligne de la caisse
+
+- Manifeste `/manifest.webmanifest` et service worker `/sw.js` (portée racine,
+  jamais mis en cache) : l'application est installable sur mobile/tablette et la
+  coquille de la caisse (page + assets) est conservée pour un rechargement hors
+  ligne. Les autres pages authentifiées ne sont **pas** mises en cache.
+- Encaissements hors ligne : `app/static/js/offline.js` met les ventes en file
+  dans IndexedDB avec la clé d'idempotence générée par la caisse, puis les rejoue
+  au retour du réseau ou via le bouton « Synchroniser ». Une vente refusée par
+  le serveur (solde, blacklist, session expirée) reste affichée en erreur pour
+  traitement manuel — aucune vente n'est perdue ni comptée deux fois.
+- Limites assumées : la recherche d'étudiants et le solde en temps réel ne sont
+  pas disponibles hors ligne (le serveur reste seul juge des soldes) ; vérifier
+  l'installation sur un poste réel et un navigateur cible.

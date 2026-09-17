@@ -457,12 +457,24 @@ function orderKeyFor(payload) {
 async function pay(adminPassword) {
   if (paying) return;
   paying = true;
+  const payload = buildPayload(adminPassword);
   try {
-    const payload = buildPayload(adminPassword);
     payload.idempotency_key = orderKeyFor(payload);
     const res = await apiFetch(GATEWAY ? location.pathname + '/encaisser' : '/api/purchase', { json: payload });
     showSuccess(res.total);
   } catch (e) {
+    // Échec réseau (fetch rejette) : la vente est mise en file locale et sera
+    // rejouée avec la même clé d'idempotence — le serveur ne débitera qu'une fois.
+    if (e instanceof TypeError && window.FoyzOffline && window.FoyzOffline.queueSale) {
+      payload.idempotency_key = payload.idempotency_key || orderKeyFor(payload);
+      window.FoyzOffline.queueSale(
+        GATEWAY ? location.pathname + '/encaisser' : '/api/purchase',
+        payload
+      );
+      resetCartState();
+      toast('Hors ligne : vente enregistrée sur ce poste, transmission au retour du réseau.');
+      return;
+    }
     if (e.code === 'admin_password_required' && els.adminModal) {
       $('admin-negative-users').textContent = (e.extra.negative_users || []).join(', ');
       els.adminModal.show();
@@ -474,9 +486,7 @@ async function pay(adminPassword) {
   }
 }
 
-function showSuccess(total) {
-  if (!els.successModal) return;
-  $('success-total').textContent = (total / 100).toFixed(2) + ' €';
+function resetCartState() {
   cart = new Map();
   contributors = [];
   if (els.depositSwitch) els.depositSwitch.checked = false;
@@ -492,8 +502,14 @@ function showSuccess(total) {
   renderContributors();
   renderCart();
   renderCatalog();
+}
+
+function showSuccess(total) {
+  if (!els.successModal) return;
+  $('success-total').textContent = (total / 100).toFixed(2) + ' €';
   // Pas de rechargement : l'état (panier, contributeurs, défilement) est déjà
   // remis à zéro, la page reste en place (U4).
+  resetCartState();
   els.successModal.show();
 }
 
