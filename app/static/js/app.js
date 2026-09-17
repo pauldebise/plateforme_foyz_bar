@@ -2,6 +2,22 @@ function csrfToken() {
   return document.querySelector('meta[name="csrf-token"]').content;
 }
 
+// Construction d'éléments sans jamais interpréter de HTML : les noms
+// d'articles/étudiants viennent de la base (voire de la migration) et ne
+// doivent jamais être injectés via innerHTML (XSS stocké).
+function makeEl(tag, className, text) {
+  const el = document.createElement(tag);
+  if (className) el.className = className;
+  if (text !== undefined && text !== null) el.textContent = text;
+  return el;
+}
+
+function appendBadges(parent, badges) {
+  badges.forEach(([cls, label]) => {
+    parent.appendChild(makeEl('span', `badge ${cls}`, label));
+  });
+}
+
 async function apiFetch(url, options = {}) {
   const opts = Object.assign({ headers: { 'X-CSRFToken': csrfToken() } }, options);
   if (opts.json !== undefined) {
@@ -62,13 +78,18 @@ function initStudentSearch(inputEl, listEl, onPick, options = {}) {
       results.forEach((r, idx) => {
         const div = document.createElement('div');
         div.className = 'search-result px-3 py-2 border-bottom d-flex justify-content-between align-items-center';
+        const info = document.createElement('div');
+        info.appendChild(makeEl('strong', '', r.name));
+        if (r.promotion) info.appendChild(makeEl('span', 'text-muted small', ` · promo ${r.promotion}`));
+        info.appendChild(makeEl(
+          'span', 'balance-chip badge bg-light text-dark ms-1', `${(r.balance / 100).toFixed(2)} €`,
+        ));
         const badges = [];
-        if (r.blacklist) badges.push('<span class="badge badge-blacklist">blacklist</span>');
-        if (r.blacklist_alcohol) badges.push('<span class="badge badge-alcool">blacklist alcool</span>');
-        if (r.is_team) badges.push('<span class="badge bg-secondary">équipe</span>');
-        div.innerHTML = `<div><strong>${r.name}</strong>
-          ${r.promotion ? `<span class="text-muted small">· promo ${r.promotion}</span>` : ''}
-          <span class="balance-chip badge bg-light text-dark ms-1">${(r.balance / 100).toFixed(2)} €</span> ${badges.join(' ')}</div>`;
+        if (r.blacklist) badges.push(['badge-blacklist', 'blacklist']);
+        if (r.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
+        if (r.is_team) badges.push(['bg-secondary', 'équipe']);
+        appendBadges(info, badges);
+        div.appendChild(info);
         div.addEventListener('click', () => pick(idx));
         div.addEventListener('mouseenter', () => setActive(idx));
         listEl.appendChild(div);

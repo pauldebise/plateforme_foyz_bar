@@ -52,7 +52,7 @@
                 <button class="btn btn-sm btn-outline-secondary">Détacher</button>
               </form>
               {% endif %}
-              <form class="d-inline" method="post" action="{{ url_for('admin.tap_supprimer', tap_id=t.id) }}" onsubmit="return confirm('Supprimer cette tireuse ? Ses articles pression seront désactivés.')">
+              <form class="d-inline" method="post" action="{{ url_for('admin.tap_supprimer', tap_id=t.id) }}" data-confirm="Supprimer cette tireuse ? Ses articles pression seront désactivés.">
                 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
                 <button class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
               </form>
@@ -98,7 +98,7 @@
           <td class="text-end text-nowrap">
             {% if writable %}
             <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.keg', keg_id=k.id) }}">Modifier</a>
-            <form class="d-inline" method="post" action="{{ url_for('admin.keg_supprimer', keg_id=k.id) }}" onsubmit="return confirm('Supprimer ce fût et désactiver ses articles tireuse ?')">
+            <form class="d-inline" method="post" action="{{ url_for('admin.keg_supprimer', keg_id=k.id) }}" data-confirm="Supprimer ce fût et désactiver ses articles tireuse ?">
               <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
               <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
             </form>

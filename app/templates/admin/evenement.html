@@ -60,8 +60,8 @@
           Revenir à l'interface équipe exige une nouvelle authentification.
         </p>
         <div class="input-group input-group-sm">
-          <input class="form-control" readonly value="{{ request.host_url }}passerelle/{{ ev.token }}">
-          <button class="btn btn-outline-primary" onclick="navigator.clipboard.writeText('{{ request.host_url }}passerelle/{{ ev.token }}')"><i class="bi bi-clipboard"></i></button>
+          <input class="form-control" readonly value="/passerelle/{{ ev.token }}" data-gateway-link>
+          <button class="btn btn-outline-primary" data-copy="/passerelle/{{ ev.token }}" title="Copier le lien"><i class="bi bi-clipboard"></i></button>
         </div>
         <p class="small text-muted mt-2 mb-0">La passerelle est active à partir de 12 h avant le début et jusqu'à la fin (ou clôture manuelle).</p>
       </div>
@@ -80,7 +80,7 @@
             <span class="small text-muted">std {{ a.price_std_brest|eur }} / {{ a.price_std_paris|eur }} · équipe {{ a.price_team_brest|eur }} / {{ a.price_team_paris|eur }}</span>
           </div>
           {% if writable %}
-          <form method="post" onsubmit="return confirm('Supprimer cet article ?')">
+          <form method="post" data-confirm="Supprimer cet article ?">
             <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
             <input type="hidden" name="action" value="del_article">
             <input type="hidden" name="article_id" value="{{ a.id }}">

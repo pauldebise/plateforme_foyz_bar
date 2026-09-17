@@ -35,7 +35,7 @@
               <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.article', article_id=a.id) }}">Modifier</a>
               {% if a.active %}
               <form class="d-inline" method="post" action="{{ url_for('admin.article_supprimer', article_id=a.id) }}"
-                    onsubmit="return confirm('Désactiver cet article ?')">
+                    data-confirm="Désactiver cet article ?">
                 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
                 <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
               </form>

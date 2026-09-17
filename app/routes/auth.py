@@ -5,7 +5,7 @@ import threading
 import time
 from collections import defaultdict, deque
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import select
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -111,13 +111,23 @@ def login():
                 # Conversion au format cible : le mot de passe hérité ne sert plus.
                 user.password_hash = generate_password_hash(password)
                 user.legacy_password = None
+                current_app.logger.info(
+                    "Mot de passe legacy converti pour %s (compte %s).",
+                    user.display_name, user.id,
+                )
         if ok and user and (not user.is_team or user.blacklist):
             ok = False
             reason = "Accès refusé : compte blacklisté." if user.blacklist else "Accès réservé aux membres de l'équipe."
         else:
             reason = "Identifiants incorrects."
 
-        db.session.add(LoginLog(user_id=user.id if user else None, name=identifiant, campus=campus, ip=ip, success=bool(ok)))
+        db.session.add(LoginLog(
+            user_id=user.id if user else None,
+            name=identifiant[:120],  # LoginLog.name = VARCHAR(120)
+            campus=campus,
+            ip=ip,
+            success=bool(ok),
+        ))
         db.session.commit()
 
         if not ok:

@@ -1,4 +1,5 @@
 import ipaddress
+import math
 import re
 import secrets
 import unicodedata
@@ -59,10 +60,47 @@ def euros(cents):
     return f"{sign}{abs(cents) // 100},{abs(cents) % 100:02d} €"
 
 
+# Plafond des montants saisis (1 000 000,00 €) : borne les valeurs aberrantes
+# et évite les débordements d'entiers sur les colonnes de prix.
+MAX_CENTS = 100_000_000
+
+
 def cents(value):
+    """Convertit une saisie (« 12,50 ») en centimes entiers.
+
+    Lève ValueError sur une valeur non numérique, `inf`/`nan` ou hors bornes :
+    les appelants transforment l'erreur en message utilisateur plutôt que de
+    laisser PostgreSQL lever une 500.
+    """
     if value is None:
         return 0
-    return int(round(float(str(value).replace(",", ".")) * 100))
+    try:
+        number = float(str(value).strip().replace(",", "."))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("montant invalide") from exc
+    if not math.isfinite(number):
+        raise ValueError("montant invalide")
+    amount = int(round(number * 100))
+    if abs(amount) > MAX_CENTS:
+        raise ValueError("montant hors limites")
+    return amount
+
+
+def clamp_text(value, max_length):
+    """Tronque une chaîne à la longueur de la colonne cible (SQLite tronque en
+    silence, PostgreSQL rejette : on garde un comportement identique partout)."""
+    if value is None:
+        return None
+    return str(value)[:max_length]
+
+
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def safe_color(value, default="#804db3"):
+    """N'accepte qu'une couleur hexadécimale `#rrggbb` (injection CSS sinon)."""
+    value = (value or "").strip()
+    return value if _HEX_COLOR_RE.match(value) else default
 
 
 def slug_username(value):

@@ -5,6 +5,7 @@ const CONFIG = document.getElementById('payment-config');
 const DEPOSIT_VALUE = parseInt(CONFIG.dataset.depositValue, 10);
 const DEPOSIT_ENABLED = CONFIG.dataset.depositEnabled === '1';
 const CAMPUS = CONFIG.dataset.campus || '';
+const GATEWAY = CONFIG.dataset.gateway === '1';
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -68,16 +69,27 @@ function renderContributors() {
   contributors.forEach((c) => {
     const li = document.createElement('li');
     li.className = 'list-group-item d-flex justify-content-between align-items-center px-2';
+    const info = document.createElement('div');
+    const icon = makeEl('i', 'bi bi-person-circle');
+    info.appendChild(icon);
+    info.appendChild(document.createTextNode(' '));
+    info.appendChild(makeEl('strong', '', c.name));
+    info.appendChild(document.createTextNode(' '));
+    info.appendChild(makeEl('span', 'badge bg-light text-dark', `${(c.balance / 100).toFixed(2)} €`));
     const badges = [];
-    if (c.blacklist) badges.push('<span class="badge badge-blacklist">blacklist</span>');
-    if (c.blacklist_alcohol) badges.push('<span class="badge badge-alcool">blacklist alcool</span>');
-    li.innerHTML = `<div><i class="bi bi-person-circle"></i> <strong>${c.name}</strong>
-      <span class="badge bg-light text-dark">${(c.balance / 100).toFixed(2)} €</span> ${badges.join(' ')}</div>
-      <button class="btn btn-sm btn-outline-danger" title="Retirer"><i class="bi bi-x"></i></button>`;
-    li.querySelector('button').addEventListener('click', () => {
+    if (c.blacklist) badges.push(['badge-blacklist', 'blacklist']);
+    if (c.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
+    if (badges.length) info.appendChild(document.createTextNode(' '));
+    appendBadges(info, badges);
+    const button = makeEl('button', 'btn btn-sm btn-outline-danger');
+    button.title = 'Retirer';
+    button.appendChild(makeEl('i', 'bi bi-x'));
+    button.addEventListener('click', () => {
       contributors = contributors.filter((x) => x.id !== c.id);
       renderContributors();
     });
+    li.appendChild(info);
+    li.appendChild(button);
     els.contributorList.appendChild(li);
   });
   if (!contributors.length) {
@@ -117,8 +129,12 @@ function clearCatalogActive() {
 function catalogCard(label, icon, cls, items) {
   const card = document.createElement('div');
   card.className = 'card mb-2' + (cls ? ` ${cls}` : '');
-  card.innerHTML = `<div class="card-header py-1 small fw-bold">${icon} ${label}</div><div class="card-body p-0"></div>`;
-  const body = card.querySelector('.card-body');
+  const header = makeEl('div', 'card-header py-1 small fw-bold');
+  if (icon) header.innerHTML = icon;
+  header.appendChild(document.createTextNode(`${icon ? ' ' : ''}${label}`));
+  card.appendChild(header);
+  const body = makeEl('div', 'card-body p-0');
+  card.appendChild(body);
   items.forEach((a) => body.appendChild(catalogRow(a)));
   return card;
 }
@@ -154,15 +170,25 @@ function tapRow(group) {
   const row = document.createElement('div');
   row.className = 'cat-item tap-item';
   row.dataset.id = (group.sizes.find((s) => s.size === 'Pinte') || group.sizes[0]).article.id;
-  const alcohol = group.sizes.some((s) => s.article.alcohol)
-    ? '<i class="bi bi-exclamation-diamond text-warning" title="Alcoolisé"></i>' : '';
-  const buttons = group.sizes.map((s) =>
-    `<button class="btn btn-sm btn-primary tap-btn"><span class="tap-size">${s.size}</span><span class="tap-price">${(unitPrice(s.article) / 100).toFixed(2)} € <i class="bi bi-plus-lg"></i></span></button>`
-  ).join('');
-  row.innerHTML = `<span class="tap-label">${group.label} ${alcohol}</span><div class="tap-sizes">${buttons}</div>`;
-  row.querySelectorAll('.tap-btn').forEach((btn, i) => {
-    btn.addEventListener('click', () => addToCart(group.sizes[i].article));
+  const label = makeEl('span', 'tap-label');
+  label.appendChild(document.createTextNode(`${group.label} `));
+  if (group.sizes.some((s) => s.article.alcohol)) {
+    const warning = makeEl('i', 'bi bi-exclamation-diamond text-warning');
+    warning.title = 'Alcoolisé';
+    label.appendChild(warning);
+  }
+  const sizes = makeEl('div', 'tap-sizes');
+  group.sizes.forEach((s) => {
+    const btn = makeEl('button', 'btn btn-sm btn-primary tap-btn');
+    btn.appendChild(makeEl('span', 'tap-size', s.size));
+    const price = makeEl('span', 'tap-price', `${(unitPrice(s.article) / 100).toFixed(2)} € `);
+    price.appendChild(makeEl('i', 'bi bi-plus-lg'));
+    btn.appendChild(price);
+    btn.addEventListener('click', () => addToCart(s.article));
+    sizes.appendChild(btn);
   });
+  row.appendChild(label);
+  row.appendChild(sizes);
   row.addEventListener('mouseenter', () => {
     const idx = catalogItems().indexOf(row);
     if (idx >= 0) setCatalogActive(idx);
@@ -225,7 +251,7 @@ function renderCatalog() {
   // Passerelle : événement, tireuses puis catalogue standard — sans réduction
   // aux « tendances » (les articles de l'événement doivent rester visibles
   // même sans historique de vente).
-  if (window.GATEWAY_MODE) {
+  if (GATEWAY) {
     const eventItems = CATALOG.filter((a) => a.event);
     if (eventItems.length) els.catalog.appendChild(eventCard(eventItems));
     const taps = tapGroups();
@@ -266,12 +292,7 @@ function renderCatalog() {
   Object.entries(groups).forEach(([type, items]) => {
     const std = items.filter((a) => !a.event);
     if (!std.length) return;
-    const card = document.createElement('div');
-    card.className = 'card mb-2';
-    card.innerHTML = `<div class="card-header py-1 small">${TYPE_LABELS[type] || type}</div><div class="card-body p-0"></div>`;
-    const body = card.querySelector('.card-body');
-    std.forEach((a) => body.appendChild(catalogRow(a)));
-    els.catalog.appendChild(card);
+    els.catalog.appendChild(catalogCard(TYPE_LABELS[type] || type, '', '', std));
   });
   clearCatalogActive();
 }
@@ -280,14 +301,28 @@ function catalogRow(a) {
   const row = document.createElement('div');
   row.className = 'cat-item';
   row.dataset.id = a.id;
-  row.innerHTML = `<div><span>${a.name}</span>
-    ${a.alcohol ? '<i class="bi bi-exclamation-diamond text-warning" title="Alcoolisé"></i>' : ''}
-    ${a.volume ? `<span class="text-muted small">${a.volume} cl</span>` : ''}</div>
-    <div class="d-flex align-items-center gap-2">
-      <span class="badge bg-light text-dark" data-price>${(unitPrice(a) / 100).toFixed(2)} €</span>
-      <button class="btn btn-sm btn-primary qty-btn"><i class="bi bi-plus-lg"></i></button>
-    </div>`;
-  row.querySelector('button').addEventListener('click', () => addToCart(a));
+  const info = makeEl('div');
+  info.appendChild(makeEl('span', '', a.name));
+  if (a.alcohol) {
+    const warning = makeEl('i', 'bi bi-exclamation-diamond text-warning');
+    warning.title = 'Alcoolisé';
+    info.appendChild(document.createTextNode(' '));
+    info.appendChild(warning);
+  }
+  if (a.volume) {
+    info.appendChild(document.createTextNode(' '));
+    info.appendChild(makeEl('span', 'text-muted small', `${a.volume} cl`));
+  }
+  const actions = makeEl('div', 'd-flex align-items-center gap-2');
+  const price = makeEl('span', 'badge bg-light text-dark', `${(unitPrice(a) / 100).toFixed(2)} €`);
+  price.dataset.price = '';
+  const button = makeEl('button', 'btn btn-sm btn-primary qty-btn');
+  button.appendChild(makeEl('i', 'bi bi-plus-lg'));
+  button.addEventListener('click', () => addToCart(a));
+  actions.appendChild(price);
+  actions.appendChild(button);
+  row.appendChild(info);
+  row.appendChild(actions);
   row.addEventListener('mouseenter', () => {
     const idx = catalogItems().indexOf(row);
     if (idx >= 0) setCatalogActive(idx);
@@ -311,23 +346,41 @@ function renderCart() {
     if (!a) return;
     const unit = unitPrice(a);
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${a.name}</td>
-      <td class="text-end" data-unit>${(unit / 100).toFixed(2)} €</td>
-      <td class="text-center">
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-secondary qty-btn" data-dec><i class="bi bi-dash-lg"></i></button>
-          <span class="btn btn-light disabled" data-qty style="min-width:44px">${qty}</span>
-          <button class="btn btn-outline-secondary qty-btn" data-inc><i class="bi bi-plus-lg"></i></button>
-        </div>
-      </td>
-      <td class="text-end fw-bold" data-line>${((unit * qty) / 100).toFixed(2)} €</td>
-      <td class="text-end"><button class="btn btn-sm btn-outline-danger" data-del><i class="bi bi-trash"></i></button></td>`;
-    tr.querySelector('[data-inc]').addEventListener('click', () => { cart.set(id, qty + 1); renderCart(); });
-    tr.querySelector('[data-dec]').addEventListener('click', () => {
+    tr.appendChild(makeEl('td', '', a.name));
+    const unitCell = makeEl('td', 'text-end', `${(unit / 100).toFixed(2)} €`);
+    unitCell.dataset.unit = '';
+    tr.appendChild(unitCell);
+    const qtyCell = makeEl('td', 'text-center');
+    const group = makeEl('div', 'btn-group btn-group-sm');
+    const dec = makeEl('button', 'btn btn-outline-secondary qty-btn');
+    dec.dataset.dec = '';
+    dec.appendChild(makeEl('i', 'bi bi-dash-lg'));
+    const qtySpan = makeEl('span', 'btn btn-light disabled', `${qty}`);
+    qtySpan.dataset.qty = '';
+    qtySpan.style.minWidth = '44px';
+    const inc = makeEl('button', 'btn btn-outline-secondary qty-btn');
+    inc.dataset.inc = '';
+    inc.appendChild(makeEl('i', 'bi bi-plus-lg'));
+    group.appendChild(dec);
+    group.appendChild(qtySpan);
+    group.appendChild(inc);
+    qtyCell.appendChild(group);
+    tr.appendChild(qtyCell);
+    const lineCell = makeEl('td', 'text-end fw-bold', `${((unit * qty) / 100).toFixed(2)} €`);
+    lineCell.dataset.line = '';
+    tr.appendChild(lineCell);
+    const delCell = makeEl('td', 'text-end');
+    const del = makeEl('button', 'btn btn-sm btn-outline-danger');
+    del.dataset.del = '';
+    del.appendChild(makeEl('i', 'bi bi-trash'));
+    delCell.appendChild(del);
+    tr.appendChild(delCell);
+    inc.addEventListener('click', () => { cart.set(id, qty + 1); renderCart(); });
+    dec.addEventListener('click', () => {
       qty > 1 ? cart.set(id, qty - 1) : cart.delete(id);
       renderCart();
     });
-    tr.querySelector('[data-del]').addEventListener('click', () => { cart.delete(id); renderCart(); });
+    del.addEventListener('click', () => { cart.delete(id); renderCart(); });
     els.cartBody.appendChild(tr);
   });
   const depositRow = document.getElementById('deposit-row');
@@ -335,9 +388,11 @@ function renderCart() {
   if (glassesCount() > 0) {
     const drow = els.cartBody.insertRow();
     drow.id = 'deposit-row';
-    drow.innerHTML = `<td>Consigne (verres empruntés)</td><td class="text-end">${(DEPOSIT_VALUE / 100).toFixed(2)} €</td>
-      <td class="text-center">${glassesCount()}</td>
-      <td class="text-end fw-bold">${((glassesCount() * DEPOSIT_VALUE) / 100).toFixed(2)} €</td><td></td>`;
+    drow.appendChild(makeEl('td', '', 'Consigne (verres empruntés)'));
+    drow.appendChild(makeEl('td', 'text-end', `${(DEPOSIT_VALUE / 100).toFixed(2)} €`));
+    drow.appendChild(makeEl('td', 'text-center', `${glassesCount()}`));
+    drow.appendChild(makeEl('td', 'text-end fw-bold', `${((glassesCount() * DEPOSIT_VALUE) / 100).toFixed(2)} €`));
+    drow.appendChild(makeEl('td'));
   }
   els.total.textContent = (grandTotal() / 100).toFixed(2) + ' €';
   updatePayButton();
@@ -391,7 +446,7 @@ async function pay(adminPassword) {
   try {
     const payload = buildPayload(adminPassword);
     payload.idempotency_key = orderKeyFor(payload);
-    const res = await apiFetch(window.GATEWAY_MODE ? location.pathname + '/encaisser' : '/api/purchase', { json: payload });
+    const res = await apiFetch(GATEWAY ? location.pathname + '/encaisser' : '/api/purchase', { json: payload });
     showSuccess(res.total);
   } catch (e) {
     if (e.code === 'admin_password_required' && els.adminModal) {
@@ -445,6 +500,15 @@ if (els.depositSwitch) {
   els.glasses.addEventListener('input', renderCart);
 }
 
+document.querySelectorAll('[data-deposit-step]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const step = parseInt(button.dataset.depositStep, 10) || 0;
+    const next = Math.max(1, parseInt(els.glasses.value || '1', 10) + step);
+    els.glasses.value = next;
+    renderCart();
+  });
+});
+
 if (els.catalogSearch) {
   els.catalogSearch.addEventListener('input', () => {
     renderCatalog();
@@ -490,8 +554,11 @@ if (els.rgSearch) {
     rgUser = r;
     const w = await apiFetch(`/api/wallet/${r.id}`);
     els.rgPanel.classList.remove('d-none');
-    $('glasses-info').innerHTML =
-      `<strong>${w.name}</strong> — verres consignés en cours : <span class="badge bg-secondary">${w.glasses}</span>`;
+    const info = $('glasses-info');
+    info.replaceChildren();
+    info.appendChild(makeEl('strong', '', w.name));
+    info.appendChild(document.createTextNode(' — verres consignés en cours : '));
+    info.appendChild(makeEl('span', 'badge bg-secondary', `${w.glasses}`));
   }, { campus: CAMPUS });
 
   $('glasses-return-1').addEventListener('click', () => returnGlasses(1));

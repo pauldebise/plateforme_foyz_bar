@@ -76,8 +76,13 @@ def check_admin_password(password):
     stored = get_setting("admin_password_hash", "")
     if stored:
         return check_password_hash(stored, password)
+    # Repli en clair uniquement en développement (au démarrage, ensure_dev_admin
+    # initialise le hash). En production, un hash absent refuse tout accès
+    # plutôt que d'accepter une valeur par défaut.
     from flask import current_app
 
+    if not current_app.config.get("DEBUG"):
+        return False
     return password == current_app.config.get("DEFAULT_ADMIN_PASSWORD", "admin")
 
 

@@ -12,7 +12,7 @@ from app.services import transactions as T
 from app.services.settings import int_setting
 from app.services.stats import sales_stats, students_stats, top_article_ids, top_articles_stats
 from app.services.treasury import treasury
-from app.utils import ARTICLE_TYPES, CAMPUSSES, PAYMENT_METHODS, login_required, utcnow
+from app.utils import ARTICLE_TYPES, CAMPUSSES, PAYMENT_METHODS, clamp_text, login_required, utcnow
 
 bp = Blueprint("team", __name__)
 
@@ -420,7 +420,7 @@ def notes():
 def notes_action():
     action = request.form.get("action", "")
     scope_public = request.form.get("scope") == "public"
-    content = (request.form.get("content") or "").strip()
+    content = clamp_text((request.form.get("content") or "").strip(), 2000)
     note_id = request.form.get("note_id", "")
     note = db.session.get(Note, int(note_id)) if note_id.isdigit() else None
 

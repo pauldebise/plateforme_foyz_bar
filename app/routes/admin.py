@@ -1,3 +1,4 @@
+import math
 import os
 from datetime import datetime, timedelta
 
@@ -13,10 +14,12 @@ from app.utils import (
     ARTICLE_TYPES,
     CAMPUSSES,
     cents,
+    clamp_text,
     euros,
     login_required,
     new_token,
     paris_to_utc,
+    safe_color,
     slug_username,
     utcnow,
 )
@@ -90,8 +93,8 @@ def comptes():
 @bp.route("/comptes/nouveau", methods=["POST"])
 @login_required
 def comptes_nouveau():
-    name = (request.form.get("name") or "").strip()
-    nickname = (request.form.get("nickname") or "").strip() or None
+    name = clamp_text((request.form.get("name") or "").strip(), 255)
+    nickname = clamp_text((request.form.get("nickname") or "").strip(), 255) or None
     raw_username = (request.form.get("username") or "").strip()
     promotion = request.form.get("promotion", "").strip()
     if not name:
@@ -130,10 +133,10 @@ def compte(user_id):
     if u is None:
         abort(404)
     if request.method == "POST":
-        new_name = (request.form.get("name") or "").strip()
+        new_name = clamp_text((request.form.get("name") or "").strip(), 255)
         if new_name and new_name != u.name:
             u.name = new_name
-        new_nickname = (request.form.get("nickname") or "").strip() or None
+        new_nickname = clamp_text((request.form.get("nickname") or "").strip(), 255) or None
         u.nickname = new_nickname
         new_username = slug_username(request.form.get("username") or "")
         if not new_username:
@@ -177,6 +180,22 @@ def _compte_warnings(u):
     return warnings
 
 
+def _deletion_campus_ok(u):
+    """Une équipe ne supprime pas un compte rattaché à l'autre campus.
+
+    Rattaché signifie : membre d'équipe de l'autre campus, ou portefeuille
+    (solde ou verres consignés) encore engagé sur l'autre campus. Un compte
+    sans aucun engagement peut être supprimé par l'une ou l'autre équipe.
+    """
+    own = own_campus()
+    if u.team_campus and u.team_campus != own:
+        return False
+    return not any(
+        w.campus != own and (w.balance != 0 or w.glasses_outstanding)
+        for w in u.wallets
+    )
+
+
 @bp.route("/comptes/<int:user_id>/supprimer", methods=["POST"])
 @login_required
 def compte_supprimer(user_id):
@@ -185,6 +204,13 @@ def compte_supprimer(user_id):
         abort(404)
     if not S.check_admin_password(request.form.get("admin_password", "")):
         flash("La suppression d'un compte exige le mot de passe administrateur.", "danger")
+        return redirect(url_for("admin.compte", user_id=u.id))
+    if not _deletion_campus_ok(u):
+        flash(
+            "Suppression refusée : ce compte est rattaché à l'autre campus "
+            "(équipe, solde ou verres consignés). Demandez à l'équipe concernée.",
+            "danger",
+        )
         return redirect(url_for("admin.compte", user_id=u.id))
     warnings = _compte_warnings(u)
     if warnings:
@@ -255,7 +281,11 @@ def articles():
 @login_required
 def article_nouveau():
     if request.method == "POST":
-        a = _article_from_form(Article(), own_campus())
+        try:
+            a = _article_from_form(Article(), own_campus())
+        except ValueError:
+            flash("Prix invalide : saisissez un montant numérique raisonnable.", "danger")
+            return redirect(url_for("admin.article_nouveau"))
         db.session.add(a)
         db.session.commit()
         flash("Article créé.", "success")
@@ -273,7 +303,12 @@ def article(article_id):
         flash("Les articles tireuse et évènement se gèrent dans leurs onglets dédiés.", "warning")
         return redirect(url_for("admin.articles"))
     if request.method == "POST":
-        _article_from_form(a, own_campus())
+        try:
+            _article_from_form(a, own_campus())
+        except ValueError:
+            db.session.rollback()
+            flash("Prix invalide : saisissez un montant numérique raisonnable.", "danger")
+            return redirect(url_for("admin.article", article_id=a.id))
         db.session.commit()
         flash("Article mis à jour.", "success")
         return redirect(url_for("admin.articles"))
@@ -292,7 +327,7 @@ def article_supprimer(article_id):
 
 
 def _article_from_form(a, writable_campus):
-    a.name = (request.form.get("name") or "Sans nom").strip()
+    a.name = clamp_text((request.form.get("name") or "Sans nom").strip(), 255)
     a.article_type = request.form.get("article_type", "biere")
     if a.article_type not in ARTICLE_TYPES:
         a.article_type = "biere"
@@ -331,7 +366,11 @@ def tireuses():
 @bp.route("/tireuses/kegs/nouveau", methods=["POST"])
 @login_required
 def keg_nouveau():
-    keg = _keg_from_form(Keg(), own_campus())
+    try:
+        keg = _keg_from_form(Keg(), own_campus())
+    except ValueError:
+        flash("Volume ou degré invalide (nombres positifs attendus).", "danger")
+        return redirect(url_for("admin.tireuses"))
     keg.remaining_l = keg.volume_l
     db.session.add(keg)
     db.session.commit()
@@ -346,7 +385,12 @@ def keg(keg_id):
     if keg is None:
         abort(404)
     if request.method == "POST":
-        _keg_from_form(keg, own_campus())
+        try:
+            _keg_from_form(keg, own_campus())
+        except ValueError:
+            db.session.rollback()
+            flash("Volume ou degré invalide (nombres positifs attendus).", "danger")
+            return redirect(url_for("admin.keg", keg_id=keg.id))
         db.session.commit()
         if request.form.get("refresh_articles") == "on":
             C.refresh_tap_articles(keg, campus=own_campus())
@@ -376,14 +420,23 @@ def keg_supprimer(keg_id):
     return redirect(url_for("admin.tireuses"))
 
 
+def _positive_float(field, default, maximum):
+    raw = (request.form.get(field) or "").strip().replace(",", ".")
+    if not raw:
+        return default
+    number = float(raw)  # ValueError -> remontée à l'appelant
+    if not math.isfinite(number) or number < 0 or number > maximum:
+        raise ValueError(field)
+    return number
+
+
 def _keg_from_form(k, writable_campus):
-    k.name = (request.form.get("name") or "Sans nom").strip()
-    try:
-        k.alcohol_degree = float(request.form.get("alcohol_degree", "0").replace(",", "."))
-        k.volume_l = float(request.form.get("volume_l", "30").replace(",", "."))
-        k.remaining_l = float(request.form.get("remaining_l", str(k.volume_l or 0)).replace(",", "."))
-    except ValueError:
-        pass
+    k.name = clamp_text((request.form.get("name") or "Sans nom").strip(), 255)
+    k.alcohol_degree = _positive_float("alcohol_degree", k.alcohol_degree or 0.0, 100.0)
+    k.volume_l = _positive_float("volume_l", k.volume_l or 30.0, 10_000.0)
+    k.remaining_l = _positive_float(
+        "remaining_l", k.remaining_l or 0.0, k.volume_l,
+    )
     k.active = request.form.get("active", "on") == "on"
     for c in CAMPUSSES:
         row = k.price_row(c)
@@ -511,7 +564,7 @@ def evenement_nouveau():
         flash("Nom et horaires cohérents requis.", "danger")
         return redirect(url_for("admin.evenements"))
     poster = save_upload(request.files.get("poster"), allowed=(".jpg", ".jpeg", ".png", ".webp"))
-    ev = Event(name=name, campus=campus, starts_at=starts, ends_at=ends, token=new_token(), poster=poster)
+    ev = Event(name=clamp_text(name, 160), campus=campus, starts_at=starts, ends_at=ends, token=new_token(), poster=poster)
     db.session.add(ev)
     db.session.commit()
     flash("Événement créé.", "success")
@@ -530,7 +583,7 @@ def evenement(event_id):
             abort(403)
         action = request.form.get("action", "edit")
         if action == "edit":
-            ev.name = (request.form.get("name") or ev.name).strip()
+            ev.name = clamp_text((request.form.get("name") or ev.name).strip(), 160)
             ev.campus = own_campus()
             try:
                 ev.starts_at = paris_to_utc(datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"))
@@ -542,17 +595,21 @@ def evenement(event_id):
             if poster:
                 ev.poster = poster
         elif action == "add_article":
-            a = Article(
-                name=(request.form.get("name") or "Article événement").strip(),
-                article_type="evenement",
-                is_alcohol=request.form.get("is_alcohol") == "on",
-                event_id=ev.id,
-                price_std_brest=cents(request.form.get("price_std_brest", "0")),
-                price_std_paris=cents(request.form.get("price_std_paris", "0")),
-                price_team_brest=cents(request.form.get("price_team_brest", "0")),
-                price_team_paris=cents(request.form.get("price_team_paris", "0")),
-                active=True,
-            )
+            try:
+                a = Article(
+                    name=clamp_text((request.form.get("name") or "Article événement").strip(), 255),
+                    article_type="evenement",
+                    is_alcohol=request.form.get("is_alcohol") == "on",
+                    event_id=ev.id,
+                    price_std_brest=cents(request.form.get("price_std_brest", "0")),
+                    price_std_paris=cents(request.form.get("price_std_paris", "0")),
+                    price_team_brest=cents(request.form.get("price_team_brest", "0")),
+                    price_team_paris=cents(request.form.get("price_team_paris", "0")),
+                    active=True,
+                )
+            except ValueError:
+                flash("Prix invalide : montants numériques raisonnables attendus.", "danger")
+                return redirect(url_for("admin.evenement", event_id=ev.id))
             volume = request.form.get("volume_cl", "").strip()
             a.volume_cl = int(volume) if volume.isdigit() else None
             db.session.add(a)
@@ -621,18 +678,26 @@ def module_dev():
                 "link_hosting", "link_database", "link_repository",
             ):
                 if key in request.form:
-                    S.set_setting(key, request.form[key])
+                    value = request.form[key]
+                    # les couleurs sont injectées dans une balise <style> :
+                    # seule une valeur #rrggbb est acceptée (pas d'injection CSS)
+                    if key.startswith("theme_color"):
+                        value = safe_color(value, S.DEFAULTS.get(key, "#804db3"))
+                    S.set_setting(key, value)
             # thème/logos/règlements par campus : seul le campus de l'équipe
             # connectée est modifiable
-            if f"theme_color_{own}" in request.form:
-                S.set_setting(f"theme_color_{own}", request.form[f"theme_color_{own}"])
+            key_own = f"theme_color_{own}"
+            if key_own in request.form:
+                S.set_setting(key_own, safe_color(request.form[key_own], S.DEFAULTS[key_own]))
             try:
                 S.set_setting("overdraft_limit_cents", cents(request.form.get("overdraft_limit_cents", "0")))
                 S.set_setting("deposit_value_cents", cents(request.form.get("deposit_value_cents", "0")))
             except Exception:
                 pass
             pdf_own = save_upload(request.files.get(f"regulation_pdf_{own}"), allowed=(".pdf",))
-            logo_own = save_upload(request.files.get(f"logo_{own}"), allowed=(".jpg", ".jpeg", ".png", ".webp", ".svg"))
+            # SVG exclu volontairement : un SVG servi sur l'origine peut porter
+            # du script (XSS stocké). Formats raster uniquement.
+            logo_own = save_upload(request.files.get(f"logo_{own}"), allowed=(".jpg", ".jpeg", ".png", ".webp"))
             payment_photo_own = save_upload(
                 request.files.get(f"payment_photo_{own}"),
                 allowed=(".jpg", ".jpeg", ".png", ".webp"),
@@ -659,8 +724,8 @@ def module_dev():
                 S.set_admin_password(new)
                 flash("Mot de passe administrateur modifié.", "success")
         elif action == "add_link":
-            label = (request.form.get("label") or "").strip()
-            url = (request.form.get("url") or "").strip()
+            label = clamp_text((request.form.get("label") or "").strip(), 160)
+            url = clamp_text((request.form.get("url") or "").strip(), 500)
             if label and url.startswith("http"):
                 db.session.add(UsefulLink(label=label, url=url, position=int(request.form.get("position", "0") or 0)))
                 db.session.commit()
