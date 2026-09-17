@@ -7,10 +7,14 @@ Couvre :
   refus de restauration sans confirmation ;
 - T-6.2 : destruction des archives de migration au-delà de la rétention ;
 - T-6.4 : `alembic upgrade head` crée le schéma, `downgrade base` le retire,
-  application idempotente, révision de tête stable.
+  application idempotente, révision de tête stable ;
+- P10 : chiffrement des sauvegardes (GnuPG AES-256), déchiffrement à la
+  restauration, refus sans phrase de passe.
 """
 
+import argparse
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -140,6 +144,96 @@ def test_restore_listing_and_confirmation():
     _expect(rc == 1, "restauration refusée sans --yes")
 
 
+def test_encrypted_backup_roundtrip():
+    if not shutil.which("gpg"):
+        print("  (ignoré : gpg absent)")
+        return
+    directory = _tmpdir()
+    passfile = directory / "phrase.txt"
+    passfile.write_text("phrase-de-passe-de-test-0123456789", encoding="utf-8")
+    os.chmod(passfile, 0o600)
+    payload = b"contenu de sauvegarde " * 100
+    plain = _write(directory, f"foyz-{_stamp(5)}.dump", payload)
+    _write(directory, f"uploads-{_stamp(5)}.tgz", payload)
+    foreign = _write(directory, "a-lire.txt", b"hors format, jamais purge")
+
+    encrypted = backup.encrypt_file(plain, passfile, log=_quiet)
+    _expect(encrypted.name == plain.name + ".gpg", "nom en .dump.gpg")
+    _expect(not plain.exists(), "original supprimé après chiffrement")
+    _expect(backup.is_encrypted(encrypted), "archive reconnue comme chiffrée")
+    _expect(backup.parse_stamp(encrypted) is not None, "horodatage reconnu sur .gpg")
+    _expect(not backup.is_encrypted(_write(directory, f"foyz-{_stamp(6)}.dump", payload)), "clair")
+    _write(directory, f"uploads-{_stamp(6)}.tgz", payload)
+
+    collected = backup.collect(directory)
+    _expect(
+        any(path.name == encrypted.name for _, path in collected["foyz"]),
+        "copie chiffrée collectée",
+    )
+    lines = []
+    stamps = restore.list_backups(directory, log=lines.append)
+    _expect(len(stamps) == 2, "sauvegardes chiffrée et claire listées")
+    _expect(any("[chiffrée]" in line for line in lines), "marqueur de chiffrement affiché")
+
+    decrypted = backup.decrypt_to_temp(encrypted, passfile, log=_quiet)
+    _expect(decrypted.read_bytes() == payload, "contenu restitué à l'identique")
+    decrypted.unlink()
+
+    bad = directory / "mauvaise.txt"
+    bad.write_text("mauvaise-phrase", encoding="utf-8")
+    try:
+        backup.decrypt_to_temp(encrypted, bad, log=_quiet)
+        _expect(False, "mauvaise phrase de passe refusée")
+    except SystemExit:
+        pass
+
+    removed = backup.prune(directory, daily=1, weekly=0, log=_quiet)
+    _expect(
+        any(path.name == encrypted.name for path in removed),
+        "rétention appliquée à la copie chiffrée",
+    )
+    _expect(foreign.exists(), "fichier hors format jamais purgé")
+
+
+def test_encrypted_uploads_restore():
+    if not shutil.which("gpg"):
+        print("  (ignoré : gpg absent)")
+        return
+    directory = _tmpdir()
+    passfile = directory / "phrase.txt"
+    passfile.write_text("phrase-de-passe-de-test-0123456789", encoding="utf-8")
+    os.chmod(passfile, 0o600)
+
+    source = directory / "source"
+    source.mkdir()
+    (source / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 32)
+    tgz = directory / f"uploads-{_stamp(7)}.tgz"
+    subprocess.run(["tar", "-czf", str(tgz), "-C", str(source), "."], check=True)
+    encrypted = backup.encrypt_file(tgz, passfile, log=_quiet)
+
+    target = directory / "restaure"
+    args = argparse.Namespace(
+        uploads_container=None,
+        uploads_dir=str(target),
+        passphrase_file=passfile,
+    )
+    restore.restore_uploads(args, encrypted, log=_quiet, dry_run=False)
+    _expect(
+        (target / "photo.png").read_bytes().startswith(b"\x89PNG"), "uploads déchiffrés restaurés"
+    )
+
+    without_key = argparse.Namespace(
+        uploads_container=None,
+        uploads_dir=str(directory / "autre"),
+        passphrase_file=None,
+    )
+    try:
+        restore.restore_uploads(without_key, encrypted, log=_quiet, dry_run=False)
+        _expect(False, "restauration chiffrée refusée sans phrase de passe")
+    except SystemExit:
+        pass
+
+
 def test_purge_archives_and_cli():
     source = _tmpdir()
     archives = source / "archives"
@@ -204,7 +298,10 @@ def test_alembic_upgrade_downgrade_cycle():
                 "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='transaction_lines'"
             )
         }
-    _expect("users" in tables and "transactions" in tables, "schéma créé par Alembic")
+    _expect(
+        {"users", "transactions", "audit_logs"} <= tables,
+        "schéma créé par Alembic (dont journal d'audit)",
+    )
     _expect(version == (head,), "version enregistrée")
     _expect("ix_transaction_lines_article_id" in indexes, "index article_id créé (T-7.2)")
 

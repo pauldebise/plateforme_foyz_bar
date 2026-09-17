@@ -406,9 +406,29 @@ DATABASE_URL=postgresql://foyz:...@localhost/foyz \
 ```
 
 - Rétention par défaut : **7 copies quotidiennes** + **4 hebdomadaires**
-  (`weekly/`). Le script ne supprime que ses propres fichiers `foyz-*.dump` /
-  `uploads-*.tgz`.
+  (`weekly/`). Le script ne supprime que ses propres fichiers `foyz-*.dump[.gpg]`
+  / `uploads-*.tgz[.gpg]`.
 - `--dry-run` affiche les commandes ; `--prune-only` n'applique que la rétention.
+
+**Chiffrement au repos des sauvegardes** (recommandé) : fournissez un fichier de
+phrase de passe (jamais dans le dépôt, permissions `600`, conservé hors du
+serveur — gestionnaire de mots de passe ou coffre) :
+
+```bash
+openssl rand -base64 32 > /etc/foyz/backup.passphrase
+chmod 600 /etc/foyz/backup.passphrase
+# Ajoutez --passphrase-file /etc/foyz/backup.passphrase à la commande cron,
+# ou BACKUP_PASSPHRASE_FILE=/etc/foyz/backup.passphrase dans l'environnement.
+```
+
+Chaque copie est alors chiffrée avec GnuPG (AES-256) et devient
+`foyz-*.dump.gpg` / `uploads-*.tgz.gpg` ; l'original en clair est supprimé.
+`python -m ops.restore --list` marque les sauvegardes concernées
+(`[chiffrée]`) ; la restauration exige la même phrase de passe (sans elle, la
+sauvegarde est définitivement illisible : conservez-la en lieu sûr).
+
+La base en elle-même n'est pas chiffrée par l'application : pour le repos,
+utilisez le chiffrement du volume (LUKS, disque managé chiffré) — voir §7.3.
 
 Restauration sur un environnement vierge (**procédure testée**, quelques minutes) :
 
@@ -418,6 +438,7 @@ python -m ops.restore --list --backup-dir /srv/backups/foyz
 python -m ops.restore --latest --backup-dir /srv/backups/foyz \
   --pg-container foyz-db-1 --pg-user foyz --pg-database foyz \
   --uploads-container foyz-web-1:/data/uploads --yes
+# Sauvegardes chiffrées : ajoutez --passphrase-file /etc/foyz/backup.passphrase
 ```
 
 La base cible doit exister (par exemple créée par `init-db`) : la restauration
@@ -440,6 +461,10 @@ les totaux (comptes, transactions).
 
 ### 7.3 Rétention des données personnelles
 
+- **Chiffrement au repos** : les sauvegardes sont chiffrées (GnuPG AES-256) dès
+  qu'une phrase de passe est fournie (voir §7.1) ; pour la base et les
+  téléversements eux-mêmes, activez le chiffrement du volume (LUKS, disque
+  managé chiffré) — l'application ne détient aucune clé de chiffrement.
 - Base SQLite : fichier en `600`, dossier `instance/` en `700` (appliqué au
   démarrage).
 - Registre des connexions (IP) : purge automatique configurable (90 jours par

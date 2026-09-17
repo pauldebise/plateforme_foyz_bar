@@ -13,21 +13,31 @@ Rétention : `--retention-daily` copies quotidiennes (défaut 7) + une copie
 hebdomadaire conservée `--retention-weekly` semaines (défaut 4). L'option
 `--offsite` synchronise le dossier vers un hôte de sauvegarde (ssh/rsync).
 
+Chiffrement au repos (optionnel) : avec `--passphrase-file` (ou
+`BACKUP_PASSPHRASE_FILE`), chaque copie est chiffrée avec GnuPG en AES-256
+(`foyz-*.dump.gpg`, `uploads-*.tgz.gpg`). La phrase de passe doit être
+stockée hors du serveur (gestionnaire de mots de passe, coffre) : sans elle,
+une sauvegarde volée est illisible ; sans elle, elle est irrécupérable.
+
 Le script est idempotent : relancé, il ajoute simplement une nouvelle copie.
-Il ne supprime jamais autre chose que ses propres fichiers `foyz-*.dump` /
-`uploads-*.tgz` selon la rétention.
+Il ne supprime jamais autre chose que ses propres fichiers `foyz-*.dump[.gpg]` /
+`uploads-*.tgz[.gpg]` selon la rétention.
 """
 
 import argparse
 import os
 import re
 import shutil
+import stat
 import subprocess
+import tempfile
 from datetime import datetime, UTC
 from pathlib import Path
 
 STAMP_FORMAT = "%Y%m%d-%H%M%S"
-_NAME_RE = re.compile(r"^(?P<kind>foyz|uploads)-(?P<stamp>\d{8}-\d{6})\.(?P<ext>dump|tgz)$")
+_NAME_RE = re.compile(
+    r"^(?P<kind>foyz|uploads)-(?P<stamp>\d{8}-\d{6})\.(?P<ext>dump|tgz)(?P<enc>\.gpg)?$"
+)
 WEEKLY_DIRNAME = "weekly"
 
 
@@ -39,6 +49,11 @@ def parse_stamp(path: Path):
         return datetime.strptime(match.group("stamp"), STAMP_FORMAT).replace(tzinfo=UTC)
     except ValueError:
         return None
+
+
+def is_encrypted(path: Path):
+    match = _NAME_RE.match(Path(path).name)
+    return bool(match and match.group("enc"))
 
 
 def kind_of(path: Path):
@@ -127,6 +142,90 @@ def run(cmd, log=print, dry_run=False):
     if dry_run:
         return
     checked(cmd, stdin=subprocess.DEVNULL)
+
+
+def check_passphrase_file(path):
+    """Valide le fichier de phrase de passe (existant, permissions privées)."""
+    path = Path(path)
+    if not path.is_file():
+        raise SystemExit(f"Fichier de phrase de passe introuvable : {path}")
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode & 0o077:
+        print(
+            f"AVERTISSEMENT : {path} est accessible aux autres utilisateurs "
+            "(permissions recommandées : 600)."
+        )
+    return path
+
+
+def _require_gpg():
+    if not shutil.which("gpg"):
+        raise SystemExit(
+            "gpg introuvable : installez gnupg pour chiffrer ou déchiffrer les sauvegardes."
+        )
+
+
+def encrypt_file(source, passphrase_file, log=print, dry_run=False):
+    """Chiffre un fichier avec GnuPG (AES-256) puis supprime l'original."""
+    _require_gpg()
+    source = Path(source)
+    target = source.with_name(source.name + ".gpg")
+    run(
+        [
+            "gpg",
+            "--batch",
+            "--yes",
+            "--quiet",
+            "--symmetric",
+            "--cipher-algo",
+            "AES256",
+            "--passphrase-file",
+            str(passphrase_file),
+            "--output",
+            str(target),
+            str(source),
+        ],
+        log=log,
+        dry_run=dry_run,
+    )
+    if dry_run:
+        return target
+    if not target.is_file():
+        raise SystemExit(f"Chiffrement échoué : {target} absent.")
+    source.unlink()
+    return target
+
+
+def decrypt_to_temp(source, passphrase_file, log=print):
+    """Déchiffre vers un fichier temporaire en 600 (à supprimer par l'appelant)."""
+    _require_gpg()
+    source = Path(source)
+    suffix = ".tgz" if source.name.endswith(".tgz.gpg") else ".dump"
+    fd, name = tempfile.mkstemp(prefix="foyz-dechiffre-", suffix=suffix, dir=str(source.parent))
+    os.close(fd)
+    os.chmod(name, 0o600)
+    target = Path(name)
+    log(f"  $ gpg --decrypt {source.name}")
+    try:
+        checked(
+            [
+                "gpg",
+                "--batch",
+                "--yes",
+                "--quiet",
+                "--decrypt",
+                "--passphrase-file",
+                str(passphrase_file),
+                "--output",
+                str(target),
+                str(source),
+            ],
+            stdin=subprocess.DEVNULL,
+        )
+    except SystemExit:
+        target.unlink(missing_ok=True)
+        raise
+    return target
 
 
 def _docker_exec(container, argv, stdout_file, dry_run):
@@ -235,6 +334,16 @@ def parse_args(argv=None):
     parser.add_argument("--retention-weekly", type=int, default=4)
     parser.add_argument("--offsite", default=os.environ.get("BACKUP_OFFSITE"))
     parser.add_argument(
+        "--passphrase-file",
+        type=Path,
+        default=(
+            Path(os.environ["BACKUP_PASSPHRASE_FILE"])
+            if os.environ.get("BACKUP_PASSPHRASE_FILE")
+            else None
+        ),
+        help="chiffre les copies avec GnuPG (AES-256) via ce fichier de phrase de passe",
+    )
+    parser.add_argument(
         "--prune-only", action="store_true", help="applique uniquement la rétention (aucun dump)"
     )
     parser.add_argument(
@@ -243,6 +352,8 @@ def parse_args(argv=None):
     args = parser.parse_args(argv)
     if args.retention_daily < 1 or args.retention_weekly < 0:
         parser.error("rétentions invalides (quotidienne >= 1, hebdomadaire >= 0)")
+    if args.passphrase_file is not None:
+        args.passphrase_file = check_passphrase_file(args.passphrase_file)
     args.backup_dir = Path(args.backup_dir)
     return args
 
@@ -269,6 +380,10 @@ def main(argv=None):
     log(f"=== Sauvegarde {stamp} -> {args.backup_dir} ===")
     db_file = dump_database(args, stamp, args.backup_dir, log, args.dry_run)
     up_file = archive_uploads(args, stamp, args.backup_dir, log, args.dry_run)
+    if args.passphrase_file:
+        log("=== Chiffrement (GnuPG AES-256) ===")
+        db_file = encrypt_file(db_file, args.passphrase_file, log=log, dry_run=args.dry_run)
+        up_file = encrypt_file(up_file, args.passphrase_file, log=log, dry_run=args.dry_run)
     if is_weekly_day(now) and not args.dry_run:
         promote_weekly(args.backup_dir, log=log)
     prune(

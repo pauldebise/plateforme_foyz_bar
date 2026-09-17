@@ -22,7 +22,15 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from ops.backup import STAMP_FORMAT, collect, password_of, parse_stamp
+from ops.backup import (
+    STAMP_FORMAT,
+    check_passphrase_file,
+    collect,
+    decrypt_to_temp,
+    is_encrypted,
+    password_of,
+    parse_stamp,
+)
 
 WEEKLY_DIRNAME = "weekly"
 
@@ -46,7 +54,9 @@ def list_backups(backup_dir: Path, log=print):
         log(f"Aucune sauvegarde dans {backup_dir}")
         return []
     for stamp, dump, archive in entries:
-        log(f"{stamp.strftime(STAMP_FORMAT)}  {dump.name:32} {archive.name if archive else '-'}")
+        archive_name = archive.name if archive else "-"
+        marker = " [chiffrée]" if is_encrypted(dump) else ""
+        log(f"{stamp.strftime(STAMP_FORMAT)}  {dump.name:32} {archive_name}{marker}")
     return [stamp for stamp, _, _ in entries]
 
 
@@ -98,6 +108,16 @@ def parse_args(argv=None):
         "--uploads-dir", type=Path, default=Path(os.environ.get("UPLOAD_DIR", "instance/uploads"))
     )
     parser.add_argument("--uploads-container", default=os.environ.get("BACKUP_UPLOADS_CONTAINER"))
+    parser.add_argument(
+        "--passphrase-file",
+        type=Path,
+        default=(
+            Path(os.environ["BACKUP_PASSPHRASE_FILE"])
+            if os.environ.get("BACKUP_PASSPHRASE_FILE")
+            else None
+        ),
+        help="phrase de passe des sauvegardes chiffrées (GnuPG)",
+    )
     parser.add_argument("--yes", action="store_true", help="confirme l'écrasement de la cible")
     parser.add_argument("--dry-run", action="store_true", help="affiche sans exécuter")
     args = parser.parse_args(argv)
@@ -105,6 +125,8 @@ def parse_args(argv=None):
         parser.error("indiquez --database <fichier>, --latest ou --list.")
     if not args.list and not (args.pg_container or args.database_url):
         parser.error("indiquez --pg-container ou --database-url.")
+    if args.passphrase_file is not None:
+        args.passphrase_file = check_passphrase_file(args.passphrase_file)
     return args
 
 
@@ -124,55 +146,96 @@ def run(cmd, log=print, dry_run=False, stdin=None):
     checked(cmd, stdin=stdin)
 
 
+def source_for_restore(args, path, log, dry_run):
+    """Chemin lisible (déchiffré au besoin) et temporaire à nettoyer ensuite."""
+    path = Path(path)
+    if not is_encrypted(path):
+        return path, None
+    if not args.passphrase_file:
+        raise SystemExit(
+            f"{path.name} est chiffrée : indiquez --passphrase-file (ou BACKUP_PASSPHRASE_FILE)."
+        )
+    if dry_run:
+        log(f"  $ gpg --decrypt {path.name} > (fichier temporaire)")
+        return path, None
+    return decrypt_to_temp(path, args.passphrase_file, log=log), True
+
+
 def restore_database(args, dump, log, dry_run):
-    if args.pg_container:
+    source, temp = source_for_restore(args, dump, log, dry_run)
+    try:
+        if args.pg_container:
+            cmd = [
+                "docker",
+                "exec",
+                "-i",
+                args.pg_container,
+                "pg_restore",
+                "--clean",
+                "--if-exists",
+                "--no-owner",
+                "-U",
+                args.pg_user,
+                "-d",
+                args.pg_database,
+            ]
+            log("  $ " + " ".join(cmd) + f" < {dump}")
+            if dry_run:
+                return
+            with open(source, "rb") as handle:
+                checked(cmd, stdin=handle)
+            return
+        if not shutil.which("pg_restore"):
+            raise SystemExit("pg_restore introuvable : installez postgresql-client.")
+        env = {**os.environ, "PGPASSWORD": password_of(args.database_url)}
         cmd = [
-            "docker",
-            "exec",
-            "-i",
-            args.pg_container,
             "pg_restore",
             "--clean",
             "--if-exists",
             "--no-owner",
-            "-U",
-            args.pg_user,
             "-d",
-            args.pg_database,
+            args.database_url,
+            str(source),
         ]
-        log("  $ " + " ".join(cmd) + f" < {dump}")
-        if dry_run:
-            return
-        with open(dump, "rb") as source:
-            checked(cmd, stdin=source)
-        return
-    if not shutil.which("pg_restore"):
-        raise SystemExit("pg_restore introuvable : installez postgresql-client.")
-    if not shutil.which("pg_restore"):
-        raise SystemExit("pg_restore introuvable : installez postgresql-client.")
-    env = {**os.environ, "PGPASSWORD": password_of(args.database_url)}
-    cmd = ["pg_restore", "--clean", "--if-exists", "--no-owner", "-d", args.database_url, str(dump)]
-    log("  $ pg_restore ... " + dump.name)
-    if not dry_run:
-        checked(cmd, env=env)
+        log("  $ pg_restore ... " + dump.name)
+        if not dry_run:
+            checked(cmd, env=env)
+    finally:
+        if temp:
+            Path(source).unlink(missing_ok=True)
 
 
 def restore_uploads(args, archive, log, dry_run):
     if archive is None:
         log("  (aucune archive d'uploads : ignorée)")
         return
-    if args.uploads_container:
-        container, _, path = args.uploads_container.partition(":")
-        cmd = ["docker", "exec", "-i", container, "tar", "-xzf", "-", "-C", path or "/data/uploads"]
-        log("  $ " + " ".join(cmd) + f" < {archive}")
-        if dry_run:
+    source, temp = source_for_restore(args, archive, log, dry_run)
+    try:
+        if args.uploads_container:
+            container, _, path = args.uploads_container.partition(":")
+            cmd = [
+                "docker",
+                "exec",
+                "-i",
+                container,
+                "tar",
+                "-xzf",
+                "-",
+                "-C",
+                path or "/data/uploads",
+            ]
+            log("  $ " + " ".join(cmd) + f" < {archive}")
+            if dry_run:
+                return
+            with open(source, "rb") as handle:
+                checked(cmd, stdin=handle)
             return
-        with open(archive, "rb") as source:
-            checked(cmd, stdin=source)
-        return
-    target = Path(args.uploads_dir)
-    target.mkdir(parents=True, exist_ok=True)
-    run(["tar", "-xzf", str(archive), "-C", str(target)], log=log, dry_run=dry_run)
+        target = Path(args.uploads_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        run(["tar", "-xzf", str(source), "-C", str(target)], log=log, dry_run=dry_run)
+    finally:
+        if temp:
+            Path(source).unlink(missing_ok=True)
 
 
 def main(argv=None):
