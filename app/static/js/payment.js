@@ -358,12 +358,40 @@ function buildPayload(adminPassword) {
 }
 
 let paying = false;
+let orderKey = null;
+let orderSignature = null;
+
+function fallbackOrderKey() {
+  return 'k-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+}
+
+// Jeton d'idempotence stable tant que le panier ne change pas : un rejeu
+// (double clic, retentative réseau) renvoie la transaction déjà créée sans
+// débiter une seconde fois.
+function orderKeyFor(payload) {
+  const signature = JSON.stringify([
+    payload.items,
+    payload.deposit_glasses,
+    payload.direct,
+    payload.payment_method || null,
+    payload.contributors || null,
+  ]);
+  if (orderKey === null || signature !== orderSignature) {
+    orderKey = (window.crypto && window.crypto.randomUUID)
+      ? window.crypto.randomUUID()
+      : fallbackOrderKey();
+    orderSignature = signature;
+  }
+  return orderKey;
+}
 
 async function pay(adminPassword) {
   if (paying) return;
   paying = true;
   try {
-    const res = await apiFetch(window.GATEWAY_MODE ? location.pathname + '/encaisser' : '/api/purchase', { json: buildPayload(adminPassword) });
+    const payload = buildPayload(adminPassword);
+    payload.idempotency_key = orderKeyFor(payload);
+    const res = await apiFetch(window.GATEWAY_MODE ? location.pathname + '/encaisser' : '/api/purchase', { json: payload });
     showSuccess(res.total);
   } catch (e) {
     if (e.code === 'admin_password_required' && els.adminModal) {
@@ -385,6 +413,8 @@ function showSuccess(total) {
   if (els.depositSwitch) els.depositSwitch.checked = false;
   if (els.glasses) els.glasses.value = 1;
   if (els.directSwitch) els.directSwitch.checked = false;
+  orderKey = null;
+  orderSignature = null;
   renderContributors();
   renderCart();
   renderCatalog();

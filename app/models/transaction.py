@@ -22,6 +22,11 @@ class Transaction(db.Model):
     note: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     cancelled: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False, index=True)
     cancelled_at: db.Mapped[datetime | None] = db.mapped_column(db.DateTime, nullable=True)
+    # Jeton d'idempotence généré par le client : un rejeu (double soumission,
+    # retentative réseau) avec le même jeton renvoie la transaction existante.
+    idempotency_key: db.Mapped[str | None] = db.mapped_column(
+        db.String(64), nullable=True, unique=True, index=True
+    )
 
     lines: db.Mapped[list["TransactionLine"]] = db.relationship(
         back_populates="transaction", cascade="all, delete-orphan", lazy="selectin"

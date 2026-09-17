@@ -95,6 +95,7 @@ def purchase():
             direct=bool(payload.get("direct")),
             payment_method=payload.get("payment_method"),
             admin_password=payload.get("admin_password"),
+            idempotency_key=payload.get("idempotency_key"),
         )
         return jsonify(ok=True, transaction_id=t.id, total=t.total)
     except T.OperationError as e:

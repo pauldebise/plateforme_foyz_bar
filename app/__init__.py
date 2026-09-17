@@ -44,6 +44,15 @@ def ensure_schema_upgrades():
     if "users" in table_columns and "legacy_password" not in table_columns["users"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN legacy_password VARCHAR(255)"))
+    if "transactions" in table_columns and "idempotency_key" not in table_columns["transactions"]:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN idempotency_key VARCHAR(64)"))
+    if "transactions" in table_columns:
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_transactions_idempotency_key "
+                "ON transactions (idempotency_key)"
+            ))
     if "users" in table_columns:
         cols = table_columns["users"]
         with db.engine.begin() as conn:
