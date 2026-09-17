@@ -55,8 +55,8 @@ def render(size):
     text_height = glyph_height * scale
     x0 = (size - text_width) // 2
     y0 = (size - text_height) // 2
-    background = tuple(BACKGROUND) + (255,)
-    foreground = tuple(FOREGROUND) + (255,)
+    background = (*BACKGROUND, 255)
+    foreground = (*FOREGROUND, 255)
     rows = [[background] * size for _ in range(size)]
     for index, char in enumerate(TEXT):
         glyph = GLYPHS[char]
