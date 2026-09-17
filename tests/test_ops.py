@@ -15,7 +15,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,9 +43,7 @@ def _write(directory, name, content=b"x"):
 
 
 def _stamp(day):
-    return (datetime(2026, 9, 1, tzinfo=timezone.utc) + timedelta(days=day)).strftime(
-        backup.STAMP_FORMAT
-    )
+    return (datetime(2026, 9, 1, tzinfo=UTC) + timedelta(days=day)).strftime(backup.STAMP_FORMAT)
 
 
 def _quiet(*_args, **_kwargs):
@@ -61,15 +59,20 @@ def test_backup_retention_and_weekly_promotion():
 
     promoted = backup.promote_weekly(directory, log=_quiet)
     _expect(len(promoted) == 2, f"2 liens hebdomadaires créés ({len(promoted)})")
-    _expect((directory / "weekly" / f"foyz-{_stamp(10)}.dump").exists(),
-            "dernière copie promue en hebdomadaire")
+    _expect(
+        (directory / "weekly" / f"foyz-{_stamp(10)}.dump").exists(),
+        "dernière copie promue en hebdomadaire",
+    )
 
     removed = backup.prune(directory, daily=7, weekly=4, log=_quiet)
     remaining = sorted(p.name for p in directory.iterdir() if p.is_file())
-    _expect(len([n for n in remaining if n.startswith("foyz-")]) == 7,
-            "7 dumps quotidiens conservés")
-    _expect(len([n for n in remaining if n.startswith("uploads-")]) == 7,
-            "7 archives uploads conservées")
+    _expect(
+        len([n for n in remaining if n.startswith("foyz-")]) == 7, "7 dumps quotidiens conservés"
+    )
+    _expect(
+        len([n for n in remaining if n.startswith("uploads-")]) == 7,
+        "7 archives uploads conservées",
+    )
     _expect((directory / "a-lire.txt").exists(), "fichier étranger jamais touché")
     _expect(all("weekly" not in str(p) for p in removed), "weekly non purgé")
     _expect(len(list((directory / "weekly").iterdir())) == 2, "2 hebdomadaires conservés")
@@ -84,13 +87,32 @@ def test_backup_cli_prune_only_and_dry_run():
         _write(directory, f"foyz-{_stamp(day)}.dump")
         _write(directory, f"uploads-{_stamp(day)}.tgz")
 
-    rc = backup.main(["--backup-dir", str(directory), "--prune-only",
-                      "--retention-daily", "3", "--retention-weekly", "0", "--dry-run"])
+    rc = backup.main(
+        [
+            "--backup-dir",
+            str(directory),
+            "--prune-only",
+            "--retention-daily",
+            "3",
+            "--retention-weekly",
+            "0",
+            "--dry-run",
+        ]
+    )
     _expect(rc == 0, "mode prune-only en dry-run")
     _expect(len(list(directory.iterdir())) == 18, "dry-run ne supprime rien")
 
-    rc = backup.main(["--backup-dir", str(directory), "--prune-only",
-                      "--retention-daily", "3", "--retention-weekly", "0"])
+    rc = backup.main(
+        [
+            "--backup-dir",
+            str(directory),
+            "--prune-only",
+            "--retention-daily",
+            "3",
+            "--retention-weekly",
+            "0",
+        ]
+    )
     _expect(rc == 0, "mode prune-only réel")
     _expect(len(list(directory.iterdir())) == 6, "3 paires conservées")
 
@@ -109,12 +131,12 @@ def test_restore_listing_and_confirmation():
     _expect(resolved_dump.name == dump.name, "la plus récente sélectionnée")
     _expect(resolved_archive is not None, "archive uploads associée")
 
-    rc = restore.main(["--backup-dir", str(directory), "--latest",
-                       "--pg-container", "faux", "--dry-run"])
+    rc = restore.main(
+        ["--backup-dir", str(directory), "--latest", "--pg-container", "faux", "--dry-run"]
+    )
     _expect(rc == 0, "dry-run accepté sans --yes")
 
-    rc = restore.main(["--backup-dir", str(directory), "--latest",
-                       "--pg-container", "faux"])
+    rc = restore.main(["--backup-dir", str(directory), "--latest", "--pg-container", "faux"])
     _expect(rc == 1, "restauration refusée sans --yes")
 
 
@@ -130,22 +152,28 @@ def test_purge_archives_and_cli():
     stray.mkdir()
     (stray / "lisez-moi.txt").write_text("à conserver", encoding="utf-8")
 
-    removed = purge_archives(source, 30, now=datetime(2026, 9, 17, tzinfo=timezone.utc),
-                             log=_quiet)
+    removed = purge_archives(source, 30, now=datetime(2026, 9, 17, tzinfo=UTC), log=_quiet)
     _expect(str(old) in removed, "archive ancienne détruite")
     _expect(not old.exists(), "archive ancienne absente du disque")
     _expect(recent.exists(), "archive récente conservée")
     _expect(stray.exists(), "dossier non horodaté conservé")
 
-    rc = migration_main(["--purge-archives", "30", "--source-dir", str(source),
-                         "--database-url", f"sqlite:///{source / 'cible.db'}"])
+    rc = migration_main(
+        [
+            "--purge-archives",
+            "30",
+            "--source-dir",
+            str(source),
+            "--database-url",
+            f"sqlite:///{source / 'cible.db'}",
+        ]
+    )
     _expect(rc == 0, "mode CLI purge-archives")
     _expect(recent.exists(), "archive récente toujours là via CLI")
 
     old2 = archives / "20200101-000000"
     old2.mkdir()
-    purge_archives(source, 30, dry_run=True,
-                   now=datetime(2026, 9, 17, tzinfo=timezone.utc), log=_quiet)
+    purge_archives(source, 30, dry_run=True, now=datetime(2026, 9, 17, tzinfo=UTC), log=_quiet)
     _expect(old2.exists(), "simulation n'efface rien")
 
 
@@ -156,7 +184,10 @@ def test_alembic_upgrade_downgrade_cycle():
     def alembic(*args):
         return subprocess.run(
             [sys.executable, "-m", "alembic", *args],
-            cwd=ROOT, env=env, capture_output=True, text=True,
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
         )
 
     head = head_revision()
@@ -168,9 +199,9 @@ def test_alembic_upgrade_downgrade_cycle():
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         version = conn.execute("SELECT version_num FROM alembic_version").fetchone()
         indexes = {
-            r[0] for r in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='index' "
-                "AND tbl_name='transaction_lines'"
+            r[0]
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='transaction_lines'"
             )
         }
     _expect("users" in tables and "transactions" in tables, "schéma créé par Alembic")
@@ -192,14 +223,17 @@ def test_alembic_upgrade_downgrade_cycle():
 
 
 def main():
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = 0
     for name, fn in tests:
         try:
             fn()
             print(f"  OK   {name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             failures += 1
             print(f"  FAIL {name}: {exc}")
     print(f"\n{len(tests) - failures}/{len(tests)} tests OK")

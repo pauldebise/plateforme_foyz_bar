@@ -23,7 +23,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 _TMP = Path(tempfile.mkdtemp(prefix="foyz_hardening_"))
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'app.db'}"
+os.environ["DATABASE_URL"] = (
+    os.environ.get("FOYZ_TEST_DATABASE_URL") or f"sqlite:///{_TMP / 'app.db'}"
+)
 os.environ["UPLOAD_DIR"] = str(_TMP / "uploads")
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef0123456789abcdef"
 os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
@@ -107,8 +109,10 @@ def test_legacy_password_audit_conversion_and_purge():
         _expect(LP.format_of(md5_user.legacy_password) == "md5", "format md5 détecté")
         _expect(LP.format_of(team_user.legacy_password) == "plaintext", "clair détecté")
         counts = LP.audit()
-        _expect(counts.get("md5") == 1 and counts.get("plaintext") == 1,
-                f"audit compte les formats ({dict(counts)})")
+        _expect(
+            counts.get("md5") == 1 and counts.get("plaintext") == 1,
+            f"audit compte les formats ({dict(counts)})",
+        )
 
         # conversion à la connexion
         client = app.test_client()
@@ -170,8 +174,10 @@ def test_security_headers_and_offline_assets():
     app.config["SESSION_COOKIE_SECURE"] = True
     _expect("Strict-Transport-Security" in authed.get("/equipe/paiement").headers, "HSTS activé")
     app.config["SESSION_COOKIE_SECURE"] = False
-    _expect("Strict-Transport-Security" not in authed.get("/equipe/paiement").headers,
-            "pas de HSTS hors HTTPS")
+    _expect(
+        "Strict-Transport-Security" not in authed.get("/equipe/paiement").headers,
+        "pas de HSTS hors HTTPS",
+    )
 
 
 def test_no_inline_handlers_and_no_host_url():
@@ -184,14 +190,22 @@ def test_no_inline_handlers_and_no_host_url():
     from app.utils import utcnow
 
     with app.app_context():
-        ev = Event(name="Événement lien", campus="brest", starts_at=utcnow(), ends_at=utcnow(), token="tok-test")
+        ev = Event(
+            name="Événement lien",
+            campus="brest",
+            starts_at=utcnow(),
+            ends_at=utcnow(),
+            token="tok-test",
+        )
         db.session.add(ev)
         db.session.commit()
         event_id = ev.id
     page = authed.get(f"/admin/evenements/{event_id}").get_data(as_text=True)
     _expect('data-copy="/passerelle/tok-test"' in page, "lien copié via data-copy relatif")
-    _expect("http://localhost" not in page and "request.host_url" not in page,
-            "URL de passerelle non construite depuis l'en-tête Host")
+    _expect(
+        "http://localhost" not in page and "request.host_url" not in page,
+        "URL de passerelle non construite depuis l'en-tête Host",
+    )
 
 
 def test_svg_upload_is_refused():
@@ -229,7 +243,9 @@ def test_admin_rejects_invalid_numbers_without_500():
     )
     _expect(res.status_code == 302, f"prix invalide -> redirection, pas 500 ({res.status_code})")
     with app.app_context():
-        _expect(db.session.query(Article).count() == before, "aucun article créé avec un prix invalide")
+        _expect(
+            db.session.query(Article).count() == before, "aucun article créé avec un prix invalide"
+        )
 
     res = authed.post(
         "/admin/tireuses/kegs/nouveau",
@@ -267,10 +283,12 @@ def test_long_names_are_truncated():
 def test_account_deletion_is_scoped_to_campus():
     app = create_app()
     with app.app_context(), app.test_request_context("/"):
-        brest_mandat = User(name="Mandat Brest", username="mandat.test", team_status="mandat",
-                            team_campus="brest")
-        paris_member = User(name="Mandat Paris", username="mandat.paris", team_status="mandat",
-                            team_campus="paris")
+        brest_mandat = User(
+            name="Mandat Brest", username="mandat.test", team_status="mandat", team_campus="brest"
+        )
+        paris_member = User(
+            name="Mandat Paris", username="mandat.paris", team_status="mandat", team_campus="paris"
+        )
         paris_balance = User(name="Élève Paris", username="eleve.paris.debt")
         neutral = User(name="Élève Neutre", username="eleve.neutre")
         db.session.add_all([brest_mandat, paris_member, paris_balance, neutral])
@@ -301,8 +319,10 @@ def test_admin_password_fallback_is_dev_only():
 def test_chart_pages_render_with_json_data():
     app = create_app()
     authed = _client(app)
-    for path, marker in (("/equipe/statistiques", 'id="stats-data"'),
-                         ("/equipe/tresorerie", 'id="treasury-data"')):
+    for path, marker in (
+        ("/equipe/statistiques", 'id="stats-data"'),
+        ("/equipe/tresorerie", 'id="treasury-data"'),
+    ):
         res = authed.get(path)
         _expect(res.status_code == 200, f"{path} rendu ({res.status_code})")
         html = res.get_data(as_text=True)
@@ -313,12 +333,14 @@ def test_chart_pages_render_with_json_data():
 def test_disabled_account_cannot_log_in():
     app = create_app()
     with app.app_context():
-        user = db.session.scalars(
-            db.select(User).where(User.username == "test.disabled")
-        ).first()
+        user = db.session.scalars(db.select(User).where(User.username == "test.disabled")).first()
         if user is None:
-            user = User(username="test.disabled", name="Test Disabled",
-                        team_status="mandat", team_campus="brest")
+            user = User(
+                username="test.disabled",
+                name="Test Disabled",
+                team_status="mandat",
+                team_campus="brest",
+            )
             db.session.add(user)
         user.password_hash = generate_password_hash("secret123")
         user.disabled = True
@@ -329,9 +351,7 @@ def test_disabled_account_cannot_log_in():
     _expect(res.status_code == 401, f"compte désactivé refusé ({res.status_code})")
 
     with app.app_context():
-        user = db.session.scalars(
-            db.select(User).where(User.username == "test.disabled")
-        ).first()
+        user = db.session.scalars(db.select(User).where(User.username == "test.disabled")).first()
         user.disabled = False
         db.session.commit()
     res2 = _login(client, "test.disabled", "secret123")
@@ -339,14 +359,17 @@ def test_disabled_account_cannot_log_in():
 
 
 def main():
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = 0
     for name, fn in tests:
         try:
             fn()
             print(f"  OK   {name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             failures += 1
             print(f"  FAIL {name}: {exc}")
     print(f"\n{len(tests) - failures}/{len(tests)} tests OK")

@@ -19,7 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 _TMP = Path(tempfile.mkdtemp(prefix="foyz_conc_"))
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'app.db'}"
+os.environ["DATABASE_URL"] = (
+    os.environ.get("FOYZ_TEST_DATABASE_URL") or f"sqlite:///{_TMP / 'app.db'}"
+)
 os.environ["UPLOAD_DIR"] = str(_TMP / "uploads")
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef0123456789abcdef"
 os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
@@ -72,7 +74,7 @@ def _run_threads(app, count, fn):
                 outcome = fn()
             except T.OperationError as exc:
                 outcome = f"refus:{exc.code}"
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 outcome = f"erreur:{exc!r}"
             with lock:
                 results.append(outcome)
@@ -125,22 +127,26 @@ def test_concurrent_overdraft_is_respected():
     results = _run_threads(app, 2, buy)
     successes = [r for r in results if r.startswith("ok:")]
     refusals = [r for r in results if r.startswith("refus:")]
-    _expect(len(successes) == 1 and len(refusals) == 1,
-            f"un seul achat concurrent accepté ({results})")
+    _expect(
+        len(successes) == 1 and len(refusals) == 1, f"un seul achat concurrent accepté ({results})"
+    )
     with app.app_context():
         balance = db.session.get(User, user_id).wallet("brest").balance
     _expect(balance == 0, f"solde = 600 - 600, jamais sous -500 (obtenu {balance})")
 
 
 def main():
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = 0
     for name, fn in tests:
         try:
             fn()
             print(f"  OK   {name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             failures += 1
             print(f"  FAIL {name}: {exc}")
     print(f"\n{len(tests) - failures}/{len(tests)} tests OK")

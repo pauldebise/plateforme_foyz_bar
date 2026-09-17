@@ -23,7 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 _TMP = Path(tempfile.mkdtemp(prefix="foyz_monitoring_"))
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'app.db'}"
+os.environ["DATABASE_URL"] = (
+    os.environ.get("FOYZ_TEST_DATABASE_URL") or f"sqlite:///{_TMP / 'app.db'}"
+)
+IS_SQLITE = os.environ["DATABASE_URL"].startswith("sqlite")
 os.environ["UPLOAD_DIR"] = str(_TMP / "uploads")
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef0123456789abcdef"
 os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
@@ -101,9 +104,7 @@ def test_health_degraded_when_database_down():
 
     app = create_app()
     broken = create_engine("sqlite:////dossier-inexistant/base.db")
-    with mock.patch.object(
-        type(db), "engine", new=property(lambda self: broken), create=True
-    ):
+    with mock.patch.object(type(db), "engine", new=property(lambda self: broken), create=True):
         res = app.test_client().get("/health")
     _expect(res.status_code == 503, f"health 503 si base injoignable ({res.status_code})")
     _expect(res.get_json()["database"] == "error", "base signalée en erreur")
@@ -140,11 +141,16 @@ def test_json_formatter_parses_and_keeps_extras():
     payload = json.loads(JsonFormatter().format(record))
     _expect(payload["level"] == "WARNING", "niveau conservé")
     _expect(payload["message"] == "coucou x", "message formaté")
-    _expect(payload["event"] == "unhandled_error" and payload["path"] == "/ici",
-            "champs structurés conservés")
+    _expect(
+        payload["event"] == "unhandled_error" and payload["path"] == "/ici",
+        "champs structurés conservés",
+    )
 
 
 def test_sqlite_permissions_restricted():
+    if not IS_SQLITE:
+        print("  (ignoré : permissions de fichier SQLite)")
+        return
     app = create_app()
     db_path = _TMP / "app.db"
     _restrict_instance_permissions(app)
@@ -162,17 +168,25 @@ def test_sqlite_permissions_restricted():
     finally:
         app.config["SQLALCHEMY_DATABASE_URI"] = previous
     _expect(stat.S_IMODE(other_db.stat().st_mode) == 0o600, "fichier durci")
-    _expect(stat.S_IMODE(elsewhere.stat().st_mode) == 0o755,
-            "dossier parent hors instance/ jamais modifié")
+    _expect(
+        stat.S_IMODE(elsewhere.stat().st_mode) == 0o755,
+        "dossier parent hors instance/ jamais modifié",
+    )
 
 
 def test_purge_logs_command():
     app = create_app()
     with app.app_context():
-        old = LoginLog(name="ancien", campus="brest", ip="127.0.0.1", success=False,
-                       created_at=utcnow() - timedelta(days=200))
-        recent = LoginLog(name="recent", campus="brest", ip="127.0.0.1", success=True,
-                          created_at=utcnow())
+        old = LoginLog(
+            name="ancien",
+            campus="brest",
+            ip="127.0.0.1",
+            success=False,
+            created_at=utcnow() - timedelta(days=200),
+        )
+        recent = LoginLog(
+            name="recent", campus="brest", ip="127.0.0.1", success=True, created_at=utcnow()
+        )
         db.session.add_all([old, recent])
         db.session.commit()
         old_id = old.id
@@ -193,8 +207,13 @@ def test_purge_logs_command():
 def test_failed_login_still_triggers_cleanup():
     app = create_app()
     with app.app_context():
-        old = LoginLog(name="tres ancien", campus="brest", ip="127.0.0.1", success=False,
-                       created_at=utcnow() - timedelta(days=400))
+        old = LoginLog(
+            name="tres ancien",
+            campus="brest",
+            ip="127.0.0.1",
+            success=False,
+            created_at=utcnow() - timedelta(days=400),
+        )
         db.session.add(old)
         db.session.commit()
         old_id = old.id
@@ -204,19 +223,24 @@ def test_failed_login_still_triggers_cleanup():
     res = _login(client, "inconnu", "mauvais")
     _expect(res.status_code == 401, f"échec de connexion attendu ({res.status_code})")
     with app.app_context():
-        _expect(db.session.get(LoginLog, old_id) is None,
-                "purge déclenchée même sans connexion réussie (R13)")
+        _expect(
+            db.session.get(LoginLog, old_id) is None,
+            "purge déclenchée même sans connexion réussie (R13)",
+        )
 
 
 def main():
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = 0
     for name, fn in tests:
         try:
             fn()
             print(f"  OK   {name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             failures += 1
             print(f"  FAIL {name}: {exc}")
     print(f"\n{len(tests) - failures}/{len(tests)} tests OK")

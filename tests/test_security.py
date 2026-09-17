@@ -24,7 +24,10 @@ sys.path.insert(0, str(ROOT))
 # Environnement figé AVANT tout import de app.* : la configuration lit les
 # variables à l'import du module (SECRET_KEY forte = production valide).
 _TMP = Path(tempfile.mkdtemp(prefix="foyz_secu_"))
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'app.db'}"
+os.environ["DATABASE_URL"] = (
+    os.environ.get("FOYZ_TEST_DATABASE_URL") or f"sqlite:///{_TMP / 'app.db'}"
+)
+IS_SQLITE = os.environ["DATABASE_URL"].startswith("sqlite")
 os.environ["UPLOAD_DIR"] = str(_TMP / "uploads")
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef0123456789abcdef"
 os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
@@ -137,9 +140,7 @@ def test_limiter_purges_and_bounds_keys():
     with auth_module._limiter_lock:
         auth_module._attempts.clear()
         for i in range(auth_module._RATE_MAX_KEYS + 5):
-            auth_module._attempts[f"expired-{i}"].append(
-                now - auth_module._RATE_WINDOW_SECONDS - 1
-            )
+            auth_module._attempts[f"expired-{i}"].append(now - auth_module._RATE_WINDOW_SECONDS - 1)
         auth_module._last_sweep = 0.0
         auth_module._sweep_attempts(now)
         _expect(not auth_module._attempts, "clés expirées purgées")
@@ -155,6 +156,9 @@ def test_limiter_purges_and_bounds_keys():
 
 
 def test_sqlite_foreign_keys_and_history_after_deletion():
+    if not IS_SQLITE:
+        print("  (ignoré : clés étrangères SQLite)")
+        return
     app = create_app()
     with app.app_context():
         _expect(
@@ -244,14 +248,17 @@ def test_login_limiter_survives_forged_xff():
 
 
 def main():
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = 0
     for name, fn in tests:
         try:
             fn()
             print(f"  OK   {name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             failures += 1
             print(f"  FAIL {name}: {exc}")
     print(f"\n{len(tests) - failures}/{len(tests)} tests OK")

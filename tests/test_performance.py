@@ -27,7 +27,6 @@ os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef0123456789abcdef"
 os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
 os.environ.pop("FLASK_ENV", None)
 
-from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
@@ -73,8 +72,17 @@ def _login(client, username="admin", password=ADMIN_PASSWORD):
     _expect(res.status_code == 302, f"connexion réussie ({res.status_code})")
 
 
-def _add_transaction(campus, ttype, when, lines=(), contributors=(), total=None,
-                     payment_method=None, cancelled=False, event_id=None):
+def _add_transaction(
+    campus,
+    ttype,
+    when,
+    lines=(),
+    contributors=(),
+    total=None,
+    payment_method=None,
+    cancelled=False,
+    event_id=None,
+):
     t = Transaction(
         campus=campus,
         type=ttype,
@@ -98,7 +106,7 @@ def _add_transaction(campus, ttype, when, lines=(), contributors=(), total=None,
                 line_total=qty * unit,
             )
         )
-    t.total = total if total is not None else sum(l.line_total for l in t.lines)
+    t.total = total if total is not None else sum(line.line_total for line in t.lines)
     db.session.add(t)
     return t
 
@@ -109,95 +117,152 @@ def test_a_sql_aggregates_match_reference():
     day = now - timedelta(days=2)
 
     with app.app_context():
-        art_b = Article(name="Pinte", article_type="biere", is_alcohol=True,
-                        price_std_brest=300, active=True)
-        art_s = Article(name="Chips", article_type="snack", price_std_brest=200,
-                        active=True)
+        art_b = Article(
+            name="Pinte", article_type="biere", is_alcohol=True, price_std_brest=300, active=True
+        )
+        art_s = Article(name="Chips", article_type="snack", price_std_brest=200, active=True)
         a = User(name="Alpha", username="perf.alpha", promotion=2025)
-        b = User(name="Bravo", username="perf.bravo", promotion=2025,
-                 team_status="mandat", team_campus="brest")
+        b = User(
+            name="Bravo",
+            username="perf.bravo",
+            promotion=2025,
+            team_status="mandat",
+            team_campus="brest",
+        )
         c = User(name="Charlie", username="perf.charlie", promotion=2024)
         db.session.add_all([art_b, art_s, a, b, c])
         db.session.flush()
 
-        event = Event(name="Soirée", campus="brest",
-                      starts_at=day, ends_at=day + timedelta(hours=4),
-                      token="perf-token", closed=False)
+        event = Event(
+            name="Soirée",
+            campus="brest",
+            starts_at=day,
+            ends_at=day + timedelta(hours=4),
+            token="perf-token",
+            closed=False,
+        )
         db.session.add(event)
         db.session.flush()
 
         # T1 : achat partagé A+B (bière 600 + snack 200)
-        _add_transaction("brest", "achat", day, [
-            (art_b, "Pinte", "biere", 2, 300),
-            (art_s, "Chips", "snack", 1, 200),
-        ], [(a, 400), (b, 400)])
+        _add_transaction(
+            "brest",
+            "achat",
+            day,
+            [
+                (art_b, "Pinte", "biere", 2, 300),
+                (art_s, "Chips", "snack", 1, 200),
+            ],
+            [(a, 400), (b, 400)],
+        )
         # T2 : achat C (bière 300)
-        _add_transaction("brest", "achat", day, [
-            (art_b, "Pinte", "biere", 1, 300),
-        ], [(c, 300)])
+        _add_transaction(
+            "brest",
+            "achat",
+            day,
+            [
+                (art_b, "Pinte", "biere", 1, 300),
+            ],
+            [(c, 300)],
+        )
         # T3 : paiement direct Paris sans participant
-        _add_transaction("paris", "direct", day, [
-            (art_b, "Pinte", "biere", 1, 300),
-        ])
+        _add_transaction(
+            "paris",
+            "direct",
+            day,
+            [
+                (art_b, "Pinte", "biere", 1, 300),
+            ],
+        )
         # T4 : achat annulé (ignoré)
-        _add_transaction("brest", "achat", day, [
-            (art_b, "Pinte", "biere", 5, 300),
-        ], [(a, 1500)], cancelled=True)
+        _add_transaction(
+            "brest",
+            "achat",
+            day,
+            [
+                (art_b, "Pinte", "biere", 5, 300),
+            ],
+            [(a, 1500)],
+            cancelled=True,
+        )
         # T5 : rechargement (trésorerie), à la frontière de mois hiver (T-7.1)
         winter = datetime(now.year, 1, 1, 0, 30)
-        _add_transaction("brest", "rechargement", paris_to_utc(winter),
-                         total=1000, payment_method="cb")
+        _add_transaction(
+            "brest", "rechargement", paris_to_utc(winter), total=1000, payment_method="cb"
+        )
         # T6 : achat rattaché à un événement
-        _add_transaction("brest", "achat", day, [
-            (art_s, "Chips", "snack", 1, 200),
-        ], [(a, 200)], event_id=event.id)
+        _add_transaction(
+            "brest",
+            "achat",
+            day,
+            [
+                (art_s, "Chips", "snack", 1, 200),
+            ],
+            [(a, 200)],
+            event_id=event.id,
+        )
         # T7 : ligne sans article (regroupée par nom)
-        _add_transaction("brest", "direct", day, [
-            (None, "Crêpe maison", "snack", 3, 100),
-        ])
+        _add_transaction(
+            "brest",
+            "direct",
+            day,
+            [
+                (None, "Crêpe maison", "snack", 3, 100),
+            ],
+        )
         db.session.commit()
 
         # --- Ventes : bière 1200 (4), snack 700 (5), total 1900 (9)
         stats = sales_stats({})
-        _expect(stats["grand_total"] == {"qty": 9, "revenue": 1900},
-                f"ventes totales ({stats['grand_total']})")
-        _expect(stats["by_category"]["biere"] == {"qty": 4, "revenue": 1200},
-                "ventes bière")
-        _expect(stats["by_category"]["snack"] == {"qty": 5, "revenue": 700},
-                "ventes snack")
+        _expect(
+            stats["grand_total"] == {"qty": 9, "revenue": 1900},
+            f"ventes totales ({stats['grand_total']})",
+        )
+        _expect(stats["by_category"]["biere"] == {"qty": 4, "revenue": 1200}, "ventes bière")
+        _expect(stats["by_category"]["snack"] == {"qty": 5, "revenue": 700}, "ventes snack")
         _expect(sum(stats["series"].values()) == 1900, "série journalière = total")
 
         # Filtre catégorie
         only_beer = sales_stats({"category": "biere"})
-        _expect(only_beer["grand_total"] == {"qty": 4, "revenue": 1200},
-                "filtre catégorie bière")
+        _expect(only_beer["grand_total"] == {"qty": 4, "revenue": 1200}, "filtre catégorie bière")
 
         # Filtre promotion/équipe (portée participant)
         team = sales_stats({"team_only": "team"})
-        _expect(team["grand_total"] == {"qty": 3, "revenue": 800},
-                f"ventes de l'équipe ({team['grand_total']})")
+        _expect(
+            team["grand_total"] == {"qty": 3, "revenue": 800},
+            f"ventes de l'équipe ({team['grand_total']})",
+        )
         promo24 = sales_stats({"promotion": "2024"})
-        _expect(promo24["grand_total"] == {"qty": 1, "revenue": 300},
-                "ventes promo 2024")
+        _expect(promo24["grand_total"] == {"qty": 1, "revenue": 300}, "ventes promo 2024")
 
         # --- Étudiants : A 600/2, B 400/1, C 300/1 (T3 sans participant, T4 annulée)
         students = students_stats({}, per_page=25)
         rows = {s["name"]: s for s in students["rows"]}
         _expect(set(rows) == {"Alpha", "Bravo", "Charlie"}, f"participants ({set(rows)})")
-        _expect(rows["Alpha"]["spent"] == 600 and rows["Alpha"]["nb"] == 2
-                and rows["Alpha"]["articles"] == 2.5, "Alpha réparti sur 2 achats")
-        _expect(rows["Bravo"]["spent"] == 400 and rows["Bravo"]["nb"] == 1,
-                "Bravo part du premier achat")
+        _expect(
+            rows["Alpha"]["spent"] == 600
+            and rows["Alpha"]["nb"] == 2
+            and rows["Alpha"]["articles"] == 2.5,
+            "Alpha réparti sur 2 achats",
+        )
+        _expect(
+            rows["Bravo"]["spent"] == 400 and rows["Bravo"]["nb"] == 1,
+            "Bravo part du premier achat",
+        )
         _expect(rows["Charlie"]["spent"] == 300, "Charlie 300")
         _expect(students["total"] == 3, "3 étudiants")
 
         # Pagination et recherche
         paged = students_stats({}, per_page=2)
-        _expect(paged["total"] == 3 and paged["pages"] == 2 and len(paged["rows"]) == 2,
-                "pagination étudiants")
+        _expect(
+            paged["total"] == 3 and paged["pages"] == 2 and len(paged["rows"]) == 2,
+            "pagination étudiants",
+        )
         found = students_stats({}, search="brâv")
-        _expect(len(found["rows"]) == 1 and found["rows"][0]["name"] == "Bravo",
-                "recherche insensible aux accents")
+        _expect(
+            len(found["rows"]) == 1 and found["rows"][0]["name"] == "Bravo",
+            "recherche insensible aux accents",
+        )
 
         # --- Articles : Pinte 4/1200, Crêpe 3/300, Chips 2/400
         articles = top_articles_stats({})
@@ -225,23 +290,24 @@ def test_b_index_and_pagination():
     app = create_app()
     with app.app_context():
         indexes = {
-            r[0] for r in db.session.execute(db.text(
-                "SELECT name FROM sqlite_master WHERE type='index' "
-                "AND tbl_name='transaction_lines'"
-            ))
+            r[0]
+            for r in db.session.execute(
+                db.text(
+                    "SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND tbl_name='transaction_lines'"
+                )
+            )
         }
-        _expect("ix_transaction_lines_article_id" in indexes,
-                "index article_id présent (T-7.2)")
+        _expect("ix_transaction_lines_article_id" in indexes, "index article_id présent (T-7.2)")
         _expect(history_cutoff() is not None, "fenêtre d'historique disponible")
 
-        admin = db.session.scalars(
-            db.select(User).where(User.username == "admin")
-        ).first()
+        admin = db.session.scalars(db.select(User).where(User.username == "admin")).first()
         _expect(admin is not None, "compte admin créé")
         base = utcnow() - timedelta(days=1)
         for i in range(60):
-            _add_transaction("brest", "rechargement", base + timedelta(minutes=i),
-                             total=100, payment_method="cb")
+            _add_transaction(
+                "brest", "rechargement", base + timedelta(minutes=i), total=100, payment_method="cb"
+            )
             t = db.session.scalars(
                 db.select(Transaction).order_by(Transaction.id.desc()).limit(1)
             ).first()
@@ -272,39 +338,47 @@ def test_c_cache_and_compression():
 
     css = client.get("/static/vendor/bootstrap/bootstrap.min.css")
     _expect(css.status_code == 200, "asset statique servi")
-    _expect("max-age=86400" in (css.headers.get("Cache-Control") or ""),
-            "cache navigateur sur /static")
+    _expect(
+        "max-age=86400" in (css.headers.get("Cache-Control") or ""), "cache navigateur sur /static"
+    )
 
     upload = Path(os.environ["UPLOAD_DIR"]) / "logo.png"
     upload.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 100)
     res = client.get("/uploads/logo.png")
-    _expect("max-age=86400" in (res.headers.get("Cache-Control") or ""),
-            "cache navigateur sur /uploads")
+    _expect(
+        "max-age=86400" in (res.headers.get("Cache-Control") or ""), "cache navigateur sur /uploads"
+    )
 
     compressed = client.get(
         "/static/vendor/bootstrap/bootstrap.min.css",
         headers={"Accept-Encoding": "br, gzip"},
     )
-    _expect(compressed.headers.get("Content-Encoding") in ("br", "gzip"),
-            f"asset compressé ({compressed.headers.get('Content-Encoding')})")
-    _expect("Accept-Encoding" in (compressed.headers.get("Vary") or ""),
-            "Vary: Accept-Encoding")
+    _expect(
+        compressed.headers.get("Content-Encoding") in ("br", "gzip"),
+        f"asset compressé ({compressed.headers.get('Content-Encoding')})",
+    )
+    _expect("Accept-Encoding" in (compressed.headers.get("Vary") or ""), "Vary: Accept-Encoding")
 
     # Utilisable sans Internet : la page ne référence aucun hôte externe.
     page = client.get("/connexion").get_data(as_text=True)
-    _expect('src="http' not in page and 'href="http' not in page,
-            "aucune ressource externe (hors ligne)")
+    _expect(
+        'src="http' not in page and 'href="http' not in page,
+        "aucune ressource externe (hors ligne)",
+    )
 
 
 def main():
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = 0
     for name, fn in tests:
         try:
             fn()
             print(f"  OK   {name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             failures += 1
             print(f"  FAIL {name}: {exc}")
     print(f"\n{len(tests) - failures}/{len(tests)} tests OK")

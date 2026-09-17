@@ -25,7 +25,10 @@ sys.path.insert(0, str(ROOT))
 # Environnement figé AVANT tout import de app.* : la configuration lit les
 # variables d'authentification à l'import du module.
 _TMP = Path(tempfile.mkdtemp(prefix="foyz_ident_"))
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP / 'app.db'}"
+os.environ["DATABASE_URL"] = (
+    os.environ.get("FOYZ_TEST_DATABASE_URL") or f"sqlite:///{_TMP / 'app.db'}"
+)
+IS_SQLITE = os.environ["DATABASE_URL"].startswith("sqlite")
 os.environ["UPLOAD_DIR"] = str(_TMP / "uploads")
 os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
 os.environ["SECRET_KEY"] = "test-secret-key-0123456789abcdef0123456789abcdef"
@@ -56,15 +59,12 @@ def _csrf(client, path="/connexion"):
 
 def test_slug_username_and_display_name():
     _expect(slug_username("Paul Debise") == "paul.debise", "slug simple")
-    _expect(slug_username("Marie Claire Dupont") == "marie.claire.dupont",
-            "slug multi-mots")
+    _expect(slug_username("Marie Claire Dupont") == "marie.claire.dupont", "slug multi-mots")
     _expect(slug_username("  ÉLÈVE Dupont ") == "eleve.dupont", "slug accents")
-    _expect(slug_username("") is None and slug_username(None) is None,
-            "slug vide -> None")
+    _expect(slug_username("") is None and slug_username(None) is None, "slug vide -> None")
     u = User(name="Paul Debise", nickname="Chips")
     _expect(u.display_name == "Paul Debise (Chips)", "display_name avec surnom")
-    _expect(User(name="Marie Le Goff").display_name == "Marie Le Goff",
-            "display_name sans surnom")
+    _expect(User(name="Marie Le Goff").display_name == "Marie Le Goff", "display_name sans surnom")
 
 
 def test_login_and_account_management():
@@ -73,44 +73,70 @@ def test_login_and_account_management():
     token = _csrf(client)
 
     # login admin : casse et espaces tolérés ("ADMIN" -> "admin")
-    r = client.post("/connexion", data={
-        "username": "ADMIN", "password": ADMIN_PASSWORD,
-        "campus": "brest", "_csrf": token,
-    })
+    r = client.post(
+        "/connexion",
+        data={
+            "username": "ADMIN",
+            "password": ADMIN_PASSWORD,
+            "campus": "brest",
+            "_csrf": token,
+        },
+    )
     _expect(r.status_code == 302, f"login admin accepté ({r.status_code})")
     # session.clear() au login régénère le jeton CSRF
     token = _csrf(client, "/admin/comptes")
 
     # création de compte : identifiant déduit du nom si laissé vide
-    r = client.post("/admin/comptes/nouveau", data={
-        "name": "Paul Debise", "nickname": "Chips",
-        "username": "", "promotion": "2028", "_csrf": token,
-    })
+    r = client.post(
+        "/admin/comptes/nouveau",
+        data={
+            "name": "Paul Debise",
+            "nickname": "Chips",
+            "username": "",
+            "promotion": "2028",
+            "_csrf": token,
+        },
+    )
     _expect(r.status_code == 302, f"compte créé ({r.status_code})")
     with app.app_context():
-        u = db.session.scalars(
-            select(User).where(User.username == "paul.debise")
-        ).first()
-        _expect(u is not None and u.name == "Paul Debise" and u.nickname == "Chips",
-                "compte créé avec identifiant déduit du nom et surnom conservé")
+        u = db.session.scalars(select(User).where(User.username == "paul.debise")).first()
+        _expect(
+            u is not None and u.name == "Paul Debise" and u.nickname == "Chips",
+            "compte créé avec identifiant déduit du nom et surnom conservé",
+        )
 
     # unicité de l'identifiant (doublon refusé)
-    r = client.post("/admin/comptes/nouveau", data={
-        "name": "Paul Debi", "username": "paul.debise", "_csrf": token,
-    }, follow_redirects=True)
+    r = client.post(
+        "/admin/comptes/nouveau",
+        data={
+            "name": "Paul Debi",
+            "username": "paul.debise",
+            "_csrf": token,
+        },
+        follow_redirects=True,
+    )
     _expect("déjà utilisé" in r.get_data(as_text=True), "doublon d'identifiant refusé")
 
     # recherche de comptes par surnom
     r = client.get("/admin/comptes?q=Chips")
     body = r.get_data(as_text=True)
-    _expect("Paul Debise" in body and "paul.debise" in body,
-            "recherche par surnom + affichage identifiant")
+    _expect(
+        "Paul Debise" in body and "paul.debise" in body,
+        "recherche par surnom + affichage identifiant",
+    )
 
     # édition : renommage sans unicité sur le nom, contrôle sur l'identifiant
-    r = client.post(f"/admin/comptes/{u.id}", data={
-        "name": "Paul Debise", "nickname": "Chips", "username": "paul.debi",
-        "promotion": "2028", "_csrf": token,
-    }, follow_redirects=True)
+    r = client.post(
+        f"/admin/comptes/{u.id}",
+        data={
+            "name": "Paul Debise",
+            "nickname": "Chips",
+            "username": "paul.debi",
+            "promotion": "2028",
+            "_csrf": token,
+        },
+        follow_redirects=True,
+    )
     with app.app_context():
         db.session.expire_all()
         u = db.session.get(User, u.id)
@@ -126,21 +152,36 @@ def test_login_and_account_management():
     token = _csrf(client)  # logout -> session.clear() -> nouveau jeton
 
     # login équipe : accents/casse/espaces tolérés, le surnom n'est PAS un identifiant
-    r = client.post("/connexion", data={
-        "username": "paul debise", "password": "secret123",
-        "campus": "brest", "_csrf": token,
-    })
+    r = client.post(
+        "/connexion",
+        data={
+            "username": "paul debise",
+            "password": "secret123",
+            "campus": "brest",
+            "_csrf": token,
+        },
+    )
     _expect(r.status_code == 302, f"login équipe par prenom.nom ({r.status_code})")
     token = _csrf(client)  # session.clear() au login -> nouveau jeton
-    r = client.post("/connexion", data={
-        "username": "paul debise", "password": "mauvais",
-        "campus": "brest", "_csrf": token,
-    })
+    r = client.post(
+        "/connexion",
+        data={
+            "username": "paul debise",
+            "password": "mauvais",
+            "campus": "brest",
+            "_csrf": token,
+        },
+    )
     _expect(r.status_code == 401, "mauvais mot de passe refusé")
-    r = client.post("/connexion", data={
-        "username": "Chips", "password": "secret123",
-        "campus": "brest", "_csrf": token,
-    })
+    r = client.post(
+        "/connexion",
+        data={
+            "username": "Chips",
+            "password": "secret123",
+            "campus": "brest",
+            "_csrf": token,
+        },
+    )
     _expect(r.status_code == 401, "le surnom ne permet pas de se connecter")
 
 
@@ -165,6 +206,9 @@ CREATE UNIQUE INDEX ix_users_name ON users (name);
 def test_schema_upgrade_legacy_db():
     """Base héritée (sans username/nickname, unicité sur name) : ajout des
     colonnes, backfill dédoublonné, bascule d'unicité, le tout idempotent."""
+    if not IS_SQLITE:
+        print("  (ignoré : base héritée SQLite)")
+        return
     db_path = Path(tempfile.mkdtemp(prefix="foyz_legacy_")) / "legacy.db"
     conn = sqlite3.connect(db_path)
     conn.executescript(_LEGACY_SCHEMA)
@@ -185,34 +229,35 @@ def test_schema_upgrade_legacy_db():
         ensure_schema_upgrades()
         cols = {c["name"] for c in inspect(db.engine).get_columns("users")}
         _expect("username" in cols and "nickname" in cols, "colonnes ajoutées")
-        mapping = dict(db.session.execute(
-            text("SELECT name, username FROM users")
-        ).fetchall())
+        mapping = dict(db.session.execute(text("SELECT name, username FROM users")).fetchall())
         _expect(mapping["Paul Debise"] == "paul.debise", "backfill slug simple")
         _expect(mapping["Marie Le Goff"] == "marie.le.goff", "backfill slug multi-mots")
         _expect(mapping["admin"] == "admin", "backfill identifiant déjà conforme")
-        _expect(mapping["Paul  Debise"] == "paul.debise2",
-                f"collision de slug dédoublonnée ({mapping['Paul  Debise']})")
+        _expect(
+            mapping["Paul  Debise"] == "paul.debise2",
+            f"collision de slug dédoublonnée ({mapping['Paul  Debise']})",
+        )
         indexes = {ix["name"]: ix for ix in inspect(db.engine).get_indexes("users")}
         _expect(not indexes["ix_users_name"]["unique"], "unicité retirée de name")
         _expect(indexes["ix_users_username"]["unique"], "unicité posée sur username")
         # deuxième passage : aucun changement ni erreur
         ensure_schema_upgrades()
-        mapping2 = dict(db.session.execute(
-            text("SELECT name, username FROM users")
-        ).fetchall())
+        mapping2 = dict(db.session.execute(text("SELECT name, username FROM users")).fetchall())
         _expect(mapping2 == mapping, "upgrade idempotent")
 
 
 def main():
-    tests = [(name, fn) for name, fn in sorted(globals().items())
-             if name.startswith("test_") and callable(fn)]
+    tests = [
+        (name, fn)
+        for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
     failures = 0
     for name, fn in tests:
         try:
             fn()
             print(f"  OK   {name}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             failures += 1
             print(f"  FAIL {name}: {exc}")
     print(f"\n{len(tests) - failures}/{len(tests)} tests OK")
