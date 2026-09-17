@@ -50,18 +50,22 @@ def validate_config(app):
     admin = app.config.get("DEFAULT_ADMIN_PASSWORD") or ""
     if admin in INSECURE_ADMIN_PASSWORDS or not admin:
         problems.append("ADMIN_PASSWORD absente ou triviale")
-    if not problems:
-        return
-    details = " ; ".join(problems)
-    if app.config.get("DEBUG"):
+    if problems:
+        details = " ; ".join(problems)
+        if app.config.get("DEBUG"):
+            app.logger.warning(
+                "Configuration de développement : %s (toléré hors production).", details
+            )
+        else:
+            raise RuntimeError(
+                f"Configuration refusée : {details}. Renseignez les variables "
+                "d'environnement (voir .env.example)."
+            )
+    if not app.config.get("DEBUG") and not app.config.get("SESSION_COOKIE_SECURE"):
         app.logger.warning(
-            "Configuration de développement : %s (toléré hors production).", details
+            "HTTPS_ONLY=0 en production : le cookie de session n'est pas marqué "
+            "« Secure » alors que l'URL publique est en HTTPS (voir README, §Cloudflare)."
         )
-        return
-    raise RuntimeError(
-        f"Configuration refusée : {details}. Renseignez les variables "
-        "d'environnement (voir .env.example)."
-    )
 
 
 class DevConfig(Config):

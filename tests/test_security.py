@@ -46,6 +46,7 @@ def _config_app(**overrides):
             "DEBUG": False,
             "SECRET_KEY": "a" * 32,
             "DEFAULT_ADMIN_PASSWORD": "mot-de-passe-solide",
+            "SESSION_COOKIE_SECURE": True,
         }
     )
     app.config.update(overrides)
@@ -85,6 +86,11 @@ def test_development_tolerates_default_secrets():
         SECRET_KEY="dev-secret-key-change-me",
         DEFAULT_ADMIN_PASSWORD="admin",
     )
+    validate_config(app)
+
+
+def test_production_warns_without_secure_cookies():
+    app = _config_app(SESSION_COOKIE_SECURE=False)
     validate_config(app)
 
 

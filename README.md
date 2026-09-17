@@ -180,6 +180,29 @@ sudo nginx -t && sudo systemctl reload nginx
 Pour HTTPS, ajoutez un certificat via `certbot --nginx` puis mettez `HTTPS_ONLY=1`
 dans `.env` (cookies `Secure`).
 
+### Option C — Exposition publique via Cloudflare
+
+Cloudflare apporte le TLS public, le WAF et la limitation de débit, mais **ne
+corrige pas** les défauts applicatifs et introduit ses propres pièges.
+
+1. **SSL/TLS = Full (strict)** obligatoire (jamais « Flexible ») : en Flexible, le
+   tronçon Cloudflare → origine circule en clair (identifiants, cookies) tout en
+   affichant un cadenas aux visiteurs.
+2. Activer **Always Use HTTPS** et **HSTS** (une fois tous les sous-domaines en HTTPS).
+3. `HTTPS_ONLY=1` dans `.env` afin que le cookie de session soit marqué `Secure`.
+4. **Origine injoignable en direct** : restreindre le pare-feu du serveur aux plages
+   d'IP Cloudflare (`https://www.cloudflare.com/ips/`) ou, mieux, déployer un
+   **Cloudflare Tunnel** (`cloudflared`) et fermer le port 8000. Sans cela, le WAF
+   et la limitation de débit se contournent par l'IP d'origine.
+5. Option : **Authenticated Origin Pulls** (mTLS) en complément du pare-feu.
+6. **Cache** : ne jamais mettre en cache `/equipe/*`, `/admin/*`, `/api/*` ni
+   `/passerelle/*` (réponses liées à la session) ; conserver le cache par défaut
+   pour `/static/*` et `/uploads/*`.
+7. **Cloudflare Access** peut protéger `/admin/*` par SSO/MFA, mais doit exclure
+   `/passerelle/*` et les pages publiques sous peine de casser la passerelle.
+8. Activer la **Rate Limiting** Cloudflare sur `/connexion` et `/api/*` en défense
+   en profondeur (le limiteur applicatif reste nécessaire).
+
 ### Variables d'environnement
 
 | Variable        | Rôle                                                        | Défaut            |
