@@ -159,15 +159,23 @@ def test_alembic_upgrade_downgrade_cycle():
             cwd=ROOT, env=env, capture_output=True, text=True,
         )
 
-    _expect(head_revision() == "0001_baseline", "révision de tête stable")
+    head = head_revision()
+    _expect(bool(head), "révision de tête définie")
 
     result = alembic("upgrade", "head")
     _expect(result.returncode == 0, f"upgrade head ({result.stderr[-200:]})")
     with sqlite3.connect(target) as conn:
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         version = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+        indexes = {
+            r[0] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND tbl_name='transaction_lines'"
+            )
+        }
     _expect("users" in tables and "transactions" in tables, "schéma créé par Alembic")
-    _expect(version == ("0001_baseline",), "version enregistrée")
+    _expect(version == (head,), "version enregistrée")
+    _expect("ix_transaction_lines_article_id" in indexes, "index article_id créé (T-7.2)")
 
     result = alembic("upgrade", "head")
     _expect(result.returncode == 0, "upgrade head idempotent")

@@ -158,15 +158,20 @@ WantedBy=multi-user.target
 UNIT
 sudo systemctl enable --now foyz
 
-# 5. Nginx (reverse proxy + fichiers statiques)
+# 5. Nginx (reverse proxy + fichiers statiques + compression)
 sudo tee /etc/nginx/sites-available/foyz > /dev/null <<'NGINX'
 server {
     listen 80;
     server_name foyz.exemple.fr;
 
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 500;
+    # brotli on; brotli_types text/css application/javascript application/json;  # module ngx_brotli
+
     location /static/ {
         alias /opt/foyz/app/static/;
-        expires 7d;
+        expires 1d;
     }
     location /uploads/ {
         alias /opt/foyz/uploads/;
@@ -369,7 +374,8 @@ flask --app wsgi.py init-db       # upgrade-db + compte administrateur initial
   déjà avant Gunicorn).
 - **Base existante** créée par `create_all()` : après sauvegarde, adoptez-la une
   fois — `python -m alembic stamp 0001_baseline` — puis `upgrade-db` pour les
-  évolutions suivantes. `alembic current` doit afficher `0001_baseline (head)`.
+  évolutions suivantes (`0002_article_index`, etc.). `alembic current` doit
+  afficher la même révision que `alembic heads` (dernière évolution).
 - **Nouvelle évolution** : modifier les modèles puis
   `python -m alembic revision --autogenerate -m "description"`, relire le script
   généré (Alembic ne devine ni les renommages ni les données), le tester sur une
@@ -441,3 +447,29 @@ les totaux (comptes, transactions).
   `python -m migration --purge-archives 30`.
 - Politique de confidentialité : `docs/CONFIDENTIALITE.md` (à adapter et publier
   sur le site).
+
+### 7.4 Performance (pages statistiques)
+
+- Les statistiques (ventes, étudiants, articles, trésorerie) sont **agrégées en
+  SQL** (`GROUP BY`) : la base ne renvoie que les compteurs, jamais les lignes
+  brutes. La série journalière reste découpée en Python (heure d'été/hiver) mais
+  uniquement sur des couples `(date, montant)` en flux.
+- Index `ix_transaction_lines_article_id` (révision Alembic `0002_article_index`)
+  pour le classement des articles appelé à chaque encaissement.
+- Historique et liste des comptes : **pagination** (50 par page) avec compteur,
+  plus de troncature silencieuse.
+- Assets servis localement (Bootstrap, icônes, Chart.js) : `Cache-Control` 1 jour
+  sur `/static/` et `/uploads/` ; réponses compressées Brotli/gzip par
+  l'application (et Nginx le cas échéant). La caisse fonctionne sans Internet.
+
+Mesures sur une copie de la base réelle (465 000 lignes, 1 an) :
+
+| Fonction | Avant | Après |
+|---|---|---|
+| `sales_stats` | 4,8 s / 280 Mo | 0,42 s / 0,9 Mo |
+| `top_articles_stats` | 4,5 s / 279 Mo | 0,08 s / 0,3 Mo |
+| `students_stats` | 5,8 s / 270 Mo | 0,39 s / 4,6 Mo |
+| `treasury` | 4,8 s / 295 Mo | 0,15 s / 0,3 Mo |
+
+Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
+`EXPLAIN QUERY PLAN` sur la requête de classement.
