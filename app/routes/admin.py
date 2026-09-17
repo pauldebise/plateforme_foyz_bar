@@ -192,7 +192,11 @@ def compte_supprimer(user_id):
     name = u.display_name
     db.session.delete(u)
     db.session.commit()
-    flash(f"Compte de {name} supprimé (portefeuilles effacés, historique conservé et anonymisé).", "success")
+    flash(
+        f"Compte de {name} supprimé : portefeuilles effacés, historique comptable "
+        "conservé (les libellés d'opérations passées peuvent encore porter le nom).",
+        "success",
+    )
     return redirect(url_for("admin.comptes"))
 
 

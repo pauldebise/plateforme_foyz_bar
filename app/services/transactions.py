@@ -439,7 +439,7 @@ def cancel_transaction(transaction, admin_password):
     deposit_value = S.deposit_value()
     if transaction.type in ("achat", "consigne"):
         for c in transaction.contributions:
-            if c.user_id:
+            if c.user is not None:
                 w = _get_wallet(c.user, c.campus)
                 w.balance += -c.amount if c.amount < 0 else 0
         if transaction.type == "achat" and transaction.deposit_user_id and transaction.deposit_glasses:
@@ -449,18 +449,18 @@ def cancel_transaction(transaction, admin_password):
                 w.glasses_outstanding = max(0, w.glasses_outstanding - transaction.deposit_glasses)
         if transaction.type == "consigne":
             for c in transaction.contributions:
-                if c.user_id:
+                if c.user is not None:
                     w = _get_wallet(c.user, c.campus)
                     w.balance -= c.amount
                     w.glasses_outstanding += transaction.deposit_glasses
     elif transaction.type == "rechargement":
         for c in transaction.contributions:
-            if c.user_id:
+            if c.user is not None:
                 w = _get_wallet(c.user, c.campus)
                 w.balance -= c.amount
     elif transaction.type == "retrait":
         for c in transaction.contributions:
-            if c.user_id:
+            if c.user is not None:
                 w = _get_wallet(c.user, c.campus)
                 w.balance += -c.amount
     elif transaction.type == "transfert":
@@ -490,7 +490,13 @@ def visible_transactions():
 
 
 def describe_transaction(t):
-    names = [c.user.display_name for c in t.contributions if c.user_id]
+    # Tolérant aux contributions orphelines (compte supprimé avant l'activation
+    # des clés étrangères SQLite) : l'historique doit rester consultable.
+    names = [
+        c.user.display_name if c.user is not None else "Compte supprimé"
+        for c in t.contributions
+        if c.user_id is not None
+    ]
     if t.type == "achat":
         label = "Achat — " + ", ".join(names)
         if t.deposit_glasses:

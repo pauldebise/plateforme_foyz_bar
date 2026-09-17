@@ -12,6 +12,7 @@ Couvre (phase 1 du plan d'action) :
 
 import os
 import re
+import sqlite3
 import sys
 import tempfile
 import time
@@ -32,10 +33,15 @@ os.environ.pop("TRUSTED_PROXY", None)
 os.environ.pop("PROXY_FIX_X_FOR", None)
 
 from flask import Flask  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.config import INSECURE_SECRET_KEYS, validate_config  # noqa: E402
+from app.extensions import db  # noqa: E402
+from app.models import Article, Transaction, User  # noqa: E402
 from app.routes import auth as auth_module  # noqa: E402
+from app.services.transactions import create_purchase, describe_transaction  # noqa: E402
 from app.utils import client_ip  # noqa: E402
 
 
@@ -146,6 +152,69 @@ def test_limiter_purges_and_bounds_keys():
             "nombre de clés borné",
         )
         auth_module._attempts.clear()
+
+
+def test_sqlite_foreign_keys_and_history_after_deletion():
+    app = create_app()
+    with app.app_context():
+        _expect(
+            db.session.execute(text("PRAGMA foreign_keys")).scalar() == 1,
+            "PRAGMA foreign_keys actif sur SQLite",
+        )
+        user = User(
+            name="Élève Supprimé",
+            username="eleve.supprime",
+            password_hash=generate_password_hash("secret123"),
+        )
+        db.session.add(user)
+        db.session.flush()
+        user.wallet("brest").balance = 500
+        article = Article(
+            name="Pinte test",
+            article_type="biere",
+            is_alcohol=True,
+            price_std_brest=250,
+            price_team_brest=250,
+            active=True,
+        )
+        db.session.add(article)
+        db.session.commit()
+
+        transaction = create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article.id, "quantity": 1}],
+            contributor_ids=[user.id],
+        )
+        transaction_id, user_id = transaction.id, user.id
+
+        db.session.delete(user)
+        db.session.commit()
+        db.session.expire_all()
+
+        remaining = db.session.get(Transaction, transaction_id)
+        _expect(
+            all(c.user_id is None for c in remaining.contributions),
+            "contributions détachées par ON DELETE SET NULL",
+        )
+        describe_transaction(remaining)  # ne doit pas lever
+
+        # orphelin hérité (compte supprimé avant l'activation des FK SQLite)
+        raw = sqlite3.connect(db.engine.url.database)
+        raw.execute("PRAGMA foreign_keys=OFF")
+        raw.execute(
+            "INSERT INTO contributions (transaction_id, user_id, campus, amount, balance_after) "
+            "VALUES (?, ?, 'brest', -100, 0)",
+            (transaction_id, user_id),
+        )
+        raw.commit()
+        raw.close()
+        db.session.expire_all()
+        orphaned = db.session.get(Transaction, transaction_id)
+        _expect(
+            "Compte supprimé" in describe_transaction(orphaned),
+            "orphelin hérité affiché sans erreur",
+        )
 
 
 def test_login_limiter_survives_forged_xff():
