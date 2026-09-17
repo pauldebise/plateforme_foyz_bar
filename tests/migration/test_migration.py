@@ -15,11 +15,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from migration import audit, detect, logfilter, util  # noqa: E402
-from migration.errors import AccountingError, MigrationError  # noqa: E402
+from migration import audit, cleaner, detect, logfilter, util  # noqa: E402
+from migration.cli import _safe_error  # noqa: E402
+from migration.errors import AccountingError, MigrationError, SourceError  # noqa: E402
 from migration.parsing.sqlstream import SqlDumpScanner, iter_business_rows  # noqa: E402
 from migration.sources import (as_bool, map_article_row, map_keg_row,  # noqa: E402
                                map_operation_row, map_tap_row, map_transaction_row,
+                               map_user_row, merge_key, normalize_birth_date,
                                resolve_article_type)
 from migration.sources.brest import ENTITY_FIELDS  # noqa: E402
 from migration.util import liters_to_cl, unescape_html  # noqa: E402
@@ -544,6 +546,269 @@ def test_e2e_preexisting_target_delta():
     c.close()
     _expect(total == manifest["source_cents"]["total"] + 500,
             f"solde final {total} = sources + fonds préexistants")
+    shutil.rmtree(src)
+
+
+# ------------------------------------------------------- phase 5 (T-5.1 → T-5.4)
+
+_BREST_USERS_DDL = """
+CREATE TABLE `users` (
+  `card_id` varchar(13) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `real_name` varchar(255) DEFAULT '',
+  `password` varchar(255) NOT NULL,
+  `balance` decimal(10,2) NOT NULL DEFAULT 0.00,
+  `blacklisted` tinyint(1) NOT NULL DEFAULT 0,
+  `is_foyz` tinyint(1) NOT NULL DEFAULT 0,
+  `promo` varchar(32) NOT NULL DEFAULT 'Autre',
+  `disabled` tinyint(1) NOT NULL DEFAULT 0,
+  `registration` datetime NOT NULL,
+  `ecocups` int(11) NOT NULL DEFAULT 0,
+  `blacklist_reason` varchar(255) NOT NULL DEFAULT '',
+  `alcohol_blacklisted` bit(1) NOT NULL DEFAULT b'0'
+) ENGINE=InnoDB;
+"""
+
+
+def _sql(value):
+    if value is None:
+        return "NULL"
+    return "'" + str(value).replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def _write_brest(path, users, transfert=None):
+    """Dump Brest minimal et réaliste (schéma réel : pas d'email, `disabled`)."""
+    cols = ("card_id", "name", "real_name", "password", "balance", "blacklisted",
+            "is_foyz", "promo", "disabled", "registration", "ecocups",
+            "blacklist_reason", "alcohol_blacklisted")
+    tuples = []
+    for u in users:
+        tuples.append("(" + ",".join(_sql(u.get(c)) for c in cols) + ")")
+    dump = _BREST_USERS_DDL
+    dump += f"INSERT INTO `users` ({','.join('`%s`' % c for c in cols)}) VALUES " \
+            + ",".join(tuples) + ";\n"
+    if transfert is not None:
+        dump += (
+            "CREATE TABLE `transfert` (`id` int(11), `date` datetime, "
+            "`user_id` varchar(13), `balance` decimal(10,2), `logged_user_id` varchar(13));\n"
+        )
+        rows = ",".join(
+            "(" + ",".join(_sql(v) for v in r) + ")" for r in transfert
+        )
+        dump += "INSERT INTO `transfert` (`id`,`date`,`user_id`,`balance`,`logged_user_id`) " \
+                "VALUES " + rows + ";\n"
+    Path(path).write_text(dump, encoding="utf-8")
+
+
+def _user(card, name, balance, disabled=0, real_name=None):
+    return {
+        "card_id": card, "name": name, "real_name": real_name if real_name is not None else name,
+        "password": "5f4dcc3b5aa765d61d8327deb882cf99", "balance": balance,
+        "blacklisted": 0, "is_foyz": 0, "promo": "CI2028", "disabled": disabled,
+        "registration": "2025-09-01 12:00:00", "ecocups": 0,
+        "blacklist_reason": "", "alcohol_blacklisted": "b'0'",
+    }
+
+
+def test_p5_mapping_gap_blocks_and_control():
+    # collision de clé : SERRURIER Ninon (10,00) et Serrurier Ninon (5,00)
+    src = Path(tempfile.mkdtemp(prefix="p5_gap_"))
+    sdir = src / "sources"
+    sdir.mkdir()
+    _write_brest(sdir / "brest_lot.sql", [
+        _user("0041", "SERRURIER Ninon", "10.00"),
+        _user("9999", "Serrurier Ninon", "5.00"),
+    ])
+    db_path = src / "cible.db"
+    _fresh_db(db_path)
+    code = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
+    _expect(code == 1, "écart de mapping -> exit 1 (bloque)")
+    users, total, staging = _db_counts(db_path)
+    _expect((users, total, staging) == (0, 0, 0), f"base intacte après blocage ({users},{total})")
+    _expect((sdir / "brest_lot.sql").exists(), "fichier source conservé après échec")
+    # contrôle : noms distincts -> écart nul -> succès
+    src2 = Path(tempfile.mkdtemp(prefix="p5_ok_"))
+    sdir2 = src2 / "sources"
+    sdir2.mkdir()
+    _write_brest(sdir2 / "brest_lot.sql", [
+        _user("0041", "SERRURIER Ninon", "10.00"),
+        _user("9999", "Autre Personne", "5.00"),
+    ])
+    db2 = src2 / "cible.db"
+    _fresh_db(db2)
+    code2 = _cli(["--run", "--source-dir", str(sdir2), "--database-url", f"sqlite:///{db2}"])
+    _expect(code2 == 0, "absence de collision -> exit 0")
+    shutil.rmtree(src)
+    shutil.rmtree(src2)
+
+
+def test_p5_brest_rejects_non_sql():
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "brest_export.json").write_text("[]")
+        try:
+            detect.scan(d, create=False)
+            raise AssertionError("brest_*.json accepté à tort (R7)")
+        except SourceError:
+            pass
+
+
+def test_p5_replay_refused_and_force():
+    src = Path(tempfile.mkdtemp(prefix="p5_replay_"))
+    sdir = src / "sources"
+    sdir.mkdir()
+    _write_brest(sdir / "brest_lot.sql", [_user("0041", "Unique Nom", "7.00")])
+    db_path = src / "cible.db"
+    _fresh_db(db_path)
+    code = _cli(["--run", "--keep-archives", "--source-dir", str(sdir),
+                 "--database-url", f"sqlite:///{db_path}"])
+    _expect(code == 0, "première bascule OK")
+    # le même lot (restauré depuis archives) ne doit pas être rejoué
+    archived = next((sdir / "archives").rglob("brest_lot.sql"))
+    shutil.copy(archived, sdir / "brest_lot.sql")
+    before = _db_counts(db_path)
+    code2 = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
+    _expect(code2 == 1, "rejeu du même lot refusé")
+    after = _db_counts(db_path)
+    _expect(before == after, "rejeu refusé : base inchangée")
+    shutil.rmtree(src)
+
+
+def test_p5_dispose_refuses_unconsumed():
+    src = Path(tempfile.mkdtemp(prefix="p5_dispose_"))
+    (src / "brest_lot.sql").write_text("")
+    files = detect.scan(src, create=False)
+    try:
+        cleaner.dispose(files, source_dir=src, consumed=set())
+        raise AssertionError("nettoyage autorisé sur fichier non consommé (R7)")
+    except SourceError:
+        pass
+    _expect((src / "brest_lot.sql").exists(), "fichier non consommé préservé")
+    shutil.rmtree(src)
+
+
+def test_p5_safe_error_redacts_hashes():
+    bcrypt = "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC"
+    werkzeug = "pbkdf2:sha256:600000$salt$deadbeefdeadbeefdeadbeefdeadbeef"
+    md5 = "5f4dcc3b5aa765d61d8327deb882cf99"
+    text = _safe_error(RuntimeError(f"password_hash={bcrypt} legacy={werkzeug} hash={md5}"))
+    _expect(bcrypt not in text and werkzeug not in text and md5 not in text,
+            f"hashs expurgés du message ({text})")
+    _expect("<redacted>" in text, "marqueur de redaction présent")
+
+
+def test_p5_engine_hides_parameters():
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.exc import StatementError
+    db_path = Path(tempfile.mkdtemp(prefix="p5_engine_")) / "e.db"
+    engine = create_engine(f"sqlite:///{db_path}", hide_parameters=True)
+    with engine.begin() as conn:
+        conn.execute(text("CREATE TABLE t (x INTEGER UNIQUE)"))
+        conn.execute(text("INSERT INTO t (x) VALUES (1)"))
+    secret = "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC"
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO t (x) VALUES (:hash)"), {"hash": 1})
+            conn.execute(text("INSERT INTO t (x) VALUES (:hash)"), {"hash": 1})
+        raise AssertionError("violation d'unicité non levée")
+    except StatementError as exc:
+        rendered = _safe_error(exc)
+        _expect(secret not in rendered, f"paramètre lié non exposé ({rendered})")
+    shutil.rmtree(db_path.parent)
+
+
+def test_p5_merge_key_and_birth_date():
+    _expect(normalize_birth_date("1998-05-12") == "1998-05-12", "date ISO")
+    _expect(normalize_birth_date("1998-05-12 00:00:00") == "1998-05-12", "datetime -> date")
+    _expect(normalize_birth_date("illisible") is None, "date illisible -> None")
+    _expect(normalize_birth_date(None) is None, "date absente")
+    _expect(merge_key("Paul Debise", None, None) == "paul debise", "clé nom")
+    _expect(merge_key("Paul Debise", None, "1998-05-12")
+            == "paul debise|1998-05-12", "clé nom+naissance")
+    _expect(merge_key("Paul Debise", "P@x.fr", "1998-05-12") == "p@x.fr", "email dominant")
+    # homonymes discriminés par la date de naissance
+    a, _ = map_user_row({"real_name": "Paul Debise", "date_naissance": "1998-05-12",
+                         "balance": "1.00"}, "brest", "euros")
+    b, _ = map_user_row({"real_name": "Paul Debise", "date_naissance": "1999-01-01",
+                         "balance": "1.00"}, "brest", "euros")
+    _expect(a["key"] != b["key"], "homonymes -> clés distinctes")
+
+
+def test_p5_disabled_imported():
+    src = Path(tempfile.mkdtemp(prefix="p5_disabled_"))
+    sdir = src / "sources"
+    sdir.mkdir()
+    _write_brest(sdir / "brest_lot.sql", [
+        _user("0041", "Actif Compte", "1.00", disabled=0),
+        _user("0042", "Desactive Compte", "2.00", disabled=1),
+    ])
+    db_path = src / "cible.db"
+    _fresh_db(db_path)
+    code = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
+    _expect(code == 0, "bascule avec compte désactivé")
+    c = sqlite3.connect(db_path)
+    actif = c.execute("SELECT disabled FROM users WHERE name='Actif Compte'").fetchone()[0]
+    off = c.execute("SELECT disabled FROM users WHERE name='Desactive Compte'").fetchone()[0]
+    c.close()
+    _expect((actif, off) == (0, 1), f"état disabled conservé ({actif},{off})")
+    shutil.rmtree(src)
+
+
+def test_p5_merge_without_email():
+    src = Path(tempfile.mkdtemp(prefix="p5_merge_"))
+    sdir = src / "sources"
+    sdir.mkdir()
+    _write_brest(sdir / "brest_lot.sql", [
+        _user("0041", "Léo Martin", "10.00"),
+        _user("0042", "Hugo Petit", "3.00"),
+    ])
+    # Paris sans email : la fusion doit se faire sur le nom normalisé (R6)
+    (sdir / "paris_export.json").write_text(json.dumps({
+        "etudiants": [
+            {"prenom": "Léo", "nom": "Martin", "promotion": 2026, "solde": "4,50"},
+            {"prenom": "Sarah", "nom": "Bernard", "promotion": 2026, "solde": "2,00"},
+        ]
+    }), encoding="utf-8")
+    db_path = src / "cible.db"
+    _fresh_db(db_path)
+    code = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
+    _expect(code == 0, "bascule sans email OK")
+    c = sqlite3.connect(db_path)
+    merged = c.execute(
+        "SELECT COUNT(*) FROM users u JOIN wallets w ON w.user_id = u.id "
+        "WHERE u.name='Léo Martin' GROUP BY u.id HAVING COUNT(*) = 2"
+    ).fetchall()
+    total = c.execute("SELECT SUM(balance) FROM wallets").fetchone()[0]
+    c.close()
+    _expect(len(merged) == 1, "fusion inter-campus sans email (nom normalisé)")
+    _expect(total == 1000 + 300 + 450 + 200, f"tous les soldes projetés ({total})")
+    shutil.rmtree(src)
+
+
+def test_p5_transfer_ambiguity_still_pairs():
+    src = Path(tempfile.mkdtemp(prefix="p5_tr_"))
+    sdir = src / "sources"
+    sdir.mkdir()
+    users = [_user("0041", "Donneur Un", "0.00"), _user("0042", "Donneur Deux", "0.00"),
+             _user("0043", "Benef Un", "0.00"), _user("0044", "Benef Deux", "0.00")]
+    transfert = [
+        (1, "2026-09-03 10:00:00", "0042", "-5.00", "0041"),
+        (2, "2026-09-03 10:00:00", "0041", "-5.00", "0041"),
+        (3, "2026-09-03 10:00:00", "0043", "5.00", "0041"),
+        (4, "2026-09-03 10:00:00", "0044", "5.00", "0041"),
+    ]
+    _write_brest(sdir / "brest_lot.sql", users, transfert=transfert)
+    db_path = src / "cible.db"
+    _fresh_db(db_path)
+    code = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
+    _expect(code == 0, "transferts ambigus migrés")
+    c = sqlite3.connect(db_path)
+    n = c.execute("SELECT COUNT(*) FROM transactions WHERE type='transfert'").fetchone()[0]
+    paired = c.execute(
+        "SELECT COUNT(*) FROM transactions WHERE type='transfert' "
+        "AND from_user_id IS NOT NULL AND to_user_id IS NOT NULL"
+    ).fetchone()[0]
+    c.close()
+    _expect(n == 2 and paired == 2, f"2 transferts appariés ({n},{paired})")
     shutil.rmtree(src)
 
 

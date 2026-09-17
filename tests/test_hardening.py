@@ -310,6 +310,34 @@ def test_chart_pages_render_with_json_data():
         _expect("new Chart(" not in html, f"initialisation Chart hors HTML inline ({path})")
 
 
+def test_disabled_account_cannot_log_in():
+    app = create_app()
+    with app.app_context():
+        user = db.session.scalars(
+            db.select(User).where(User.username == "test.disabled")
+        ).first()
+        if user is None:
+            user = User(username="test.disabled", name="Test Disabled",
+                        team_status="mandat", team_campus="brest")
+            db.session.add(user)
+        user.password_hash = generate_password_hash("secret123")
+        user.disabled = True
+        db.session.commit()
+
+    client = app.test_client()
+    res = _login(client, "test.disabled", "secret123")
+    _expect(res.status_code == 401, f"compte désactivé refusé ({res.status_code})")
+
+    with app.app_context():
+        user = db.session.scalars(
+            db.select(User).where(User.username == "test.disabled")
+        ).first()
+        user.disabled = False
+        db.session.commit()
+    res2 = _login(client, "test.disabled", "secret123")
+    _expect(res2.status_code == 302, f"compte réactivé accepté ({res2.status_code})")
+
+
 def main():
     tests = [(name, fn) for name, fn in sorted(globals().items())
              if name.startswith("test_") and callable(fn)]
