@@ -1,7 +1,7 @@
-from flask import Blueprint, g, jsonify, request, session, abort
+from flask import Blueprint, abort, g, jsonify, request, session
 
 from app.extensions import db
-from app.models import Article, User
+from app.models import Event, User
 from app.services import transactions as T
 from app.services.stats import sales_stats
 from app.services.treasury import treasury
@@ -9,11 +9,41 @@ from app.utils import CAMPUSSES
 
 bp = Blueprint("api", __name__)
 
+# Seuls endpoints lisibles depuis une session passerelle (campus de
+# l'événement, aucune écriture : l'encaissement passe par la route dédiée
+# /passerelle/<token>/encaisser du blueprint gateway).
+GATEWAY_ENDPOINTS = {"api.students", "api.wallet"}
+
+
+def _gateway_event():
+    event_id = session.get("gateway_event_id")
+    if not event_id:
+        return None
+    ev = db.session.get(Event, event_id)
+    if ev is None or not ev.is_running:
+        return None
+    return ev
+
 
 @bp.before_request
 def require_session():
-    if not g.get("current_user"):
+    if g.get("current_user"):
+        return
+    ev = _gateway_event()
+    if ev is None:
         abort(401)
+    if request.endpoint not in GATEWAY_ENDPOINTS:
+        abort(403)
+    g.gateway_event = ev
+
+
+def read_campus():
+    """Campus de lecture : imposé par l'événement en session passerelle,
+    sinon campus demandé (ou session) pour l'équipe."""
+    ev = getattr(g, "gateway_event", None)
+    if ev is not None:
+        return ev.campus
+    return request.args.get("campus") or session.get("campus") or "brest"
 
 
 def write_campus():
@@ -28,8 +58,7 @@ def write_campus():
 
 @bp.route("/students")
 def students():
-    campus = request.args.get("campus") or session.get("campus") or "brest"
-    return jsonify(T.search_students(request.args.get("q", ""), campus=campus))
+    return jsonify(T.search_students(request.args.get("q", ""), campus=read_campus()))
 
 
 @bp.route("/wallet/<int:user_id>")
@@ -38,8 +67,7 @@ def wallet(user_id):
     if u is None:
         return jsonify(ok=False, error="Étudiant introuvable."), 404
     # lecture seule : on ne crée pas de portefeuille pour l'autre campus
-    campus = request.args.get("campus") or session.get("campus") or "brest"
-    w = T.wallet_view(u, campus)
+    w = T.wallet_view(u, read_campus())
     return jsonify(
         id=u.id,
         name=u.display_name,
