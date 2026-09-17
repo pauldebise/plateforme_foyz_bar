@@ -629,10 +629,16 @@ def module_dev():
                 pass
             pdf_own = save_upload(request.files.get(f"regulation_pdf_{own}"), allowed=(".pdf",))
             logo_own = save_upload(request.files.get(f"logo_{own}"), allowed=(".jpg", ".jpeg", ".png", ".webp", ".svg"))
+            payment_photo_own = save_upload(
+                request.files.get(f"payment_photo_{own}"),
+                allowed=(".jpg", ".jpeg", ".png", ".webp"),
+            )
             if pdf_own:
                 S.set_setting(f"regulation_pdf_{own}", pdf_own)
             if logo_own:
                 S.set_setting(f"logo_{own}", logo_own)
+            if payment_photo_own:
+                S.set_setting(f"payment_photo_{own}", payment_photo_own)
             flash("Paramètres enregistrés.", "success")
         elif action == "reset_theme_colors":
             for key in ("theme_color_public", f"theme_color_{own}"):

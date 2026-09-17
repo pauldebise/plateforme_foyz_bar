@@ -222,6 +222,9 @@ def create_app():
                 else get_setting("theme_color_public")
             ) or "#804db3",
             "logo": get_setting(f"logo_{campus}") or "",
+            "payment_photo": (
+                get_setting(f"payment_photo_{campus}") if campus in CAMPUSSES else ""
+            ) or "",
             "current_user": getattr(g, "current_user", None),
             "current_campus": session.get("campus", ""),
             "own_campus": own,

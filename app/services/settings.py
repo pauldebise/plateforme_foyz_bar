@@ -15,6 +15,8 @@ DEFAULTS = {
     "theme_color_paris": "#9c4c41",
     "logo_brest": "",
     "logo_paris": "",
+    "payment_photo_brest": "",
+    "payment_photo_paris": "",
     "max_history_days": "365",
     "login_logs_retention_days": "90",
     "session_timeout_minutes": "30",

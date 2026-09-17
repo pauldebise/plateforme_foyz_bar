@@ -84,6 +84,16 @@
               {% if values['regulation_pdf_paris'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
               <input class="form-control" type="file" name="regulation_pdf_paris" accept=".pdf" {% if own_campus != 'paris' %}disabled{% endif %}>
             </div>
+            <div class="col-md-6">
+              <label class="form-label">Photo déco — Encaissement Brest</label>
+              {% if values['payment_photo_brest'] %}<img src="/uploads/{{ values['payment_photo_brest'] }}" class="d-block mb-1 rounded" style="max-height: 80px;">{% endif %}
+              <input class="form-control" type="file" name="payment_photo_brest" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'brest' %}disabled{% endif %}>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Photo déco — Encaissement Paris</label>
+              {% if values['payment_photo_paris'] %}<img src="/uploads/{{ values['payment_photo_paris'] }}" class="d-block mb-1 rounded" style="max-height: 80px;">{% endif %}
+              <input class="form-control" type="file" name="payment_photo_paris" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'paris' %}disabled{% endif %}>
+            </div>
             <div class="col-12">
               <label class="form-label">Édition de la page d'accueil (interface publique)</label>
               <textarea class="form-control" name="homepage_text" rows="4">{{ values['homepage_text'] }}</textarea>
