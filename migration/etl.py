@@ -37,20 +37,20 @@ from .errors import AccountingError
 from .parsing import files as files_reader
 from .parsing.sqlstream import iter_business_rows
 from .sources import brest as brest_contract
-from .sources import (TAP_NUMBERS, TAP_SIZES, map_article_row, map_keg_row,
-                      map_line_row, map_operation_row, map_tap_row,
-                      map_transaction_row, map_user_row)
+from .sources import (TAP_NUMBERS, TAP_SIZES, USER_FIELDS, map_article_row,
+                      map_keg_row, map_line_row, map_operation_row, map_tap_row,
+                      map_transaction_row, map_user_row, pick)
 from .sources import paris as paris_contract
 from . import staging
-from .util import normalize_key, slug_username, utcnow as now_utc
+from .util import normalize_key, slug_username, to_cents, utcnow as now_utc
 
 _USERS_SQL = (
     "INSERT INTO users (username, nickname, name, promotion, password_hash, "
     "legacy_password, team_status, team_campus, blacklist, blacklist_alcohol, "
-    "blacklist_reason, created_at) "
+    "blacklist_reason, disabled, created_at) "
     "VALUES (:username, :nickname, :name, :promotion, :password_hash, "
     ":legacy_password, :team_status, :team_campus, :blacklist, :blacklist_alcohol, "
-    ":blacklist_reason, :created_at) RETURNING id"
+    ":blacklist_reason, :disabled, :created_at) RETURNING id"
 )
 _WALLET_SQL = (
     "INSERT INTO wallets (user_id, campus, balance, glasses_outstanding) "
@@ -118,6 +118,8 @@ class SourceReader:
         self.conn = conn
         self.scan_stats = {}  # fichier -> SqlDumpScanner (le même fichier peut être
         # scanné plusieurs passes : on garde la dernière exécution par fichier)
+        # Fichiers réellement lus par une passe : condition du nettoyage (R7).
+        self.consumed = set()
 
     def _record_scan(self, filename, scanner):
         self.scan_stats[filename] = scanner
@@ -130,6 +132,7 @@ class SourceReader:
         for src in self.files:
             if src.campus != "brest" or src.kind != "sql_dump":
                 continue
+            self.consumed.add(src.path.name)
             for table, _cols, rows in iter_business_rows(
                 src.path,
                 keep_map=brest_contract.TABLE_MAP,
@@ -154,6 +157,7 @@ class SourceReader:
         for src in self.files:
             if src.campus != "paris":
                 continue
+            self.consumed.add(src.path.name)
             if src.kind == "sql_dump":
                 def predicate(table_name):
                     return bool(table_name) and not logfilter.is_log_table(table_name)
@@ -177,15 +181,27 @@ class SourceReader:
             yield "brest", filename, row
 
     def iter_users(self):
-        """Passe comptes : (campus, source_file, user_canonique | None, warning)."""
+        """Passe comptes : (campus, source_file, user|None, warning, solde_brut).
+
+        Le solde brut est relu indépendamment du mapping (même colonne d'alias,
+        mais avant toute déduplication/clé) : c'est lui qui alimente l'audit de
+        mapping de T-5.1, y compris pour les lignes non mappées ou en collision.
+        """
         for filename, _entity, row in self._iter_brest("users"):
             user, warning = map_user_row(row, "brest", self.money_unit)
-            yield "brest", filename, user, warning
+            yield "brest", filename, user, warning, self._raw_balance(row, "brest")
         for filename, source_table, record in self._iter_paris():
-            entity, obj = paris_contract.map_record(source_table, record, "paris", self.money_unit)
-            if entity == "users":
-                user, warning = (obj, None) if obj else (None, "champs insuffisants")
-                yield "paris", filename, user, warning
+            if paris_contract.entity_for(source_table, record) != "users":
+                continue
+            user, warning = map_user_row(record, "paris", self.money_unit)
+            if user is None:
+                warning = warning or "champs insuffisants"
+            yield "paris", filename, user, warning, self._raw_balance(record, "paris")
+
+    def _raw_balance(self, row, campus):
+        """Somme brute de la colonne de solde d'une ligne source (hors mapping)."""
+        return to_cents(pick(row, USER_FIELDS["balance"]), self.money_unit,
+                        context=f"solde brut {campus}")
 
     def iter_catalog(self, type_names=None):
         """Passe catalogue : (entité, campus, objet canonique).
@@ -259,7 +275,10 @@ class Migrator:
         self.reader = SourceReader(source_files, money_unit, chunk_rows, conn=conn)
         self.chunk_rows = chunk_rows
         self.money_unit = money_unit
-        self.source_sums = {"brest": 0, "paris": 0}
+        self.source_sums = {"brest": 0, "paris": 0}      # projeté (1re occurrence)
+        self.raw_source_sums = {"brest": 0, "paris": 0}  # brut (toutes les lignes)
+        self.key_occurrences = {"brest": defaultdict(list), "paris": defaultdict(list)}
+        self.unmapped = []                               # [(campus, fichier, cents)]
         self.accounts = {"brest": {}, "paris": {}}       # key -> canonical user
         self.key_order = {"brest": [], "paris": []}
         self.id_map = {"brest": {}, "paris": {}}         # src_id -> key
@@ -296,10 +315,14 @@ class Migrator:
     # ------------------------------------------------------------ comptes
 
     def load_accounts(self):
-        for campus, filename, user, warning in self.reader.iter_users():
+        for campus, filename, user, warning, raw_cents in self.reader.iter_users():
             self.counts[f"rows_users_{campus}"] += 1
+            self.raw_source_sums[campus] += raw_cents
             if user is None:
                 self.counts["users_skipped"] += 1
+                if raw_cents:
+                    self.counts["soldes_non_mappes"] += 1
+                    self.unmapped.append((campus, filename, raw_cents))
                 if warning:
                     self.counts[f"warn_{warning[:40]}"] += 1
                 continue
@@ -308,12 +331,25 @@ class Migrator:
                 # enregistré même si le compte est un doublon : les transactions
                 # référencent l'id source et doivent rester traçables
                 self.id_map[campus].setdefault(str(user["src_id"]), key)
+            self.key_occurrences[campus][key].append(
+                {"src_id": user["src_id"], "name": user["name"],
+                 "balance": user["balance_cents"]}
+            )
             if key in self.accounts[campus]:
                 self.counts[f"duplicates_{campus}"] += 1
                 continue
             self.accounts[campus][key] = (user, filename)
             self.key_order[campus].append(key)
             self.source_sums[campus] += user["balance_cents"]
+
+    def collisions(self):
+        """Clés de réconciliation portées par plusieurs lignes sources."""
+        found = []
+        for campus in ("brest", "paris"):
+            for key, occurrences in self.key_occurrences[campus].items():
+                if len(occurrences) > 1:
+                    found.append((campus, key, occurrences))
+        return found
 
     def _unique_username(self, base):
         """Rend l'identifiant de connexion unique : suffixe numérique en cas de
@@ -355,6 +391,9 @@ class Migrator:
             team_campus = primary["team_campus"] or (secondary["team_campus"] if secondary else None)
             if team_status and not team_campus:
                 team_campus = campus
+            # désactivé seulement si TOUS les comptes fusionnés le sont : un
+            # compte actif sur un campus rend le compte utilisable (R19)
+            disabled = primary["disabled"] and (secondary["disabled"] if secondary else True)
             created_at = primary["created_at"] or (secondary["created_at"] if secondary else None)
             promotion = primary["promotion"] or (secondary["promotion"] if secondary else None)
             password_hash = primary["password_hash"] or (secondary["password_hash"] if secondary else None)
@@ -388,10 +427,13 @@ class Migrator:
                                           or (secondary and secondary["blacklist_alcohol"])),
                 "blacklist_reason": primary["blacklist_reason"]
                 or (secondary["blacklist_reason"] if secondary else None),
+                "disabled": bool(disabled),
                 "created_at": created_at or now_utc(),
             }
             if params["blacklist_reason"]:
                 self.counts["motifs_blacklist"] += 1
+            if params["disabled"]:
+                self.counts["comptes_desactives"] += 1
             user_id = self.conn.execute(sa.text(_USERS_SQL), params).scalar_one()
             self.target_id_by_key[key] = user_id
             # Libellé opérateur = nom long complet (nom réel + surnom), comme
@@ -624,9 +666,21 @@ class Migrator:
         self.counts["demi_transferts_brest"] += 1
 
     def _flush_transfers(self, campus, by_key):
-        """Apparie les demi-lignes et insère les transactions de transfert."""
+        """Apparie les demi-lignes et insère les transactions de transfert.
+
+        Appariement par (date, opérateur, montant absolu) — aucune colonne de
+        lien n'existe dans la source. Quand un groupe contient plusieurs
+        demi-lignes de chaque côté, la paire exacte est indécidable : on apparie
+        alors dans l'ordre stable des identifiants sources et on compte le
+        groupe comme ambigu au rapport (R18).
+        """
         for key in sorted(by_key, key=lambda k: (k[0] or datetime.min, k[2])):
             negs, poss = by_key[key]["neg"], by_key[key]["pos"]
+            if len(negs) > 1 and len(poss) > 1:
+                self.counts["transferts_ambigus"] += 1
+                rank = lambda o: str(o.get("src_id"))  # noqa: E731 — tri stable
+                negs.sort(key=rank)
+                poss.sort(key=rank)
             while negs and poss:
                 self._insert_transaction(campus, negs.pop(0), transfer_to=poss.pop(0)["src_user_id"],
                                          track_id=False)
@@ -733,6 +787,10 @@ class Migrator:
         staging.create(self.conn)
         stage_stats = staging.load(self.conn, self.reader.files, self.chunk_rows)
         self.counts["staging_rows"] = stage_stats["rows"]
+        # tous les fichiers Paris sont consommés par la staging (R7)
+        self.reader.consumed.update(
+            src.path.name for src in self.reader.files if src.campus == "paris"
+        )
         self.load_reference()
         self.load_accounts()
         self.insert_users_and_wallets()
@@ -740,6 +798,9 @@ class Migrator:
         self.insert_transactions()
         result = audit.AuditResult(
             source=dict(self.source_sums),
+            raw_source=dict(self.raw_source_sums),
+            unmapped=list(self.unmapped),
+            collisions=self.collisions(),
             initial=self.initial_totals,
             final=audit.capture_target(self.conn),
         )
@@ -759,12 +820,15 @@ class Migrator:
             ("Comptes créés", c.get("users_created")),
             ("Comptes fusionnés (2 campus)", c.get("users_merged")),
             ("Comptes ignorés (identité absente)", c.get("users_skipped")),
+            ("Clés de réconciliation en collision", len(self.collisions())),
+            ("Soldes bruts non projetés (comptes ignorés)", c.get("soldes_non_mappes")),
             ("Portefeuilles créés", c.get("wallets_created")),
             ("Mots de passe importés (hash compatible)", c.get("passwords_importes")),
             ("Mots de passe legacy importés (bcrypt/md5, vérifiés à la connexion)",
              c.get("passwords_legacy_importes")),
             ("Mots de passe à réinitialiser", c.get("passwords_a_reinitialiser")),
             ("Motifs de blacklist importés", c.get("motifs_blacklist")),
+            ("Comptes désactivés importés (connexion refusée)", c.get("comptes_desactives")),
             ("Types d'articles (référence)", c.get("refs_article_types")),
             ("Articles importés", c.get("articles_importes")),
             ("dont Brest", c.get("articles_brest")),
@@ -790,6 +854,7 @@ class Migrator:
             ("Opérateurs au badge inconnu (numéro conservé)", c.get("operateurs_badge_inconnu")),
             ("Demi-transferts reçus", c.get("demi_transferts_brest")),
             ("Transferts non appariés (côté seul conservé)", c.get("transferts_non_apparies")),
+            ("Groupes de transferts ambigus (appariés par id source)", c.get("transferts_ambigus")),
             ("Transferts à montant nul ignorés", c.get("transferts_montant_nul")),
             ("Rechargements/retraits à montant non positif ignorés",
              c.get("operations_montant_non_positif")),

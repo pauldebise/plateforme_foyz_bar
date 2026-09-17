@@ -4,14 +4,17 @@
     python -m migration --dry-run        # cycle complet puis ROLLBACK (sources intactes)
     python -m migration --audit-only     # comparaison soldes sources/cibles sans injection
 
-Options : --source-dir, --database-url, --chunk-rows, --money-unit, --keep-archives.
+Options : --source-dir, --database-url, --chunk-rows, --money-unit,
+--keep-archives, --force-import (rejeu d'un lot déjà marqué comme migré).
 Codes de sortie : 0 succès, 1 erreur ou écart comptable.
 """
 
 import argparse
+import hashlib
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import sqlalchemy as sa
@@ -25,6 +28,24 @@ from .etl import Migrator, SourceReader
 from .report import line, section
 
 MODES = ("run", "dry-run", "audit-only")
+
+# Marqueur de campagne (R5) : table de la cible refusant de rejouer le même lot.
+CAMPAIGN_TABLE = "migration_campaign"
+
+# Redaction des secrets potentiels dans les messages d'erreur (R8) : hash
+# werkzeug, bcrypt PHP, empreintes hexadécimales.
+_SECRET_RE = re.compile(
+    r"(\$2[aby]\$\d{2}\$[^\s'\"]+"
+    r"|(?:scrypt|pbkdf2(?:-sha\d+)?|argon2|hex):[^\s'\"]+"
+    r"|\b[0-9a-fA-F]{32,64}\b)"
+)
+
+
+def _safe_error(exc):
+    """Message d'erreur expurgé de tout hash/mot de passe (R8)."""
+    text = f"{type(exc).__name__}: {exc}"
+    text = _SECRET_RE.sub("<redacted>", text)
+    return text[:600]
 
 
 def parse_args(argv=None):
@@ -51,9 +72,13 @@ def parse_args(argv=None):
                         help="unité des montants sources (défaut : euros -> conversion centimes)")
     parser.add_argument("--keep-archives", action="store_true",
                         help="avec --run : archive les sources au lieu de les supprimer")
+    parser.add_argument("--force-import", action="store_true",
+                        help="avec --run : rejoue un lot déjà marqué comme migré (dangereux)")
     args = parser.parse_args(argv)
     if args.keep_archives and not args.run:
         parser.error("--keep-archives ne s'utilise qu'avec --run.")
+    if args.force_import and not args.run:
+        parser.error("--force-import ne s'utilise qu'avec --run.")
     if not (settings.MIN_CHUNK_ROWS <= args.chunk_rows <= settings.MAX_CHUNK_ROWS):
         parser.error(f"--chunk-rows doit être entre {settings.MIN_CHUNK_ROWS} "
                      f"et {settings.MAX_CHUNK_ROWS}.")
@@ -114,14 +139,64 @@ def _resolve_url(args):
 
 
 def _ensure_schema(engine):
-    """Crée les tables cibles si besoin (équivalent init-db, hors transaction)."""
+    """Crée les tables cibles si besoin (équivalent init-db, hors transaction).
+
+    R21 : cette étape est exécutée AVANT l'ouverture de la transaction de
+    données ; ses DDL sont donc hors du périmètre du ROLLBACK. La migration ne
+    prétend donc plus que « la base cible est inchangée » mais que « aucune
+    donnée métier n'a été écrite » (le schéma peut avoir été initialisé).
+    """
     import app.models  # noqa: F401 — enregistre les modèles dans db.metadata
     from app.extensions import db
     db.metadata.create_all(engine)
     _ensure_column(engine, "users", "blacklist_reason", "VARCHAR(255)")
     _ensure_column(engine, "users", "username", "VARCHAR(64)")
     _ensure_column(engine, "users", "nickname", "VARCHAR(255)")
+    _ensure_column(engine, "users", "disabled", "BOOLEAN DEFAULT FALSE")
     _ensure_column(engine, "taps", "name", "VARCHAR(255)")
+    _ensure_campaign_table(engine)
+
+
+def _ensure_campaign_table(engine):
+    """Table de suivi des campagnes de migration (idempotence, R5)."""
+    with engine.connect() as conn:
+        conn.execute(sa.text(
+            f"CREATE TABLE IF NOT EXISTS {CAMPAIGN_TABLE} ("
+            "id INTEGER PRIMARY KEY, fingerprint VARCHAR(64) NOT NULL, "
+            "file_count INTEGER NOT NULL, files VARCHAR(2000), completed_at TIMESTAMP)"
+        ))
+        conn.commit()
+
+
+def fingerprint(files):
+    """Empreinte stable du lot source : noms + tailles, ordre indifférent."""
+    digest = hashlib.sha256()
+    for src in sorted(files, key=lambda f: f.path.name):
+        digest.update(f"{src.path.name}:{src.size}:{src.campus}:{src.kind}\n".encode())
+    return digest.hexdigest()
+
+
+def _completed_campaign(engine):
+    """(fingerprint, completed_at) de la dernière campagne, ou None."""
+    with engine.connect() as conn:
+        row = conn.execute(sa.text(
+            f"SELECT fingerprint, completed_at FROM {CAMPAIGN_TABLE} ORDER BY id DESC LIMIT 1"
+        )).fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def _record_campaign(conn, files):
+    """Enregistre la campagne DANS la transaction de données (commit atomique)."""
+    conn.execute(sa.text(f"DELETE FROM {CAMPAIGN_TABLE}"))
+    conn.execute(sa.text(
+        f"INSERT INTO {CAMPAIGN_TABLE} (id, fingerprint, file_count, files, completed_at) "
+        "VALUES (1, :fp, :n, :names, :ts)"
+    ), {
+        "fp": fingerprint(files),
+        "n": len(files),
+        "names": ", ".join(sorted(src.path.name for src in files))[:2000],
+        "ts": datetime.now(timezone.utc).replace(tzinfo=None),
+    })
 
 
 def _ensure_column(engine, table, column, ddl_type):
@@ -142,8 +217,34 @@ def _ensure_column(engine, table, column, ddl_type):
         conn.commit()
 
 
+def _refuse_replay(engine, files, force):
+    """Refuse de rejouer un lot déjà migré (R5), sauf --force-import."""
+    if force:
+        print("  ATTENTION : --force-import — contrôle d'idempotence ignoré.")
+        return
+    previous = _completed_campaign(engine)
+    if previous and previous[0] == fingerprint(files):
+        raise MigrationError(
+            "Lot déjà migré (campagne terminée le "
+            f"{previous[1] or '?'}). Refus de rejouer ces fichiers. "
+            "Utilisez --force-import uniquement en connaissance de cause, "
+            "ou déposez un nouveau lot."
+        )
+
+
+def _check_consumed(files, reader):
+    """Refuse tout nettoyage si un fichier détecté n'a pas été lu (R7)."""
+    missing = [src.path.name for src in files if src.path.name not in reader.consumed]
+    if missing:
+        raise SourceError(
+            "Fichiers détectés mais jamais consommés : " + ", ".join(missing)
+            + " — aucun fichier source ne sera supprimé."
+        )
+
+
 def _run_migration(args, engine, files):
     _ensure_schema(engine)
+    _refuse_replay(engine, files, args.force_import)
     with engine.connect() as conn:
         transaction = conn.begin()
         try:
@@ -151,11 +252,13 @@ def _run_migration(args, engine, files):
                                 money_unit=args.money_unit)
             result = migrator.migrate()
             counts = migrator.report_lines()
+            _check_consumed(files, migrator.reader)
         except Exception:
             transaction.rollback()
             _drop_staging_after_rollback(conn)
             line()
-            print("  >>> ROLLBACK effectué : base cible inchangée, fichiers sources conservés.")
+            print("  >>> ROLLBACK effectué : aucune donnée métier écrite, "
+                  "fichiers sources conservés (le schéma cible a pu être initialisé).")
             raise
         audit.print_audit(result, extra_counts=counts)
         _print_scan_stats(migrator.reader.scan_stats, set(brest_tables()))
@@ -163,15 +266,19 @@ def _run_migration(args, engine, files):
             transaction.rollback()
             _drop_staging_after_rollback(conn)
             line()
-            print("  >>> DRY-RUN : ROLLBACK systématique — base inchangée, fichiers conservés.")
+            print("  >>> DRY-RUN : ROLLBACK systématique — données inchangées, "
+                  "fichiers conservés.")
             return 0
+        # marqueur de campagne écrit dans la même transaction que les données
+        _record_campaign(conn, files)
         transaction.commit()
         # la table de staging n'a plus d'utilité une fois la projection commitée
         staging.drop(conn)
         conn.commit()
         line()
-        print("  >>> COMMIT effectué : migration validée. <<<")
-        dispose(files, keep_archives=args.keep_archives, source_dir=args.source_dir)
+        print("  >>> COMMIT effectué : migration validée (lot marqué comme migré). <<<")
+        dispose(files, keep_archives=args.keep_archives, source_dir=args.source_dir,
+                consumed=migrator.reader.consumed)
         return 0
 
 
@@ -201,14 +308,35 @@ def _run_audit_only(args, engine, files):
     with engine.connect() as conn:
         reader = SourceReader(files, args.money_unit, args.chunk_rows, conn=None)
         source = {"brest": 0, "paris": 0}
+        raw = {"brest": 0, "paris": 0}
+        occurrences = {"brest": {}, "paris": {}}
+        unmapped = []
         users_count = 0
-        for campus, _filename, user, _warning in reader.iter_users():
-            if user is not None:
+        for campus, filename, user, _warning, raw_cents in reader.iter_users():
+            raw[campus] += raw_cents
+            if user is None:
+                if raw_cents:
+                    unmapped.append((campus, filename, raw_cents))
+                continue
+            key = user["key"]
+            occurrences[campus].setdefault(key, []).append(
+                {"src_id": user["src_id"], "name": user["name"],
+                 "balance": user["balance_cents"]}
+            )
+            if len(occurrences[campus][key]) == 1:
                 source[campus] += user["balance_cents"]
                 users_count += 1
+        collisions = [
+            (campus, key, occ)
+            for campus in ("brest", "paris")
+            for key, occ in occurrences[campus].items() if len(occ) > 1
+        ]
         captured = audit.capture_target(conn)
         result = audit.AuditResult(
             source=source,
+            raw_source=raw,
+            unmapped=unmapped,
+            collisions=collisions,
             initial=audit.TargetTotals(),
             final=captured,
         )
@@ -229,21 +357,23 @@ def main(argv=None):
         files = detect.scan(args.source_dir)
         url = _resolve_url(args)
         _print_header(args, files, url)
-        engine = create_engine(url)
+        # hide_parameters : ne jamais recopier les paramètres liés (hashs,
+        # mots de passe) dans les messages d'erreur SQLAlchemy (R8).
+        engine = create_engine(url, hide_parameters=True)
         if args.mode == "audit-only":
             return _run_audit_only(args, engine, files)
         return _run_migration(args, engine, files)
     except AccountingError as exc:
         line()
-        print(f"ERREUR COMPTABLE : {exc}", file=sys.stderr)
+        print(f"ERREUR COMPTABLE : {_safe_error(exc)}", file=sys.stderr)
         return 1
     except (MigrationError, SourceError) as exc:
         line()
-        print(f"ERREUR MIGRATION : {exc}", file=sys.stderr)
+        print(f"ERREUR MIGRATION : {_safe_error(exc)}", file=sys.stderr)
         return 1
     except Exception as exc:  # noqa: BLE001 — barrière finale de la bascule nocturne
         line()
-        print(f"ERREUR INATTENDUE : {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"ERREUR INATTENDUE : {_safe_error(exc)}", file=sys.stderr)
         return 1
 
 

@@ -6,8 +6,13 @@ Convention de nommage attendue (documentée dans le README §bascule) :
     paris_*.json / *.jsonl      -> export JSON / JSONL Paris
     paris_*.csv                 -> export CSV Paris
 
-Tout fichier non reconnu (mauvais préfixe, .zip, .gz, …) est signalé en erreur :
-la migration refuse de démarrer sur une ambiguïté plutôt que d'ignorer en silence.
+Matrice campus × extension STRICTE (R7) : le moteur ne lit Brest que sous
+forme de dump SQL et Paris sous n'importe lequel des formats gérés. Un
+`brest_*.json` passe la détection mais n'était jamais lu avant d'être
+supprimé : il est désormais refusé au démarrage. Tout fichier non reconnu
+(mauvais préfixe, extension non gérée, .zip, .gz, …) est signalé en erreur :
+la migration refuse de démarrer sur une ambiguïté plutôt que d'ignorer en
+silence.
 """
 
 import re
@@ -25,12 +30,20 @@ _KINDS = {
     ".csv": "csv",
 }
 
+# Extensions réellement consommées par campus : tout le reste est refusé à la
+# détection (jamais lu = jamais supprimé).
+_ALLOWED_KINDS = {
+    "brest": frozenset({"sql_dump"}),
+    "paris": frozenset({"sql_dump", "json", "jsonl", "csv"}),
+}
+
 _CAMPUS_PREFIX = {
     "brest": re.compile(r"^brest[-_]", re.IGNORECASE),
     "paris": re.compile(r"^paris[-_]", re.IGNORECASE),
 }
 
-_IGNORED_NAMES = {".gitkeep", ".gitignore", "readme.md", "lisez-moi.txt", "manifest.json"}
+_IGNORED_NAMES = {".gitkeep", ".gitignore", "readme.md", "lisez-moi.txt", "manifest.json",
+                  "correspondance.csv", "correspondance.json"}
 
 
 @dataclass(frozen=True)
@@ -73,7 +86,7 @@ def scan(source_dir=DEFAULT_SOURCE_DIR, create=True):
             continue
         campus = next((c for c, rx in _CAMPUS_PREFIX.items() if rx.match(name)), None)
         kind = _KINDS.get(entry.suffix.lower())
-        if campus and kind:
+        if campus and kind and kind in _ALLOWED_KINDS[campus]:
             found.append(SourceFile(path=entry, campus=campus, kind=kind))
         else:
             rejected.append(name)
@@ -81,8 +94,8 @@ def scan(source_dir=DEFAULT_SOURCE_DIR, create=True):
     if rejected:
         raise SourceError(
             "Fichiers non reconnus dans "
-            f"{source_dir} (préfixe attendu brest_/paris_, extensions .sql/.json/.jsonl/.csv) : "
-            + ", ".join(rejected)
+            f"{source_dir} (préfixe attendu brest_/paris_, Brest = .sql uniquement, "
+            "Paris = .sql/.json/.jsonl/.csv) : " + ", ".join(rejected)
         )
     if not found:
         raise SourceError(

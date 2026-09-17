@@ -9,19 +9,28 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .errors import SourceError
 from .report import kv, line, section
 from .settings import ARCHIVE_DIRNAME
 
 
-def dispose(source_files, keep_archives=False, source_dir=None):
+def dispose(source_files, keep_archives=False, source_dir=None, consumed=None):
     """Supprime (ou archive) les fichiers sources traités.
 
     - keep_archives=False : suppression définitive fichier par fichier ;
     - keep_archives=True  : déplacement vers <source_dir>/archives/<horodatage>/.
+    `consumed` : noms de fichiers réellement lus ; tout fichier non consommé
+    fait échouer le nettoyage AVANT la moindre suppression (R7).
     Retourne le chemin d'archivage éventuel. Lève une exception si un fichier
     n'a pas pu être retiré du dossier (l'opération est vérifiée).
     """
     section("NETTOYAGE DES FICHIERS SOURCES")
+    if consumed is not None:
+        refused = [src.path.name for src in source_files if src.path.name not in consumed]
+        if refused:
+            raise SourceError(
+                "Nettoyage refusé : fichiers jamais consommés : " + ", ".join(refused)
+            )
     if keep_archives:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
         archive_dir = Path(source_dir or Path(source_files[0].path).parent) / ARCHIVE_DIRNAME / stamp

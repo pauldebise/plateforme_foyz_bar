@@ -50,6 +50,11 @@ badge est connu. Les tables
 extras comptoir) n'ont pas d'équivalent cible : les articles de tireuse sont
 régénérés depuis les tarifs des fûts.
 
+Consignes : la colonne `users.ecocups` (verres empruntés) est bien migrée vers
+`wallets.glasses_outstanding`, mais elle est HORS du périmètre de l'audit
+comptable, qui ne porte que sur les soldes monétaires (R20). Comptes
+`disabled` : l'état est conservé et la connexion refusée côté cible (R19).
+
 Ajuster TABLE_MAP / USER_FIELDS / TXN_FIELDS (dans sources/__init__.py) si le
 schéma réel diffère la veille de la bascule.
 """

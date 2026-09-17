@@ -9,6 +9,7 @@ veille de la bascule sans toucher au moteur ETL.
 
 import re
 import unicodedata
+from datetime import datetime
 
 from ..util import liters_to_cl, normalize_key, parse_dt, slug_username, to_cents, unescape_html
 
@@ -141,6 +142,13 @@ USER_FIELDS = {
     "created_at": ("date_inscription", "created_at", "date_creation", "inscription", "cree_le",
                    "registration"),
     "promotion": ("promotion", "promo", "annee", "année", "year", "promotion_annee"),
+    # Date de naissance : seconde composante de la clé de fusion inter-campus
+    # quand l'email est absent (R6), et discriminant des homonymes.
+    "birth_date": ("date_naissance", "date_de_naissance", "naissance", "birth_date",
+                   "birthdate", "dob", "anniversaire"),
+    # Compte désactivé côté source (R19) : conservé désactivé en cible.
+    "disabled": ("disabled", "desactive", "désactivé", "desactivee", "inactif",
+                 "is_disabled", "compte_desactive"),
 }
 
 TXN_FIELDS = {
@@ -330,7 +338,8 @@ def map_user_row(row, campus, money_unit):
     nickname = str(pseudo).strip()[:255] if pseudo is not None else None
     if nickname and normalize_key(nickname) == normalize_key(name):
         nickname = None
-    key = normalize_key(email) or normalize_key(name)
+    birth_date = normalize_birth_date(pick(row, USER_FIELDS["birth_date"]))
+    key = merge_key(name, email, birth_date)
     if not key:
         return None, "clé de réconciliation vide"
     password = pick(row, USER_FIELDS["password"])
@@ -358,7 +367,9 @@ def map_user_row(row, campus, money_unit):
         "blacklist": as_bool(pick(row, USER_FIELDS["blacklist"])) or False,
         "blacklist_alcohol": as_bool(pick(row, USER_FIELDS["blacklist_alcohol"])) or False,
         "blacklist_reason": _clean_reason(pick(row, USER_FIELDS["blacklist_reason"])),
+        "disabled": as_bool(pick(row, USER_FIELDS["disabled"])) or False,
         "glasses_outstanding": as_int(pick(row, USER_FIELDS["glasses_outstanding"])) or 0,
+        "birth_date": birth_date,
         "created_at": parse_dt(pick(row, USER_FIELDS["created_at"])),
         "balance_cents": balance,
         "campus": campus,
@@ -372,6 +383,47 @@ def _clean_reason(value):
         return None
     text = unescape_html(str(value)).strip()
     return text[:255] or None
+
+
+_BIRTH_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y", "%Y%m%d")
+
+
+def normalize_birth_date(value):
+    """Date de naissance source -> "YYYY-MM-DD" (None si absente/illisible).
+
+    Une date de naissance est une date calendaire : elle n'est PAS convertie
+    en UTC (contrairement aux horodatages), sinon un 12/05 deviendrait un 11/05.
+    """
+    if value is None or str(value).strip() == "":
+        return None
+    text = str(value).strip()
+    for sep in (" ", "T"):
+        if sep in text:
+            text = text.split(sep, 1)[0]
+            break
+    for fmt in _BIRTH_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def merge_key(name, email, birth_date):
+    """Clé de fusion inter-campus (R6).
+
+    Priorité : email (le plus fiable) -> nom normalisé + date de naissance
+    (discrimine les homonymes) -> nom normalisé seul. L'email reste dominant
+    pour ne pas casser la fusion historique basée dessus.
+    """
+    if email:
+        return normalize_key(email)
+    norm = normalize_key(name)
+    if not norm:
+        return None
+    if birth_date:
+        return f"{norm}|{birth_date}"
+    return norm
 
 
 def map_transaction_row(row, campus, money_unit):

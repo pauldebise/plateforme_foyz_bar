@@ -1,13 +1,22 @@
 """Audit comptable : captures des soldes cibles et vérification d'invariance.
 
-Invariable absolu (en centimes entiers) :
+Deux invariants indépendants (en centimes entiers) :
 
-    somme(soldes sources) == somme(soldes cibles après migration) - somme(soldes cibles avant)
+1. invariant de mapping — la somme BRUTE des colonnes de solde sources (toutes
+   les lignes, y compris les comptes non mappés et les clés en collision) doit
+   être égale à la somme réellement projetée vers les portefeuilles. Un écart
+   prouve que de l'argent disparaît (cf. R4 : audit circulaire) ;
+2. invariant de cible — somme(soldes sources projetés) == somme(soldes cibles
+   après migration) − somme(soldes cibles avant).
 
-soit un écart strictement nul, vérifié globalement ET par campus. Tout écart
-lève une AccountingError : ROLLBACK et conservation des fichiers sources.
+Les deux sont vérifiés globalement ET par campus. Tout écart lève une
+AccountingError : ROLLBACK et conservation des fichiers sources.
+
+`AuditResult.raw_source` est la somme brute ; `AuditResult.source` reste la
+somme projetée (rétrocompatible si `raw_source` est absent).
 """
 
+import json
 from dataclasses import dataclass, field
 
 import sqlalchemy as sa
@@ -28,16 +37,33 @@ class TargetTotals:
 
 @dataclass
 class AuditResult:
-    source: dict = field(default_factory=dict)      # {"brest": c, "paris": c}
+    source: dict = field(default_factory=dict)      # projeté {"brest": c, "paris": c}
     initial: TargetTotals = field(default_factory=TargetTotals)
     final: TargetTotals = field(default_factory=TargetTotals)
+    raw_source: dict | None = None                  # brute (hors mapping)
+    unmapped: list = field(default_factory=list)    # [(campus, fichier, cents)]
+    collisions: list = field(default_factory=list)  # [(campus, clé, [occurrences])]
+
+    @property
+    def raw_total(self):
+        return sum(self._raw_source.values())
+
+    @property
+    def _raw_source(self):
+        return self.raw_source if self.raw_source is not None else self.source
 
     @property
     def source_total(self):
         return self.source.get("brest", 0) + self.source.get("paris", 0)
 
+    def mapping_gap(self, campus=None):
+        """Écart (doit valoir 0) : somme brute − somme projetée."""
+        if campus:
+            return self._raw_source.get(campus, 0) - self.source.get(campus, 0)
+        return self.raw_total - self.source_total
+
     def delta(self, campus=None):
-        """Écart (doit valoir 0) : cible_migrée - source."""
+        """Écart de cible (doit valoir 0) : cible_migrée - source projetée."""
         if campus:
             migrated = self.final.__getattribute__(campus) - self.initial.__getattribute__(campus)
             return migrated - self.source.get(campus, 0)
@@ -46,7 +72,41 @@ class AuditResult:
 
     @property
     def ok(self):
-        return self.delta() == 0 and self.delta("brest") == 0 and self.delta("paris") == 0
+        return (
+            self.mapping_gap() == 0
+            and self.mapping_gap("brest") == 0
+            and self.mapping_gap("paris") == 0
+            and self.delta() == 0
+            and self.delta("brest") == 0
+            and self.delta("paris") == 0
+        )
+
+
+def format_collisions(collisions, limit=50):
+    """Rend lisibles les clés en collision : clé, occurrences et montants."""
+    lines = []
+    for campus, key, occurrences in collisions[:limit]:
+        detail = ", ".join(
+            f"id={o.get('src_id')} {o.get('name')!r} {fmt_euros(o.get('balance', 0))}"
+            for o in occurrences
+        )
+        lines.append(f"[{campus}] {key!r} : {len(occurrences)} occurrences -> {detail}")
+    if len(collisions) > limit:
+        lines.append(f"… et {len(collisions) - limit} autre(s) clé(s) en collision.")
+    return lines
+
+
+def collision_payload(collisions):
+    """Sérialisation JSON des collisions (pour un rapport exploitable)."""
+    return json.dumps(
+        [
+            {"campus": campus, "key": key,
+             "occurrences": [{"src_id": o.get("src_id"), "name": o.get("name"),
+                              "balance_cents": o.get("balance", 0)} for o in occurrences]}
+            for campus, key, occurrences in collisions
+        ],
+        ensure_ascii=False,
+    )
 
 
 def capture_target(conn):
@@ -70,29 +130,58 @@ def capture_target(conn):
 
 
 def check(result):
-    """Lève AccountingError si l'écart n'est pas strictement nul."""
+    """Lève AccountingError si l'un des deux invariants n'est pas strictement nul."""
     if result.ok:
         return
     details = []
-    for label, value in (
-        ("global", result.delta()),
-        ("brest", result.delta("brest")),
-        ("paris", result.delta("paris")),
-    ):
+    gaps = [
+        ("mapping global", result.mapping_gap()),
+        ("mapping brest", result.mapping_gap("brest")),
+        ("mapping paris", result.mapping_gap("paris")),
+        ("cible global", result.delta()),
+        ("cible brest", result.delta("brest")),
+        ("cible paris", result.delta("paris")),
+    ]
+    for label, value in gaps:
         if value != 0:
             details.append(f"{label} : écart de {value} centime(s)")
-    raise AccountingError(
+    message = (
         "ÉCART COMPTABLE DÉTECTÉ — transaction annulée, fichiers sources conservés. "
         + " | ".join(details)
     )
+    if result.collisions:
+        message += (
+            f" | {len(result.collisions)} clé(s) de réconciliation en collision "
+            "(fusion/homonymie à trancher avant bascule) :\n"
+            + "\n".join(format_collisions(result.collisions))
+        )
+    if result.unmapped:
+        total = sum(cents for _c, _f, cents in result.unmapped)
+        message += (
+            f" | {len(result.unmapped)} compte(s) source non mappé(s) "
+            f"pour {fmt_euros(total)} : identité absente."
+        )
+    raise AccountingError(message)
 
 
 def print_audit(result, extra_counts=None):
     """Rapport d'audit exhaustif en console."""
     section("RAPPORT D'AUDIT COMPTABLE")
-    money("Solde source Brest", result.source.get("brest", 0))
-    money("Solde source Paris", result.source.get("paris", 0))
-    money("Solde source TOTAL", result.source_total)
+    money("Solde BRUT source Brest", result._raw_source.get("brest", 0))
+    money("Solde BRUT source Paris", result._raw_source.get("paris", 0))
+    money("Solde BRUT source TOTAL", result.raw_total)
+    money("Solde projeté Brest", result.source.get("brest", 0))
+    money("Solde projeté Paris", result.source.get("paris", 0))
+    money("Solde projeté TOTAL", result.source_total)
+    kv("Écart de mapping global", f"{result.mapping_gap()} centime(s)")
+    if result.mapping_gap() != 0:
+        kv("  dont Brest", f"{result.mapping_gap('brest')} centime(s)")
+        kv("  dont Paris", f"{result.mapping_gap('paris')} centime(s)")
+        kv("Clés en collision", len(result.collisions))
+        for detail in format_collisions(result.collisions, limit=20):
+            line(f"      {detail}")
+        if result.unmapped:
+            kv("Comptes non mappés", len(result.unmapped))
     line()
     money("Solde cible avant migration", result.initial.total)
     money("Solde cible après migration", result.final.total)
@@ -100,9 +189,9 @@ def print_audit(result, extra_counts=None):
     kv("Comptes cibles", f"{result.final.users} (avant : {result.initial.users})")
     line()
     money("Solde migré (cible delta)", result.final.total - result.initial.total)
-    kv("Écart global", f"{result.delta()} centime(s)")
-    kv("Écart Brest", f"{result.delta('brest')} centime(s)")
-    kv("Écart Paris", f"{result.delta('paris')} centime(s)")
+    kv("Écart de cible global", f"{result.delta()} centime(s)")
+    kv("Écart de cible Brest", f"{result.delta('brest')} centime(s)")
+    kv("Écart de cible Paris", f"{result.delta('paris')} centime(s)")
     if extra_counts:
         line()
         for label, value in extra_counts:
@@ -110,8 +199,8 @@ def print_audit(result, extra_counts=None):
                 kv(label, value)
     line()
     if result.ok:
-        line("  >>> AUDIT VALIDÉ : écart strictement nul (0 centime) <<<")
+        line("  >>> AUDIT VALIDÉ : mapping et cible strictement nuls (0 centime) <<<")
     else:
-        line("  >>> AUDIT EN ÉCHEC : somme(soldes sources) != somme(soldes cibles) <<<")
+        line("  >>> AUDIT EN ÉCHEC : les soldes sources ne sont pas intégralement projetés <<<")
         line(f"      attendu migré : {fmt_euros(result.source_total)}")
     line()
