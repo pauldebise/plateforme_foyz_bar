@@ -156,6 +156,58 @@
     </div>
 
     <div class="card mb-4">
+      <div class="card-header"><i class="bi bi-people"></i> Trombinoscope — campus {{ CAMPUSSES[own_campus] }}</div>
+      <div class="card-body">
+        <p class="small text-muted">Membres de mandat présentés sur la page publique
+          <a href="{{ url_for('public.trombinoscopes') }}" target="_blank" rel="noopener">Trombinoscopes</a>.</p>
+        {% for m in members %}
+        <form class="border-top py-3" method="post" enctype="multipart/form-data">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="trombinoscope">
+          <input type="hidden" name="user_id" value="{{ m.id }}">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            {% if m.photo %}
+            <img src="/uploads/{{ m.photo }}" alt="" class="trombi-photo" style="width: 48px; height: 48px;">
+            {% else %}
+            <div class="trombi-photo trombi-placeholder" style="width: 48px; height: 48px; font-size: 1.4rem;"><i class="bi bi-person"></i></div>
+            {% endif %}
+            <div class="flex-grow-1">
+              <div class="fw-bold">{{ m.display_name }}</div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="trombinoscope_visible" id="trombi-visible-{{ m.id }}" {% if m.trombinoscope_visible %}checked{% endif %}>
+                <label class="form-check-label small" for="trombi-visible-{{ m.id }}">Afficher dans le trombinoscope</label>
+              </div>
+            </div>
+          </div>
+          <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-5">
+              <label class="form-label small">Rôle affiché</label>
+              <input class="form-control form-control-sm" name="trombinoscope_role" value="{{ m.trombinoscope_role or '' }}" placeholder="ex : Président·e" maxlength="80">
+            </div>
+            <div class="col-12 col-md-5">
+              <label class="form-label small">Photo</label>
+              <input class="form-control form-control-sm" type="file" name="photo" accept=".jpg,.jpeg,.png,.webp">
+            </div>
+            <div class="col-12 col-md-2 d-grid">
+              <button class="btn btn-sm btn-primary">Enregistrer</button>
+            </div>
+            {% if m.photo %}
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="remove_photo" id="trombi-rm-{{ m.id }}">
+                <label class="form-check-label small text-danger" for="trombi-rm-{{ m.id }}">Retirer la photo</label>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </form>
+        {% else %}
+        <p class="text-muted small mb-0">Aucun membre de mandat rattaché à ce campus.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="card mb-4">
       <div class="card-header"><i class="bi bi-server"></i> Accès infrastructure</div>
       <div class="card-body">
         <form method="post">
