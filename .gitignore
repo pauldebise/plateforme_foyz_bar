@@ -12,3 +12,7 @@ nohup.out
 
 # Dumps des anciennes bases : jamais versionnés (données personnelles + mot de passe)
 bdd_a_migrer/
+
+# Documents supprimés : ne plus jamais suivre
+docs/Cahier_des_charge_site_Foy_z\ \(1\).pdf
+docs/main.tex
