@@ -26,6 +26,14 @@ _RATE_MAX_KEYS = 10_000
 _RATE_SWEEP_INTERVAL = 60
 _last_sweep = 0.0
 
+# Purge du registre des connexions : déclenchée à chaque tentative de
+# connexion mais au plus une fois par heure (les échecs aussi déclenchent la
+# purge, sinon les logs IP s'accumulent tant qu'aucune connexion ne réussit).
+_LOG_CLEANUP_INTERVAL = 3600
+# -interval : la première tentative déclenche toujours la purge, même si le
+# serveur vient de démarrer (monotonic() peut être inférieur à l'intervalle).
+_last_log_cleanup = -_LOG_CLEANUP_INTERVAL
+
 # Hash bcrypt hérité de l'ancienne plateforme (PHP password_hash) : $2a$, $2b$, $2y$
 _BCRYPT_HASH_RE = re.compile(r"^\$2[aby]\$\d{2}\$")
 
@@ -132,6 +140,7 @@ def login():
             success=bool(ok),
         ))
         db.session.commit()
+        _cleanup_old_logs()
 
         if not ok:
             flash(reason, "danger")
@@ -145,7 +154,6 @@ def login():
         if user.blacklist_alcohol:
             flash("Rappel : ce compte porte le statut « blacklist alcool ».", "warning")
 
-        _cleanup_old_logs()
         target = request.args.get("next")
         return redirect(target if is_safe_target(target) else url_for("team.payment"))
 
@@ -155,6 +163,12 @@ def login():
 
 
 def _cleanup_old_logs():
+    global _last_log_cleanup
+    now = time.monotonic()
+    if now - _last_log_cleanup < _LOG_CLEANUP_INTERVAL:
+        return
+    _last_log_cleanup = now
+
     from datetime import timedelta
 
     from app.services.settings import int_setting

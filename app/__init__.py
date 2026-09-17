@@ -1,3 +1,4 @@
+import os
 import secrets
 import time
 from pathlib import Path
@@ -8,7 +9,8 @@ from flask import Flask, current_app, g, jsonify, redirect, render_template, req
 from sqlalchemy import select
 from werkzeug.security import generate_password_hash
 
-from app.config import get_config, validate_config, UPLOAD_DIR
+from app.config import get_config, validate_config, INSTANCE_DIR
+from app.logging_setup import configure_logging
 from app.extensions import db
 from app.utils import (
     ARTICLE_TYPES,
@@ -100,10 +102,35 @@ def ensure_schema_upgrades():
                 conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)"))
 
 
+def _restrict_instance_permissions(app):
+    """SQLite : base en 600 et dossier `instance/` en 700 (D7).
+
+    Ne touche jamais au dossier parent d'une base hors `instance/` (le
+    durcissement d'un dossier système serait destructeur)."""
+    from sqlalchemy.engine import make_url
+
+    try:
+        url = make_url(app.config["SQLALCHEMY_DATABASE_URI"])
+    except Exception:  # noqa: BLE001 — URL exotique : on ne durcit rien
+        return
+    if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
+        return
+    db_path = Path(url.database)
+    if not db_path.exists():
+        return
+    try:
+        os.chmod(db_path, 0o600)
+        if db_path.parent == INSTANCE_DIR:
+            os.chmod(db_path.parent, 0o700)
+    except OSError:
+        app.logger.warning("Permissions inchangées pour %s", db_path)
+
+
 def create_app():
     load_dotenv()
     app = Flask(__name__)
     app.config.from_object(get_config())
+    configure_logging(app)
     validate_config(app)
 
     if app.config.get("PROXY_FIX_X_FOR", 0) > 0:
@@ -120,19 +147,27 @@ def create_app():
     from app.models import Setting, User  # noqa: F401
 
     with app.app_context():
-        db.create_all()
-        ensure_schema_upgrades()
-        ensure_dev_admin()
-        from app.services.legacy_passwords import audit as legacy_audit
+        # SQLite (dev/tests) : schéma appliqué au démarrage. PostgreSQL
+        # (production) : uniquement des révisions Alembic, via `init-db`
+        # ou `upgrade-db` — aucun DDL à l'import de l'application.
+        from app.schema import is_sqlite, tables_present
 
-        remaining = legacy_audit()
-        if remaining:
-            app.logger.warning(
-                "Mots de passe hérités encore en base : %s. Lancer "
-                "`flask legacy-passwords --purge` une fois la campagne de "
-                "réinitialisation terminée.",
-                ", ".join(f"{fmt}:{count}" for fmt, count in sorted(remaining.items())),
-            )
+        if is_sqlite():
+            db.create_all()
+            ensure_schema_upgrades()
+            _restrict_instance_permissions(app)
+        if tables_present():
+            ensure_dev_admin()
+            from app.services.legacy_passwords import audit as legacy_audit
+
+            remaining = legacy_audit()
+            if remaining:
+                app.logger.warning(
+                    "Mots de passe hérités encore en base : %s. Lancer "
+                    "`flask legacy-passwords --purge` une fois la campagne de "
+                    "réinitialisation terminée.",
+                    ", ".join(f"{fmt}:{count}" for fmt, count in sorted(remaining.items())),
+                )
 
     from app.routes.public import bp as public_bp
     from app.routes.auth import bp as auth_bp
@@ -318,6 +353,38 @@ def create_app():
         response.headers["Content-Security-Policy"] = "default-src 'none'"
         return response
 
+    @app.get("/health")
+    def health():
+        """Sonde de supervision (D6) : base, uploads, version du schéma.
+
+        Sans authentification et sans donnée sensible : un simple état. 503 si
+        la base ou les téléversements sont indisponibles (le healthcheck Docker
+        s'appuie dessus)."""
+        from sqlalchemy import text
+
+        from app.schema import current_revision, head_revision
+
+        checks = {}
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            checks["database"] = "ok"
+        except Exception:  # noqa: BLE001 — une sonde ne doit jamais lever
+            checks["database"] = "error"
+        uploads = Path(app.config["UPLOAD_FOLDER"])
+        checks["uploads"] = (
+            "ok" if uploads.is_dir() and os.access(uploads, os.W_OK) else "error"
+        )
+        try:
+            current = current_revision()
+            checks["schema"] = "ok" if current == head_revision() else f"outdated:{current or 'none'}"
+        except Exception:  # noqa: BLE001
+            checks["schema"] = "unknown"
+        degraded = "error" in (checks["database"], checks["uploads"])
+        return jsonify(status="degraded" if degraded else "ok", **checks), (
+            503 if degraded else 200
+        )
+
     @app.errorhandler(403)
     def forbidden(e):
         return render_template("errors/403.html"), 403
@@ -328,14 +395,68 @@ def create_app():
 
     @app.errorhandler(500)
     def server_error(e):
+        original = getattr(e, "original_exception", None)
+        extra = {
+            "event": "unhandled_error",
+            "path": request.path[:255],
+            "method": request.method,
+            "endpoint": request.endpoint or "",
+            "user_id": session.get("user_id"),
+        }
+        if original is not None:
+            app.logger.error("unhandled_error", extra=extra, exc_info=original)
+        else:
+            app.logger.error("unhandled_error", extra=extra)
         return render_template("errors/500.html"), 500
 
     @app.cli.command("init-db")
     def init_db_command():
+        """Prépare la base : schéma + compte administrateur initial."""
+        from app.schema import is_sqlite, upgrade_to_head
+
         with app.app_context():
-            db.create_all()
+            if is_sqlite():
+                db.create_all()
+                ensure_schema_upgrades()
+            else:
+                upgrade_to_head()
             ensure_dev_admin()
         print("Base de données initialisée.")
+
+    @app.cli.command("upgrade-db")
+    def upgrade_db_command():
+        """Applique les révisions Alembic en attente (production)."""
+        from app.schema import upgrade_to_head
+
+        with app.app_context():
+            upgrade_to_head()
+        print("Schéma à jour.")
+
+    @app.cli.command("purge-logs")
+    @click.option("--days", type=int, default=None,
+                  help="Rétention en jours (défaut : réglage login_logs_retention_days).")
+    @click.option("--dry-run", is_flag=True, help="Affiche sans supprimer.")
+    def purge_logs_command(days, dry_run):
+        """Purge le registre des connexions au-delà de la rétention (D13)."""
+        from datetime import timedelta
+
+        from app.models import LoginLog
+        from app.services.settings import int_setting
+        from app.utils import utcnow
+
+        with app.app_context():
+            retention = days if days is not None else int_setting("login_logs_retention_days")
+            if retention <= 0:
+                print("Rétention désactivée (0) : rien à purger.")
+                return
+            cutoff = utcnow() - timedelta(days=retention)
+            query = db.session.query(LoginLog).filter(LoginLog.created_at < cutoff)
+            if dry_run:
+                print(f"{query.count()} entrée(s) antérieure(s) au {cutoff:%Y-%m-%d} seraient supprimées.")
+                return
+            removed = query.delete(synchronize_session=False)
+            db.session.commit()
+            print(f"{removed} entrée(s) supprimée(s) (antérieures au {cutoff:%Y-%m-%d}).")
 
     @app.cli.command("legacy-passwords")
     @click.option("--purge", is_flag=True, help="Vider legacy_password des comptes listés.")
