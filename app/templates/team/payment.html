@@ -25,9 +25,9 @@
           <label class="form-check-label" for="deposit-switch">Activer la consigne ({{ (deposit_value / 100)|round(2) }} € / verre)</label>
         </div>
         <div class="input-group input-group-sm mt-2" style="max-width: 180px;">
-          <button class="btn btn-outline-secondary" onclick="let e=document.getElementById('deposit-glasses');e.value=Math.max(1,parseInt(e.value||1)-1);e.dispatchEvent(new Event('input'))">−</button>
+          <button class="btn btn-outline-secondary" data-deposit-step="-1">−</button>
           <input type="number" min="1" value="1" class="form-control text-center" id="deposit-glasses">
-          <button class="btn btn-outline-secondary" onclick="let e=document.getElementById('deposit-glasses');e.value=parseInt(e.value||0)+1;e.dispatchEvent(new Event('input'))">+</button>
+          <button class="btn btn-outline-secondary" data-deposit-step="1">+</button>
         </div>
         {% if not deposit_enabled %}<div class="form-text text-danger">La consigne est désactivée dans les paramètres.</div>{% endif %}
       </div>

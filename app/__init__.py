@@ -2,6 +2,7 @@ import secrets
 import time
 from pathlib import Path
 
+import click
 from dotenv import load_dotenv
 from flask import Flask, current_app, g, jsonify, redirect, render_template, request, session, url_for, send_from_directory, abort
 from sqlalchemy import select
@@ -9,7 +10,15 @@ from werkzeug.security import generate_password_hash
 
 from app.config import get_config, validate_config, UPLOAD_DIR
 from app.extensions import db
-from app.utils import CAMPUSSES, ARTICLE_TYPES, PAYMENT_METHODS, TRANSACTION_TYPES, euros, to_paris
+from app.utils import (
+    ARTICLE_TYPES,
+    CAMPUSSES,
+    PAYMENT_METHODS,
+    TRANSACTION_TYPES,
+    euros,
+    safe_color,
+    to_paris,
+)
 
 
 def ensure_dev_admin():
@@ -112,6 +121,16 @@ def create_app():
         db.create_all()
         ensure_schema_upgrades()
         ensure_dev_admin()
+        from app.services.legacy_passwords import audit as legacy_audit
+
+        remaining = legacy_audit()
+        if remaining:
+            app.logger.warning(
+                "Mots de passe hérités encore en base : %s. Lancer "
+                "`flask legacy-passwords --purge` une fois la campagne de "
+                "réinitialisation terminée.",
+                ", ".join(f"{fmt}:{count}" for fmt, count in sorted(remaining.items())),
+            )
 
     from app.routes.public import bp as public_bp
     from app.routes.auth import bp as auth_bp
@@ -199,11 +218,41 @@ def create_app():
     def close_db(exc):
         pass
 
+    # Assets servis localement (Bootstrap, Icons, Chart.js) : plus aucune
+    # dépendance CDN, donc une CSP stricte et un fonctionnement hors ligne.
+    CSP = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "frame-src 'self'; "
+        "frame-ancestors 'self'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "object-src 'none'"
+    )
+
     @app.after_request
     def set_headers(response):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["Referrer-Policy"] = "same-origin"
+        # setdefault : la route /uploads pose sa propre CSP plus restrictive
+        # (default-src 'none') et ne doit pas être écrasée ici.
+        response.headers.setdefault("Content-Security-Policy", CSP)
+        # Les pages authentifiées (équipe ou passerelle) ne doivent jamais
+        # rester dans le cache du navigateur (navigation arrière après
+        # déconnexion, poste partagé).
+        if session.get("user_id") or session.get("gateway_event_id"):
+            response.headers["Cache-Control"] = "no-store, private"
+        # HSTS uniquement quand l'application est déclarée servie en HTTPS
+        # (HTTPS_ONLY=1) ; Cloudflare peut aussi le poser côté périphérie.
+        if current_app.config.get("SESSION_COOKIE_SECURE"):
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000"
+            )
         return response
 
     @app.template_filter("eur")
@@ -234,10 +283,10 @@ def create_app():
         return {
             "csrf_token": lambda: ensure_csrf(),
             "site_name": get_setting("site_name") or "Foy'z & Bar",
-            "theme_color": (
+            "theme_color": safe_color(
                 get_setting(f"theme_color_{campus}") if campus in CAMPUSSES
-                else get_setting("theme_color_public")
-            ) or "#804db3",
+                else get_setting("theme_color_public"),
+            ),
             "logo": get_setting(f"logo_{campus}") or "",
             "payment_photo": (
                 get_setting(f"payment_photo_{campus}") if campus in CAMPUSSES else ""
@@ -261,7 +310,11 @@ def create_app():
 
     @app.route("/uploads/<path:filename>")
     def uploaded_file(filename):
-        return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+        response = send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+        # Fichiers téléversés servis sur l'origine : on neutralise toute
+        # exécution (un SVG/HTML résiduel ne pourrait rien charger ni exécuter).
+        response.headers["Content-Security-Policy"] = "default-src 'none'"
+        return response
 
     @app.errorhandler(403)
     def forbidden(e):
@@ -281,5 +334,28 @@ def create_app():
             db.create_all()
             ensure_dev_admin()
         print("Base de données initialisée.")
+
+    @app.cli.command("legacy-passwords")
+    @click.option("--purge", is_flag=True, help="Vider legacy_password des comptes listés.")
+    @click.option(
+        "--weak-only", is_flag=True,
+        help="Ne purger que les formats faibles (clair/md5/sha1/sha256).",
+    )
+    def legacy_passwords_command(purge, weak_only):
+        """Audite (et éventuellement purge) les mots de passe hérités."""
+        from app.services.legacy_passwords import accounts_with_legacy, audit, format_of, purge as purge_legacy
+
+        with app.app_context():
+            users = accounts_with_legacy()
+            if not users:
+                print("Aucun mot de passe hérité en base.")
+                return
+            for user in users:
+                print(f"{user.id}\t{user.username}\t{format_of(user.legacy_password)}")
+            counts = audit()
+            print("Total : " + ", ".join(f"{fmt}={n}" for fmt, n in sorted(counts.items())))
+            if purge:
+                removed = purge_legacy(weak_only=weak_only)
+                print(f"{removed} compte(s) purgé(s) — réinitialisation requise à la prochaine connexion.")
 
     return app

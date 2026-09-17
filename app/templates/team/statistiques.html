@@ -216,42 +216,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-<script>
-const STATS = {{ stats|tojson }};
-const CAT_LABELS = {{ ARTICLE_TYPES|tojson }};
-
-new Chart(document.getElementById('chart-categories'), {
-  type: 'bar',
-  data: {
-    labels: Object.keys(STATS.by_category).map(k => CAT_LABELS[k] || k),
-    datasets: [
-      { label: 'Volume', data: Object.values(STATS.by_category).map(v => v.qty), backgroundColor: 'rgba(0,82,156,.7)', yAxisID: 'y' },
-      { label: 'Recettes (€)', data: Object.values(STATS.by_category).map(v => v.revenue / 100), type: 'line', yAxisID: 'y1', tension: .3 }
-    ]
-  },
-  options: { scales: { y: { beginAtZero: true }, y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } } } }
-});
-
-new Chart(document.getElementById('chart-trend'), {
-  type: 'line',
-  data: {
-    labels: Object.keys(STATS.series),
-    datasets: [{ label: 'Recettes par jour (€)', data: Object.values(STATS.series).map(v => v / 100), tension: .3, fill: true, backgroundColor: 'rgba(0,82,156,.12)', borderColor: 'rgba(0,82,156,.9)' }]
-  },
-  options: { scales: { y: { beginAtZero: true } } }
-});
-
-const STUDENTS = {{ students.top|tojson }};
-if (STUDENTS.length) {
-  new Chart(document.getElementById('chart-students'), {
-    type: 'bar',
-    data: {
-      labels: STUDENTS.map(s => s.name),
-      datasets: [{ label: 'Total dépensé (€)', data: STUDENTS.map(s => s.spent / 100), backgroundColor: 'rgba(0,82,156,.75)', borderRadius: 4 }]
-    },
-    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
-  });
-}
-</script>
+<script type="application/json" id="stats-data">{{ {'stats': stats, 'labels': ARTICLE_TYPES, 'students': students.top}|tojson }}</script>
+<script src="{{ url_for('static', filename='vendor/chart/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/statistiques.js') }}"></script>
 {% endblock %}

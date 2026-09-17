@@ -111,11 +111,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
-document.getElementById('cancel-modal').addEventListener('show.bs.modal', (e) => {
-  const btn = e.relatedTarget;
-  document.getElementById('cancel-tid').value = btn.dataset.tid;
-  document.getElementById('cancel-total').textContent = btn.dataset.total;
-});
-</script>
+<script src="{{ url_for('static', filename='js/historique.js') }}"></script>
 {% endblock %}

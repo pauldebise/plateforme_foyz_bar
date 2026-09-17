@@ -101,9 +101,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
-document.getElementById('del-modal').addEventListener('show.bs.modal', (e) => {
-  document.getElementById('del-nid').value = e.relatedTarget.dataset.nid;
-});
-</script>
+<script src="{{ url_for('static', filename='js/notes.js') }}"></script>
 {% endblock %}
