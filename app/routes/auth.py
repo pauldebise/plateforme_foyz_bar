@@ -11,11 +11,20 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
 from app.models import LoginLog, User
-from app.utils import CAMPUSSES, is_safe_target, slug_username, utcnow
+from app.utils import CAMPUSSES, client_ip, is_safe_target, slug_username, utcnow
 
 bp = Blueprint("auth", __name__)
 _limiter_lock = threading.Lock()
 _attempts = defaultdict(deque)
+
+# Limiteur en mémoire : 8 tentatives par fenêtre glissante de 5 minutes.
+# La purge régulière et la borne du nombre de clés empêchent une croissance
+# illimitée de la mémoire (les clés proviennent d'IP, jamais de X-Forwarded-For).
+_RATE_WINDOW_SECONDS = 300
+_RATE_MAX_ATTEMPTS = 8
+_RATE_MAX_KEYS = 10_000
+_RATE_SWEEP_INTERVAL = 60
+_last_sweep = 0.0
 
 # Hash bcrypt hérité de l'ancienne plateforme (PHP password_hash) : $2a$, $2b$, $2y$
 _BCRYPT_HASH_RE = re.compile(r"^\$2[aby]\$\d{2}\$")
@@ -44,13 +53,31 @@ def _check_legacy_password(stored, password):
     return hmac.compare_digest(stored.encode(), password.encode())
 
 
-def _rate_limited(ip):
+def _sweep_attempts(now):
+    """Purge les fenêtres expirées et borne le nombre de clés suivies."""
+    global _last_sweep
+    cutoff = now - _RATE_WINDOW_SECONDS
+    expensive = len(_attempts) > _RATE_MAX_KEYS
+    if not expensive and now - _last_sweep < _RATE_SWEEP_INTERVAL:
+        return
+    _last_sweep = now
+    for key in [k for k, q in _attempts.items() if not q or q[-1] <= cutoff]:
+        del _attempts[key]
+    if len(_attempts) > _RATE_MAX_KEYS:
+        # éviction des entrées les moins récemment actives
+        excess = len(_attempts) - _RATE_MAX_KEYS
+        for key in sorted(_attempts, key=lambda k: _attempts[k][-1])[:excess]:
+            del _attempts[key]
+
+
+def _rate_limited(key):
     now = time.time()
     with _limiter_lock:
-        q = _attempts[ip]
-        while q and now - q[0] > 300:
+        _sweep_attempts(now)
+        q = _attempts[key]
+        while q and now - q[0] > _RATE_WINDOW_SECONDS:
             q.popleft()
-        if len(q) >= 8:
+        if len(q) >= _RATE_MAX_ATTEMPTS:
             return True
         q.append(now)
         return False
@@ -59,7 +86,7 @@ def _rate_limited(ip):
 @bp.route("/connexion", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?")
+        ip = client_ip()
         if _rate_limited(ip):
             flash("Trop de tentatives. Réessayez dans quelques minutes.", "danger")
             return render_template("auth/login.html"), 429

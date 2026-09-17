@@ -11,8 +11,10 @@ Couvre (phase 1 du plan d'action) :
 """
 
 import os
+import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +33,10 @@ os.environ.pop("PROXY_FIX_X_FOR", None)
 
 from flask import Flask  # noqa: E402
 
+from app import create_app  # noqa: E402
 from app.config import INSECURE_SECRET_KEYS, validate_config  # noqa: E402
+from app.routes import auth as auth_module  # noqa: E402
+from app.utils import client_ip  # noqa: E402
 
 
 def _expect(cond, label):
@@ -92,6 +97,81 @@ def test_development_tolerates_default_secrets():
 def test_production_warns_without_secure_cookies():
     app = _config_app(SESSION_COOKIE_SECURE=False)
     validate_config(app)
+
+
+def test_client_ip_ignores_untrusted_headers():
+    app = Flask("ip-test")
+    with app.test_request_context(
+        "/",
+        headers={"X-Forwarded-For": "203.0.113.7", "CF-Connecting-IP": "203.0.113.8"},
+        environ_base={"REMOTE_ADDR": "10.0.0.9"},
+    ):
+        _expect(client_ip() == "10.0.0.9", "en-têtes d'IP ignorés sans proxy de confiance")
+
+
+def test_client_ip_uses_cf_only_when_trusted():
+    app = Flask("ip-test")
+    app.config["TRUSTED_PROXY"] = "cloudflare"
+    with app.test_request_context(
+        "/",
+        headers={"CF-Connecting-IP": "203.0.113.8", "X-Forwarded-For": "1.2.3.4"},
+        environ_base={"REMOTE_ADDR": "172.64.0.1"},
+    ):
+        _expect(client_ip() == "203.0.113.8", "CF-Connecting-IP retenu si TRUSTED_PROXY=cloudflare")
+    with app.test_request_context(
+        "/",
+        headers={"CF-Connecting-IP": "pas-une-ip", "X-Forwarded-For": "1.2.3.4"},
+        environ_base={"REMOTE_ADDR": "10.0.0.9"},
+    ):
+        _expect(client_ip() == "10.0.0.9", "CF-Connecting-IP invalide -> remote_addr")
+
+
+def test_limiter_purges_and_bounds_keys():
+    now = time.time()
+    with auth_module._limiter_lock:
+        auth_module._attempts.clear()
+        for i in range(auth_module._RATE_MAX_KEYS + 5):
+            auth_module._attempts[f"expired-{i}"].append(
+                now - auth_module._RATE_WINDOW_SECONDS - 1
+            )
+        auth_module._last_sweep = 0.0
+        auth_module._sweep_attempts(now)
+        _expect(not auth_module._attempts, "clés expirées purgées")
+        for i in range(auth_module._RATE_MAX_KEYS + 5):
+            auth_module._attempts[f"active-{i}"].append(now - (i % 100))
+        auth_module._last_sweep = 0.0
+        auth_module._sweep_attempts(now)
+        _expect(
+            len(auth_module._attempts) <= auth_module._RATE_MAX_KEYS,
+            "nombre de clés borné",
+        )
+        auth_module._attempts.clear()
+
+
+def test_login_limiter_survives_forged_xff():
+    app = create_app()
+    client = app.test_client()
+    html = client.get("/connexion").get_data(as_text=True)
+    match = re.search(r'name="_csrf" value="([^"]+)"', html)
+    _expect(match is not None, "jeton CSRF présent")
+    token = match.group(1)
+    status = None
+    for i in range(auth_module._RATE_MAX_ATTEMPTS + 1):
+        status = client.post(
+            "/connexion",
+            data={
+                "username": "inconnu",
+                "password": "mauvais",
+                "campus": "brest",
+                "_csrf": token,
+            },
+            headers={"X-Forwarded-For": f"203.0.113.{i}"},
+            environ_base={"REMOTE_ADDR": "198.51.100.77"},
+        ).status_code
+    _expect(
+        status == 429,
+        f"9e tentative bloquée malgré un X-Forwarded-For forgé (statut {status})",
+    )
 
 
 def main():

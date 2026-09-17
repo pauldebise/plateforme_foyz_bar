@@ -1,3 +1,4 @@
+import ipaddress
 import re
 import secrets
 import unicodedata
@@ -5,7 +6,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo
 
-from flask import redirect, url_for, g
+from flask import current_app, redirect, request, url_for, g
 
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
@@ -94,3 +95,25 @@ def login_required(view):
 
 def is_safe_target(target):
     return target and target.startswith("/") and not target.startswith("//")
+
+
+def client_ip():
+    """IP réelle du client (limiteur de connexion, journaux).
+
+    `X-Forwarded-For` n'est jamais lu directement : un client peut le forger.
+    `CF-Connecting-IP`, posé par Cloudflare, n'est retenu que si l'origine est
+    déclarée exposée exclusivement via Cloudflare (`TRUSTED_PROXY=cloudflare` :
+    pare-feu ou Tunnel empêchant l'accès direct). Sinon `remote_addr` fait foi,
+    éventuellement corrigé en amont par ProxyFix (`PROXY_FIX_X_FOR`). La valeur
+    est validée comme adresse IP et bornée à 64 caractères (LoginLog.ip).
+    """
+    candidates = []
+    if current_app.config.get("TRUSTED_PROXY") == "cloudflare":
+        candidates.append(request.headers.get("CF-Connecting-IP") or "")
+    candidates.append(request.remote_addr or "")
+    for candidate in candidates:
+        try:
+            return str(ipaddress.ip_address(candidate.strip()))[:64]
+        except ValueError:
+            continue
+    return "?"

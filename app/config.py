@@ -15,6 +15,13 @@ INSECURE_SECRET_KEYS = {
 INSECURE_ADMIN_PASSWORDS = {"admin", "admin123", "change-me"}
 
 
+def _env_int(name):
+    try:
+        return max(0, int(os.environ.get(name) or 0))
+    except ValueError:
+        return 0
+
+
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY") or "dev-secret-key-change-me"
     SQLALCHEMY_DATABASE_URI = os.environ.get(
@@ -30,6 +37,11 @@ class Config:
     LANGUAGES = ["fr"]
     TIMEZONE = "Europe/Paris"
     DEFAULT_ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or "admin"
+    # Proxy de confiance devant l'application : "" (aucun) ou "cloudflare"
+    # (l'IP client est alors lue dans CF-Connecting-IP au lieu de remote_addr).
+    TRUSTED_PROXY = os.environ.get("TRUSTED_PROXY", "").strip().lower()
+    # Nombre de proxys de confiance pour X-Forwarded-For (ProxyFix), 0 = désactivé.
+    PROXY_FIX_X_FOR = _env_int("PROXY_FIX_X_FOR")
 
 
 def validate_config(app):

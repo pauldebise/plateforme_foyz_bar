@@ -86,6 +86,13 @@ def create_app():
     app.config.from_object(get_config())
     validate_config(app)
 
+    if app.config.get("PROXY_FIX_X_FOR", 0) > 0:
+        # Nombre explicite de proxys de confiance : remote_addr devient l'IP
+        # client issue de X-Forwarded-For (utile derrière Nginx local).
+        from werkzeug.middleware.proxy_fix import ProxyFix
+
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=app.config["PROXY_FIX_X_FOR"])
+
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)

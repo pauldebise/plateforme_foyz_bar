@@ -178,7 +178,9 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 Pour HTTPS, ajoutez un certificat via `certbot --nginx` puis mettez `HTTPS_ONLY=1`
-dans `.env` (cookies `Secure`).
+dans `.env` (cookies `Secure`). Derrière un Nginx local, définir aussi
+`PROXY_FIX_X_FOR=1` : le limiteur de connexion et le registre des connexions
+utilisent ainsi l'IP du visiteur (transmise par Nginx), pas `127.0.0.1`.
 
 ### Option C — Exposition publique via Cloudflare
 
@@ -195,12 +197,15 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
    **Cloudflare Tunnel** (`cloudflared`) et fermer le port 8000. Sans cela, le WAF
    et la limitation de débit se contournent par l'IP d'origine.
 5. Option : **Authenticated Origin Pulls** (mTLS) en complément du pare-feu.
-6. **Cache** : ne jamais mettre en cache `/equipe/*`, `/admin/*`, `/api/*` ni
+6. **IP réelle du client** : renseigner `TRUSTED_PROXY=cloudflare` (l'application
+   lit alors `CF-Connecting-IP` au lieu du `X-Forwarded-For` brut, falsifiable ;
+   n'a d'effet sûr qu'avec l'étape 4 appliquée).
+7. **Cache** : ne jamais mettre en cache `/equipe/*`, `/admin/*`, `/api/*` ni
    `/passerelle/*` (réponses liées à la session) ; conserver le cache par défaut
    pour `/static/*` et `/uploads/*`.
-7. **Cloudflare Access** peut protéger `/admin/*` par SSO/MFA, mais doit exclure
+8. **Cloudflare Access** peut protéger `/admin/*` par SSO/MFA, mais doit exclure
    `/passerelle/*` et les pages publiques sous peine de casser la passerelle.
-8. Activer la **Rate Limiting** Cloudflare sur `/connexion` et `/api/*` en défense
+9. Activer la **Rate Limiting** Cloudflare sur `/connexion` et `/api/*` en défense
    en profondeur (le limiteur applicatif reste nécessaire).
 
 ### Variables d'environnement
@@ -213,12 +218,16 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 | `ADMIN_PASSWORD`| Mot de passe administrateur initial (créé par `init-db`) — **obligatoire en production** | `admin` (refusé en production) |
 | `HTTPS_ONLY`    | `1` = cookies `Secure` (derrière HTTPS)                     | `0`               |
 | `UPLOAD_DIR`    | Dossier des fichiers téléversés                             | `instance/uploads`|
+| `TRUSTED_PROXY` | `cloudflare` = IP client lue dans `CF-Connecting-IP`        | vide (aucun)      |
+| `PROXY_FIX_X_FOR`| Nombre de proxys de confiance `X-Forwarded-For` (ProxyFix) | `0`               |
 
 ## 4. Sécurité
 
 - Mots de passe hachés (`werkzeug`, scrypt par défaut) ; identifiants jamais en clair.
 - Protection **CSRF** sur tous les formulaires et requêtes API (jeton de session).
-- Anti-bruteforce sur la connexion (8 tentatives / 5 min par IP).
+- Anti-bruteforce sur la connexion (8 tentatives / 5 min par IP réelle :
+  `CF-Connecting-IP` si `TRUSTED_PROXY=cloudflare`, sinon `remote_addr` —
+  `X-Forwarded-For` brut n'est jamais utilisé ; compteurs purgés et bornés).
 - Sessions signées, `HttpOnly`, expiration automatique configurable (module développement).
 - Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
   annulations de transactions, retrait du statut « blacklist alcool ».
