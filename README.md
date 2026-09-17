@@ -45,18 +45,19 @@ Foyz_plateforme/
 │   ├── templates/             # Jinja2 (public/, team/, admin/, gateway/, errors/)
 │   └── static/                # CSS + JS (caisse, recherche d'étudiants, opérations)
 ├── migration/                  # Module ETL de bascule nocturne (voir §6)
+├── migrations/                # Révisions de schéma Alembic (voir §6.1)
+├── ops/                       # Sauvegarde/restauration (python -m ops.backup, §7)
 ├── bdd_a_migrer/               # Dumps des anciennes bases (jamais versionnés)
-├── tests/
-│   └── migration/             # Fixtures + suite de tests du module de migration
-├── docs/                      # Cahier des charges
+├── tests/                     # Suites exécutables sans pytest (python -m tests.<module>)
+├── docs/                      # Cahier des charges + politique de confidentialité
 ├── uploads/                   # Fichiers téléversés (affiches, logos, PDF)
 ├── instance/                  # Base SQLite (créée à l'exécution)
 ├── run.py / wsgi.py           # Lancement dev / point d'entrée Gunicorn
+├── alembic.ini                # Configuration Alembic (sans identifiants)
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml         # Stack complète : app + PostgreSQL + volumes
-├── .env.example
-└── COMPTE_RENDU.md            # Compte rendu de réalisation détaillé
+└── .env.example
 ```
 
 ## 2. Démarrage rapide (développement)
@@ -149,7 +150,7 @@ After=network.target postgresql.service
 User=www-data
 WorkingDirectory=/opt/foyz
 EnvironmentFile=/opt/foyz/.env
-ExecStart=/opt/foyz/.venv/bin/gunicorn --workers 4 --bind 127.0.0.1:8000 --access-logfile - wsgi:app
+ExecStart=/opt/foyz/.venv/bin/gunicorn --workers 4 --bind 127.0.0.1:8000 --access-logfile - --error-logfile - --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 100 wsgi:app
 Restart=always
 
 [Install]
@@ -252,9 +253,7 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 
 ## 5. Maintenance
 
-- **Sauvegardes** : sauvegardez la base et le dossier des fichiers téléversés :
-  - Docker : `docker compose exec db pg_dump -U foyz foyz > backup.sql` + volume `uploads`
-  - SQLite : copie de `instance/foyz.db` + `uploads/`
+- **Sauvegardes automatiques, restauration, supervision, purge** : voir §7.
 - **Changer le mot de passe administrateur** : Module développement → Mot de passe administrateur.
 - Les paramètres (découvert, consigne, thèmes, durées de conservation…) se règlent dans
   **Administrateur → Module développement**, sans redéploiement.
@@ -354,3 +353,91 @@ python -m tests.test_identifiers           # login/identifiants + évolution du 
 Les contrats de mapping (tables/colonnes des anciens schémas) sont centralisés
 dans `migration/sources/` — à ajuster si le dump réel diffère, puis relancer un
 `--dry-run` pour valider.
+
+### 6.1 Schéma versionné (Alembic)
+
+En production PostgreSQL, le schéma n'est **plus créé au démarrage** de
+l'application : il est versionné dans `migrations/versions/` (révision de
+référence `0001_baseline`) et appliqué explicitement :
+
+```bash
+flask --app wsgi.py upgrade-db    # applique les révisions en attente (idempotent)
+flask --app wsgi.py init-db       # upgrade-db + compte administrateur initial
+```
+
+- **Installation neuve** : `init-db` crée tout (le `docker compose up` l'appelle
+  déjà avant Gunicorn).
+- **Base existante** créée par `create_all()` : après sauvegarde, adoptez-la une
+  fois — `python -m alembic stamp 0001_baseline` — puis `upgrade-db` pour les
+  évolutions suivantes. `alembic current` doit afficher `0001_baseline (head)`.
+- **Nouvelle évolution** : modifier les modèles puis
+  `python -m alembic revision --autogenerate -m "description"`, relire le script
+  généré (Alembic ne devine ni les renommages ni les données), le tester sur une
+  copie de la base réelle, puis `upgrade-db`.
+- SQLite (développement, tests) conserve `create_all()` + évolution automatique
+  limitée : Alembic n'est pas requis pour les bases locales jetables.
+
+## 7. Exploitation : sauvegardes, supervision, rétention
+
+### 7.1 Sauvegardes et restauration
+
+`ops/backup.py` réalise un `pg_dump` (format custom) **et** une archive des
+téléversements, applique la rétention puis envoie éventuellement hors-site :
+
+```bash
+# Cron quotidien (03 h 30) — stack Docker Compose
+30 3 * * *  cd /srv/foyz && /srv/foyz/.venv/bin/python -m ops.backup \
+  --pg-container foyz-db-1 --pg-user foyz --pg-database foyz \
+  --uploads-container foyz-web-1:/data/uploads \
+  --backup-dir /srv/backups/foyz --offsite backup@ailleurs:/srv/foyz-backups
+
+# PostgreSQL local (postgresql-client installé)
+DATABASE_URL=postgresql://foyz:...@localhost/foyz \
+  python -m ops.backup --backup-dir /srv/backups/foyz
+```
+
+- Rétention par défaut : **7 copies quotidiennes** + **4 hebdomadaires**
+  (`weekly/`). Le script ne supprime que ses propres fichiers `foyz-*.dump` /
+  `uploads-*.tgz`.
+- `--dry-run` affiche les commandes ; `--prune-only` n'applique que la rétention.
+
+Restauration sur un environnement vierge (**procédure testée**, quelques minutes) :
+
+```bash
+python -m ops.restore --list --backup-dir /srv/backups/foyz
+# Recréer la base cible (rôle et base PostgreSQL), puis :
+python -m ops.restore --latest --backup-dir /srv/backups/foyz \
+  --pg-container foyz-db-1 --pg-user foyz --pg-database foyz \
+  --uploads-container foyz-web-1:/data/uploads --yes
+```
+
+La base cible doit exister (par exemple créée par `init-db`) : la restauration
+remplace son contenu, elle ne crée pas le rôle. Vérifiez ensuite `/health` et
+les totaux (comptes, transactions).
+
+### 7.2 Supervision
+
+- **`GET /health`** : 200 avec `{"status":"ok","database":"ok","uploads":"ok",
+  "schema":"ok"}` ; 503 si la base ou les téléversements sont indisponibles.
+  Utilisé par le healthcheck Docker Compose.
+- **Journaux structurés** : une ligne JSON par événement sur stderr (rotation par
+  le pilote Docker `max-size: 10m, max-file: 5`, voir `docker-compose.yml`).
+  La page 500 journalise `{"event": "unhandled_error", "path": ..., "exception":
+  ...}` : alertez sur `event=unhandled_error` (grep, journald, Sentry côté
+  collecteur). `LOG_LEVEL`, `LOG_FORMAT=plain` et `LOG_FILE` (fichier tournant
+  10 Mo × 5) sont disponibles.
+- **Gunicorn** : `--timeout 60`, `--max-requests 1000` (+ jitter) pour recycler
+  les workers, erreurs et accès dans les journaux du conteneur.
+
+### 7.3 Rétention des données personnelles
+
+- Base SQLite : fichier en `600`, dossier `instance/` en `700` (appliqué au
+  démarrage).
+- Registre des connexions (IP) : purge automatique configurable (90 jours par
+  défaut), déclenchée à chaque tentative de connexion et manuellement —
+  `flask --app wsgi.py purge-logs [--days N] [--dry-run]`.
+- Archives de la migration (`bdd_a_migrer/archives/`, anciennes bases) :
+  destruction au-delà de `ARCHIVE_RETENTION_DAYS` (30 jours par défaut) —
+  `python -m migration --purge-archives 30`.
+- Politique de confidentialité : `docs/CONFIDENTIALITE.md` (à adapter et publier
+  sur le site).
