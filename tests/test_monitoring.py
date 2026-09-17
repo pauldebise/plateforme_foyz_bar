@@ -94,6 +94,21 @@ def test_health_degraded_when_uploads_unavailable():
         app.config["UPLOAD_FOLDER"] = previous
 
 
+def test_health_degraded_when_database_down():
+    from unittest import mock
+
+    from sqlalchemy import create_engine
+
+    app = create_app()
+    broken = create_engine("sqlite:////dossier-inexistant/base.db")
+    with mock.patch.object(
+        type(db), "engine", new=property(lambda self: broken), create=True
+    ):
+        res = app.test_client().get("/health")
+    _expect(res.status_code == 503, f"health 503 si base injoignable ({res.status_code})")
+    _expect(res.get_json()["database"] == "error", "base signalée en erreur")
+
+
 def test_500_handler_logs_structured_event_without_secret():
     app = create_app()
     collector = _Collector()
