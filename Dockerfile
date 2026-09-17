@@ -10,9 +10,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /data/uploads && rm -rf instance
+RUN useradd --create-home --uid 10001 foyz \
+    && mkdir -p /data/uploads \
+    && rm -rf instance \
+    && chown -R foyz:foyz /app /data/uploads
 
 ENV UPLOAD_DIR=/data/uploads
+
+USER foyz
 
 EXPOSE 8000
 

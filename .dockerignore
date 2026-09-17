@@ -1,9 +1,31 @@
+# Environnements et caches
 .venv
 venv
 __pycache__
 *.pyc
-instance
+.pytest_cache
+*.log
+
+# Secrets et données locales : jamais dans l'image
 .env
+instance
+uploads
+bdd_a_migrer
+archives
+
+# Dumps, exports et bases : données personnelles
+*.db
+*.sql
+*.sqlite
+*.csv
+*.json
+*.jsonl
+
+# Documentation et dépôt
 docs
 .git
-*.log
+AUDIT_TECHNIQUE.md
+PLAN_ACTION.md
+
+# Tests (inutiles à l'exécution)
+tests
