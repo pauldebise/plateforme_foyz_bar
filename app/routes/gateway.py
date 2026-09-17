@@ -1,13 +1,44 @@
-from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from sqlalchemy import or_, select
 
 from app.extensions import db
 from app.models import Article, Event, Tap
 from app.services import transactions as T
+from app.services.ratelimit import SlidingWindowLimiter
 from app.services.stats import top_article_ids
-from app.utils import utcnow
+from app.utils import client_ip, utcnow
 
 bp = Blueprint("gateway", __name__)
+
+# Le lien passerelle n'est pas authentifié : on borne son usage par jeton et
+# par IP (ouverture de la page et surtout encaissements).
+_page_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=120)
+_pay_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=20)
+
+
+def _limiter_key(token):
+    return f"{token}:{client_ip()}"
+
+
+def _too_many(limiter, token, action):
+    if limiter.limited(_limiter_key(token)):
+        current_app.logger.warning(
+            "Passerelle %s : seuil de %s atteint depuis %s", token, action, client_ip()
+        )
+        return True
+    return False
 
 
 @bp.before_request
@@ -28,6 +59,8 @@ def _event_from_token(token):
 
 @bp.route("/passerelle/<token>")
 def gateway(token):
+    if _too_many(_page_limiter, token, "chargements"):
+        abort(429)
     ev = _event_from_token(token)
     if not ev.is_running:
         return render_template("gateway/indisponible.html", ev=ev), 403
@@ -78,6 +111,8 @@ def gateway(token):
 
 @bp.route("/passerelle/<token>/encaisser", methods=["POST"])
 def encaisser(token):
+    if _too_many(_pay_limiter, token, "encaissements"):
+        return jsonify(ok=False, error="Trop de requêtes, patientez un instant."), 429
     ev = _event_from_token(token)
     if not ev.is_running:
         return jsonify(ok=False, error="Événement non accessible."), 403
@@ -93,6 +128,7 @@ def encaisser(token):
             payment_method=payload.get("payment_method"),
             event_id=ev.id,
             admin_password=payload.get("admin_password"),
+            idempotency_key=payload.get("idempotency_key"),
         )
         return jsonify(ok=True, transaction_id=t.id, total=t.total)
     except T.OperationError as e:

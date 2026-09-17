@@ -184,6 +184,32 @@ def test_gateway_full_parcours():
     )
 
 
+def test_gateway_rate_limits_encaissements():
+    app = create_app()
+    ids = _seed(app, "rl")
+    client = app.test_client()
+    html = client.get(f"/passerelle/{ids['token']}").get_data(as_text=True)
+    token = _csrf(html)
+    from app.routes.gateway import _pay_limiter
+
+    statuses = [
+        client.post(
+            f"/passerelle/{ids['token']}/encaisser",
+            json={"items": []},
+            headers={"X-CSRFToken": token},
+        ).status_code
+        for _ in range(_pay_limiter.max_requests + 1)
+    ]
+    _expect(
+        all(s != 429 for s in statuses[:-1]),
+        "les encaissements sous le seuil restent traités",
+    )
+    _expect(
+        statuses[-1] == 429,
+        f"au-delà du seuil, l'encaissement passerelle est refusé ({statuses[-1]})",
+    )
+
+
 def test_gateway_refuses_foreign_article():
     app = create_app()
     ids = _seed(app, "b")
