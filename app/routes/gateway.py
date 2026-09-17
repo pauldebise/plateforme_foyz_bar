@@ -101,7 +101,9 @@ def encaisser(token):
 
 @bp.route("/passerelle/<token>/quitter", methods=["POST"])
 def quitter(token):
+    # Nouvelle authentification exigée pour revenir à l'interface équipe
+    # (cahier des charges) : la session passerelle est vidée.
     _event_from_token(token)
     session.clear()
-    flash("Passerelle fermée.", "info")
-    return redirect(url_for("public.home"))
+    flash("Passerelle fermée. Connectez-vous pour revenir à l'interface équipe.", "info")
+    return redirect(url_for("auth.login"))
