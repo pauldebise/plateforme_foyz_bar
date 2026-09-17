@@ -162,7 +162,7 @@ def test_soiree_sous_charge():
                 except T.OperationError as exc:
                     with lock:
                         refusals.append(exc.code)
-                except Exception as exc:  # noqa: BLE001 - rapport de charge
+                except Exception as exc:
                     with lock:
                         errors.append(repr(exc))
 
