@@ -11,7 +11,7 @@ conformément au cahier des charges (`docs/main.tex`).
   service worker et file d'attente hors ligne pour la caisse (les ventes rejouées
   sont dédupliquées par la clé d'idempotence)
 - Sécurité : sessions signées, CSRF, hachage des mots de passe (scrypt), anti-bruteforce,
-  expiration de session par inactivité, **MFA TOTP facultatif**, politique de mot de
+  expiration de session par inactivité, politique de mot de
   passe, journal d'audit, mots de passe administrateur pour les opérations sensibles
 
 ---
@@ -39,7 +39,6 @@ Foyz_plateforme/
 │   │   ├── treasury.py        #   Trésorerie mensuelle (12 mois glissants)
 │   │   ├── catalog.py         #   Gestion fûts/tireuses, génération des articles
 │   │   ├── audit.py           #   Journal d'audit des actions d'administration
-│   │   ├── totp.py            #   MFA (TOTP RFC 6238) et codes de secours
 │   │   ├── passwords.py       #   Politique de mot de passe
 │   │   └── health.py          #   Contrôles /health + tableau de bord santé
 │   ├── routes/                # Blueprints
@@ -248,15 +247,9 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
   `CF-Connecting-IP` si `TRUSTED_PROXY=cloudflare`, sinon `remote_addr` —
   `X-Forwarded-For` brut n'est jamais utilisé ; compteurs purgés et bornés).
 - Sessions signées, `HttpOnly`, expiration automatique configurable (module développement).
-- **MFA (TOTP)** facultatif par compte, activable depuis *Sécurité* dans la barre
-  latérale : code à 6 chiffres après le mot de passe, 8 codes de secours à usage
-  unique (affichés une seule fois), anti-rejeu du même code, désactivation
-  protégée par mot de passe + code. Fonctionne avec Google Authenticator, Aegis,
-  FreeOTP… (enrôlement manuel : le secret est affiché, pas de QR code).
 - **Politique de mot de passe** (12 caractères minimum, trois familles de
   caractères, refus des mots de passe courants et de ceux contenant l'identifiant
-  ou le nom) appliquée aux formulaires d'administration et au changement de mot
-  de passe ; historique et codes de secours jamais stockés en clair.
+  ou le nom) appliquée aux formulaires d'administration.
 - Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
   annulations de transactions, retrait du statut « blacklist alcool ».
 - Registre des connexions (compte, campus, IP, succès/échec) avec purge automatique.
