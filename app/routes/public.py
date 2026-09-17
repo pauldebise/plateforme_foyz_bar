@@ -22,7 +22,10 @@ def home():
             events_by_campus[e.campus].append(e)
     limit = int_setting("max_postits_public")
     notes = db.session.scalars(
-        select(Note).where(Note.is_public.is_(True)).order_by(Note.created_at.desc()).limit(limit)
+        select(Note)
+        .where(Note.is_public.is_(True))
+        .order_by(Note.created_at.desc(), Note.id.desc())
+        .limit(limit)
     ).all()
     return render_template(
         "public/home.html",

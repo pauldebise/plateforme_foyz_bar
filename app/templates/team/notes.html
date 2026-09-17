@@ -8,7 +8,7 @@
     <div class="card h-100">
       <div class="card-header d-flex justify-content-between">
         <span><i class="bi bi-lock"></i> Tableau privé de l'équipe</span>
-        <span class="badge bg-secondary">max {{ private|length }} affichées</span>
+        <span class="badge bg-secondary">{{ private|length }} / {{ total_private }} affichées</span>
       </div>
       <div class="card-body">
         <form method="post" action="{{ url_for('team.notes_action') }}" class="mb-3">
@@ -39,6 +39,11 @@
           <p class="text-muted">Aucune note privée.</p>
           {% endfor %}
         </div>
+        {% if show_all %}
+        <p class="small mt-3 mb-0"><a href="{{ url_for('team.notes') }}">Limiter aux notes les plus récentes</a></p>
+        {% elif total_private > private|length %}
+        <p class="small mt-3 mb-0"><a href="{{ url_for('team.notes', all=1) }}">Afficher les {{ total_private - private|length }} note(s) plus ancienne(s)</a></p>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -47,7 +52,7 @@
     <div class="card h-100">
       <div class="card-header d-flex justify-content-between">
         <span><i class="bi bi-globe"></i> Notes publiques (page d'accueil)</span>
-        <span class="badge bg-secondary">max {{ public|length }} affichées</span>
+        <span class="badge bg-secondary">{{ public|length }} / {{ total_public }} affichées</span>
       </div>
       <div class="card-body">
         <form method="post" action="{{ url_for('team.notes_action') }}" class="mb-3">
@@ -78,6 +83,11 @@
           <p class="text-muted">Aucune note publique.</p>
           {% endfor %}
         </div>
+        {% if show_all %}
+        <p class="small mt-3 mb-0"><a href="{{ url_for('team.notes') }}">Limiter aux notes les plus récentes</a></p>
+        {% elif total_public > public|length %}
+        <p class="small mt-3 mb-0"><a href="{{ url_for('team.notes', all=1) }}">Afficher les {{ total_public - public|length }} note(s) plus ancienne(s)</a></p>
+        {% endif %}
       </div>
     </div>
   </div>

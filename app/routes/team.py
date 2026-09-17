@@ -3,13 +3,13 @@ import io
 from datetime import datetime, timedelta
 
 from flask import Blueprint, Response, abort, flash, g, jsonify, redirect, render_template, request, session, url_for
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from app.extensions import db
 from app.models import Article, Contribution, Note, Tap, Transaction, User
 from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
-from app.services.settings import int_setting
+from app.services.settings import check_admin_password, int_setting
 from app.services.stats import sales_stats, students_stats, top_article_ids, top_articles_stats
 from app.services.treasury import treasury
 from app.utils import ARTICLE_TYPES, CAMPUSSES, PAYMENT_METHODS, clamp_text, login_required, utcnow
@@ -241,19 +241,44 @@ def historique():
 @bp.route("/historique/annuler", methods=["POST"])
 @login_required
 def annuler():
-    tid = request.form.get("transaction_id")
-    t = db.session.get(Transaction, tid) if tid and tid.isdigit() else None
-    if t is None:
-        flash("Transaction introuvable.", "danger")
+    """Annulation d'une ou plusieurs transactions (sélection multiple, U8)."""
+    raw_ids = request.form.getlist("transaction_ids")
+    single = request.form.get("transaction_id", "")
+    if not raw_ids and single.isdigit():
+        raw_ids = [single]
+    ids = [int(x) for x in raw_ids if x.isdigit()][:50]
+    if not ids:
+        flash("Aucune transaction sélectionnée.", "danger")
         return redirect(url_for("team.historique"))
-    if t.campus != own_campus():
-        flash("Cette transaction appartient à un autre campus : seule l'équipe concernée peut l'annuler.", "danger")
+    password = request.form.get("admin_password", "")
+    if not check_admin_password(password):
+        flash("Mot de passe administrateur requis pour annuler une transaction.", "danger")
         return redirect(url_for("team.historique"))
-    try:
-        T.cancel_transaction(t, request.form.get("admin_password", ""))
-        flash(f"Transaction #{t.id} annulée, soldes mis à jour.", "success")
-    except T.OperationError as e:
-        flash(e.message, "danger")
+    cancelled, errors = 0, []
+    for tid in ids:
+        t = db.session.get(Transaction, tid)
+        if t is None:
+            errors.append(f"#{tid} introuvable")
+            continue
+        if t.cancelled:
+            errors.append(f"#{tid} déjà annulée")
+            continue
+        if t.campus != own_campus():
+            errors.append(f"#{tid} : autre campus")
+            continue
+        try:
+            T.cancel_transaction(t, password)
+            cancelled += 1
+        except T.OperationError as e:
+            errors.append(f"#{tid} : {e.message}")
+    if cancelled:
+        flash(
+            f"{cancelled} transaction{'s' if cancelled > 1 else ''} annulée"
+            f"{'s' if cancelled > 1 else ''}, soldes mis à jour.",
+            "success",
+        )
+    for message in errors[:5]:
+        flash(f"Annulation impossible — {message}.", "danger")
     return redirect(url_for("team.historique"))
 
 
@@ -416,15 +441,43 @@ def site_label():
 @bp.route("/notes")
 @login_required
 def notes():
+    """Le nombre maximal de post-it paramétré limite l'AFFICHAGE : les notes
+    plus anciennes sont conservées en base (R16) et consultables via ?all=1."""
     limit_priv = int_setting("max_postits_private")
     limit_pub = int_setting("max_postits_public")
+    show_all = request.args.get("all") == "1"
+    # Départage par identifiant : deux notes publiées dans la même microseconde
+    # doivent garder un ordre stable (la plus récente d'abord).
+    private_query = (
+        select(Note)
+        .where(Note.is_public.is_(False))
+        .order_by(Note.created_at.desc(), Note.id.desc())
+    )
+    public_query = (
+        select(Note)
+        .where(Note.is_public.is_(True))
+        .order_by(Note.created_at.desc(), Note.id.desc())
+    )
     private = db.session.scalars(
-        select(Note).where(Note.is_public.is_(False)).order_by(Note.created_at.desc()).limit(limit_priv)
+        private_query if show_all else private_query.limit(limit_priv)
     ).all()
     public = db.session.scalars(
-        select(Note).where(Note.is_public.is_(True)).order_by(Note.created_at.desc()).limit(limit_pub)
+        public_query if show_all else public_query.limit(limit_pub)
     ).all()
-    return render_template("team/notes.html", private=private, public=public)
+    total_private = db.session.scalar(
+        select(func.count(Note.id)).where(Note.is_public.is_(False))
+    )
+    total_public = db.session.scalar(
+        select(func.count(Note.id)).where(Note.is_public.is_(True))
+    )
+    return render_template(
+        "team/notes.html",
+        private=private,
+        public=public,
+        show_all=show_all,
+        total_private=total_private,
+        total_public=total_public,
+    )
 
 
 @bp.route("/notes/action", methods=["POST"])
@@ -441,7 +494,6 @@ def notes_action():
             n = Note(content=content, is_public=scope_public, author_id=g.current_user.id, author_name=g.current_user.display_name[:120])
             db.session.add(n)
             db.session.commit()
-            _trim_notes(scope_public)
             flash("Note publiée.", "success")
     elif action == "update":
         if note and content:
@@ -455,13 +507,3 @@ def notes_action():
             db.session.commit()
             flash("Note supprimée.", "success")
     return redirect(url_for("team.notes"))
-
-
-def _trim_notes(is_public):
-    limit = int_setting("max_postits_public" if is_public else "max_postits_private")
-    notes = db.session.scalars(
-        select(Note).where(Note.is_public.is_(is_public)).order_by(Note.created_at.desc())
-    ).all()
-    for old in notes[limit:]:
-        db.session.delete(old)
-    db.session.commit()

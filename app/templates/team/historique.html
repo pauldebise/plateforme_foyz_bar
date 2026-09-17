@@ -44,11 +44,22 @@
   </div>
 </form>
 
+<div class="d-flex justify-content-end mb-2">
+  <button type="button" class="btn btn-outline-danger btn-sm" id="bulk-cancel-button"
+          data-bs-toggle="modal" data-bs-target="#bulk-cancel-modal" disabled>
+    <i class="bi bi-slash-circle"></i> Annuler la sélection (<span id="bulk-count">0</span>)
+  </button>
+</div>
+
 <div class="card">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead class="table-light">
         <tr>
+          <th style="width: 2rem;">
+            <input class="form-check-input" type="checkbox" id="check-all"
+                   aria-label="Sélectionner les transactions annulables de la page">
+          </th>
           <th>Date &amp; heure</th><th>Opération</th><th>Campus</th><th class="text-end">Somme</th>
           <th>Opérateur</th><th class="text-end">Actions</th>
         </tr>
@@ -56,6 +67,12 @@
       <tbody>
         {% for t in rows %}
         <tr class="{{ 'cancelled-row' if t.cancelled }}">
+          <td>
+            {% if not t.cancelled and t.campus == own_campus %}
+            <input class="form-check-input row-check" type="checkbox" value="{{ t.id }}"
+                   form="bulk-cancel-form" aria-label="Sélectionner la transaction {{ t.id }}">
+            {% endif %}
+          </td>
           <td class="text-nowrap">{{ t.created_at|dt }}</td>
           <td>
             {{ describe(t) }}
@@ -82,7 +99,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">Aucune transaction.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">Aucune transaction.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -106,6 +123,26 @@
     </nav>
   </div>
   {% endif %}
+</div>
+
+<div class="modal fade" id="bulk-cancel-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <form class="modal-content" id="bulk-cancel-form" method="post" action="{{ url_for('team.annuler') }}">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-slash-circle"></i> Annuler les transactions sélectionnées</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <p><strong id="bulk-modal-count">0</strong> transaction(s) sélectionnée(s). Les soldes concernés seront recalculés.</p>
+        <input type="password" class="form-control" name="admin_password" placeholder="Mot de passe administrateur" required>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Retour</button>
+        <button class="btn btn-danger">Confirmer les annulations</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 <div class="modal fade" id="cancel-modal" tabindex="-1">
