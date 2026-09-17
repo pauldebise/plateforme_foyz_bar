@@ -69,6 +69,8 @@ def ensure_schema_upgrades():
                 conn.execute(text("ALTER TABLE users ADD COLUMN username VARCHAR(64)"))
             if "nickname" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN nickname VARCHAR(255)"))
+            if "disabled" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT FALSE"))
         # Backfill des identifiants manquants (nouvelle colonne, ou comptes
         # créés hors app) : slug du nom, dédoublonné par suffixe numérique.
         with db.engine.begin() as conn:

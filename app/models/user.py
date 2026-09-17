@@ -27,6 +27,10 @@ class User(db.Model):
     blacklist: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     blacklist_alcohol: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     blacklist_reason: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
+    # Compte désactivé côté ancienne base : conservé désactivé à la migration,
+    # la connexion est refusée (distinct d'une blacklist « comportement »).
+    disabled: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False,
+                                                 server_default=db.false())
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)
 
     wallets: db.Mapped[list["Wallet"]] = db.relationship(

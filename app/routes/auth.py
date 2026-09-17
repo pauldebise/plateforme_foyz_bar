@@ -115,7 +115,10 @@ def login():
                     "Mot de passe legacy converti pour %s (compte %s).",
                     user.display_name, user.id,
                 )
-        if ok and user and (not user.is_team or user.blacklist):
+        if ok and user and user.disabled:
+            ok = False
+            reason = "Accès refusé : compte désactivé."
+        elif ok and user and (not user.is_team or user.blacklist):
             ok = False
             reason = "Accès refusé : compte blacklisté." if user.blacklist else "Accès réservé aux membres de l'équipe."
         else:
