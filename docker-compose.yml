@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_DB: foyz
       POSTGRES_USER: foyz
-      POSTGRES_PASSWORD: foyz
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD est obligatoire}
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -22,7 +22,7 @@ services:
       FLASK_ENV: production
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY est obligatoire (32 caractères minimum, openssl rand -hex 32)}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD est obligatoire}
-      DATABASE_URL: postgresql+psycopg2://foyz:foyz@db:5432/foyz
+      DATABASE_URL: postgresql+psycopg2://foyz:${POSTGRES_PASSWORD}@db:5432/foyz
     volumes:
       - uploads:/data/uploads
     depends_on:
@@ -30,6 +30,12 @@ services:
         condition: service_healthy
     command: sh -c "flask --app wsgi.py init-db && gunicorn --workers 4 --bind 0.0.0.0:8000 --access-logfile - wsgi:app"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   pgdata:

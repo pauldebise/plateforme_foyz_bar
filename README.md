@@ -102,9 +102,14 @@ Les fichiers téléversés (affiches, logos, PDF) sont conservés dans le volume
 
 ```bash
 cp .env.example .env
-# Éditez .env : SECRET_KEY (openssl rand -hex 32) et ADMIN_PASSWORD
+# Éditez .env : SECRET_KEY (openssl rand -hex 32), ADMIN_PASSWORD et
+# POSTGRES_PASSWORD (alphanumérique de préférence)
 docker compose up -d --build
 ```
+
+Sans ces variables, `docker compose` refuse de démarrer avec un message
+explicite (aucune valeur par défaut faible n'est fournie). Le service `web`
+dispose d'un healthcheck HTTP et ne démarre qu'une fois PostgreSQL prêt.
 
 L'application est servie sur `http://<serveur>:8000`.
 La base et les tables sont créées automatiquement au premier démarrage ; connectez-vous
