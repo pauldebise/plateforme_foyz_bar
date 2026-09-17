@@ -136,6 +136,31 @@ def ensure_schema_upgrades():
                         "ON transaction_lines (article_id)"
                     )
                 )
+    if "audit_logs" not in table_columns:
+        with db.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS audit_logs ("
+                    "id INTEGER NOT NULL PRIMARY KEY, "
+                    "user_id INTEGER, "
+                    "actor VARCHAR(160) NOT NULL DEFAULT '', "
+                    "campus VARCHAR(10) NOT NULL DEFAULT '', "
+                    "action VARCHAR(60) NOT NULL, "
+                    "target VARCHAR(160) NOT NULL DEFAULT '', "
+                    "details TEXT NOT NULL DEFAULT '', "
+                    "ip VARCHAR(64) NOT NULL DEFAULT '', "
+                    "created_at DATETIME NOT NULL, "
+                    "FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE SET NULL)"
+                )
+            )
+            conn.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_audit_logs_action ON audit_logs (action)")
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs (created_at)"
+                )
+            )
 
 
 def _restrict_instance_permissions(app):
@@ -508,6 +533,25 @@ def create_app():
             removed = query.delete(synchronize_session=False)
             db.session.commit()
             print(f"{removed} entrée(s) supprimée(s) (antérieures au {cutoff:%Y-%m-%d}).")
+
+    @app.cli.command("purge-audit")
+    @click.option(
+        "--days",
+        type=int,
+        default=None,
+        help="Rétention en jours (défaut : réglage audit_logs_retention_days).",
+    )
+    @click.option("--dry-run", is_flag=True, help="Affiche sans supprimer.")
+    def purge_audit_command(days, dry_run):
+        """Purge le journal d'audit au-delà de la rétention."""
+        from app.services import audit
+
+        with app.app_context():
+            removed = audit.purge(retention_days=days, dry_run=dry_run)
+            if dry_run:
+                print(f"{removed} entrée(s) d'audit seraient supprimées.")
+            else:
+                print(f"{removed} entrée(s) d'audit supprimée(s).")
 
     @app.cli.command("legacy-passwords")
     @click.option("--purge", is_flag=True, help="Vider legacy_password des comptes listés.")

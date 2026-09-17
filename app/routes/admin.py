@@ -19,7 +19,8 @@ from sqlalchemy import func, or_, select
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import Article, Event, Keg, LoginLog, Tap, UsefulLink, User
+from app.models import Article, AuditLog, Event, Keg, LoginLog, Tap, UsefulLink, User
+from app.services import audit as A
 from app.services import catalog as C
 from app.services import settings as S
 from app.utils import (
@@ -149,6 +150,11 @@ def comptes_nouveau():
     db.session.flush()
     for c in CAMPUSSES:
         u.wallet(c)
+    A.record(
+        "compte.creation",
+        target=f"{u.display_name} ({u.username})",
+        details="Portefeuilles Brest et Paris initialisés",
+    )
     db.session.commit()
     flash(
         f"Compte de {u.display_name} créé (identifiant {u.username}, portefeuilles Brest et Paris initialisés).",
@@ -164,6 +170,14 @@ def compte(user_id):
     if u is None:
         abort(404)
     if request.method == "POST":
+        before = {
+            "name": u.name,
+            "nickname": u.nickname,
+            "username": u.username,
+            "promotion": u.promotion,
+            "blacklist": u.blacklist,
+            "blacklist_alcohol": u.blacklist_alcohol,
+        }
         new_name = clamp_text((request.form.get("name") or "").strip(), 255)
         if new_name and new_name != u.name:
             u.name = new_name
@@ -199,6 +213,24 @@ def compte(user_id):
                 "Statut blacklist activé : tous les accès de ce compte (dont équipe) sont retirés.",
                 "warning",
             )
+        changes = []
+        if before["name"] != u.name:
+            changes.append(f"nom : {u.name}")
+        if before["nickname"] != u.nickname:
+            changes.append(f"surnom : {u.nickname or 'aucun'}")
+        if before["username"] != u.username:
+            changes.append(f"identifiant : {before['username']} -> {u.username}")
+        if before["promotion"] != u.promotion:
+            changes.append(f"promotion : {u.promotion if u.promotion is not None else 'aucune'}")
+        if before["blacklist"] != u.blacklist:
+            changes.append(f"blacklist : {'oui' if u.blacklist else 'non'}")
+        if before["blacklist_alcohol"] != u.blacklist_alcohol:
+            changes.append(f"blacklist alcool : {'oui' if u.blacklist_alcohol else 'non'}")
+        A.record(
+            "compte.modification",
+            target=f"{u.display_name} ({u.username})",
+            details="; ".join(changes) or "aucun changement",
+        )
         db.session.commit()
         flash("Profil mis à jour.", "success")
         return redirect(url_for("admin.compte", user_id=u.id))
@@ -251,6 +283,11 @@ def compte_supprimer(user_id):
     if warnings:
         flash("Attention : " + ", ".join(warnings) + ".", "warning")
     name = u.display_name
+    A.record(
+        "compte.suppression",
+        target=name,
+        details="Portefeuilles effacés, historique comptable conservé",
+    )
     db.session.delete(u)
     db.session.commit()
     flash(
@@ -299,6 +336,16 @@ def membre(user_id):
             from werkzeug.security import generate_password_hash
 
             u.password_hash = generate_password_hash(password)
+        A.record(
+            "equipe.modification",
+            target=f"{u.display_name} ({u.username})",
+            details="; ".join(
+                [
+                    f"statut équipe : {u.team_status or 'aucun'}",
+                    "mot de passe redéfini" if password else "mot de passe inchangé",
+                ]
+            ),
+        )
         db.session.commit()
         flash("Membre mis à jour.", "success")
         return redirect(url_for("admin.membre", user_id=u.id))
@@ -324,6 +371,11 @@ def article_nouveau():
             flash("Prix invalide : saisissez un montant numérique raisonnable.", "danger")
             return redirect(url_for("admin.article_nouveau"))
         db.session.add(a)
+        A.record(
+            "article.creation",
+            target=a.name,
+            details=f"Type {a.article_type}, campus {CAMPUSSES[own_campus()]}",
+        )
         db.session.commit()
         flash("Article créé.", "success")
         return redirect(url_for("admin.articles"))
@@ -346,6 +398,11 @@ def article(article_id):
             db.session.rollback()
             flash("Prix invalide : saisissez un montant numérique raisonnable.", "danger")
             return redirect(url_for("admin.article", article_id=a.id))
+        A.record(
+            "article.modification",
+            target=a.name,
+            details=f"Actif : {'oui' if a.active else 'non'}, campus {CAMPUSSES[own_campus()]}",
+        )
         db.session.commit()
         flash("Article mis à jour.", "success")
         return redirect(url_for("admin.articles"))
@@ -358,6 +415,7 @@ def article_supprimer(article_id):
     a = db.session.get(Article, article_id)
     if a and not a.is_tap and not a.event_id:
         a.active = False
+        A.record("article.desactivation", target=a.name)
         db.session.commit()
         flash("Article désactivé.", "success")
     return redirect(url_for("admin.articles"))
@@ -416,6 +474,11 @@ def keg_nouveau():
         return redirect(url_for("admin.tireuses"))
     keg.remaining_l = keg.volume_l
     db.session.add(keg)
+    A.record(
+        "fut.creation",
+        target=keg.name,
+        details=f"{keg.volume_l:g} L, campus {CAMPUSSES[own_campus()]}",
+    )
     db.session.commit()
     flash("Fût enregistré.", "success")
     return redirect(url_for("admin.tireuses"))
@@ -434,6 +497,11 @@ def keg(keg_id):
             db.session.rollback()
             flash("Volume ou degré invalide (nombres positifs attendus).", "danger")
             return redirect(url_for("admin.keg", keg_id=keg.id))
+        A.record(
+            "fut.modification",
+            target=keg.name,
+            details=f"{keg.volume_l:g} L, restant {keg.remaining_l:g} L",
+        )
         db.session.commit()
         if request.form.get("refresh_articles") == "on":
             C.refresh_tap_articles(keg, campus=own_campus())
@@ -463,6 +531,7 @@ def keg_supprimer(keg_id):
             return redirect(url_for("admin.tireuses"))
         for tap in list(db.session.scalars(select(Tap).where(Tap.keg_id == keg.id))):
             C.detach_keg(tap)
+        A.record("fut.suppression", target=keg.name)
         db.session.delete(keg)
         db.session.commit()
         flash("Fût supprimé.", "success")
@@ -518,6 +587,7 @@ def tap_nouveau():
         return redirect(url_for("admin.tireuses"))
     max_number = db.session.scalar(select(func.max(Tap.number))) or 0
     db.session.add(Tap(number=max_number + 1, name=name[:255], campus=campus))
+    A.record("tireuse.creation", target=name, details=f"Campus {CAMPUSSES[campus]}")
     db.session.commit()
     flash(f'"{name}" ajoutée.', "success")
     return redirect(url_for("admin.tireuses"))
@@ -548,7 +618,9 @@ def tap_renommer(tap_id):
     if duplicate:
         flash("Une autre tireuse porte déjà ce nom sur ce campus.", "danger")
         return redirect(url_for("admin.tireuses"))
+    old_name = tap.name
     tap.name = name[:255]
+    A.record("tireuse.renommage", target=name, details=f"Ancien nom : {old_name}")
     db.session.commit()
     if tap.keg_id:
         C.assign_keg(tap, db.session.get(Keg, tap.keg_id))
@@ -563,6 +635,9 @@ def tap_assigner(tap_id):
     keg = db.session.get(Keg, request.form.get("keg_id", ""))
     if tap and keg:
         C.assign_keg(tap, keg)
+        A.record(
+            "tireuse.affectation", target=tap.display_name, details=f"Fût {keg.name}", commit=True
+        )
         flash(f'Fût "{keg.name}" assigné à {tap.display_name} : catalogue mis à jour.', "success")
     return redirect(url_for("admin.tireuses"))
 
@@ -573,6 +648,7 @@ def tap_detacher(tap_id):
     tap = _campus_tap_or_404(tap_id)
     if tap:
         C.detach_keg(tap)
+        A.record("tireuse.detachement", target=tap.display_name, commit=True)
         flash(f"{tap.display_name} libérée.", "success")
     return redirect(url_for("admin.tireuses"))
 
@@ -585,6 +661,12 @@ def tap_supprimer(tap_id):
         abort(404)
     name = tap.display_name
     C.delete_tap(tap)
+    A.record(
+        "tireuse.suppression",
+        target=name,
+        details="Articles pression désactivés",
+        commit=True,
+    )
     flash(f'Tireuse "{name}" supprimée : ses articles pression ont été désactivés.', "success")
     return redirect(url_for("admin.tireuses"))
 
@@ -628,6 +710,11 @@ def evenement_nouveau():
         poster=poster,
     )
     db.session.add(ev)
+    A.record(
+        "evenement.creation",
+        target=ev.name,
+        details=f"Campus {CAMPUSSES[campus]}, du {ev.starts_at:%d/%m/%Y %H:%M} au {ev.ends_at:%d/%m/%Y %H:%M}",
+    )
     db.session.commit()
     flash("Événement créé.", "success")
     return redirect(url_for("admin.evenement", event_id=ev.id))
@@ -662,6 +749,7 @@ def evenement(event_id):
             )
             if poster:
                 ev.poster = poster
+            A.record("evenement.modification", target=ev.name)
         elif action == "add_article":
             try:
                 a = Article(
@@ -681,14 +769,28 @@ def evenement(event_id):
             volume = request.form.get("volume_cl", "").strip()
             a.volume_cl = int(volume) if volume.isdigit() else None
             db.session.add(a)
+            A.record("evenement.article_ajout", target=a.name, details=f"Événement {ev.name}")
         elif action == "del_article":
             a = db.session.get(Article, request.form.get("article_id", ""))
             if a and a.event_id == ev.id:
+                A.record(
+                    "evenement.article_suppression", target=a.name, details=f"Événement {ev.name}"
+                )
                 db.session.delete(a)
         elif action == "regenerate_token":
             ev.token = new_token()
+            A.record(
+                "evenement.jeton",
+                target=ev.name,
+                details="Les anciens liens de passerelle sont invalidés",
+            )
         elif action == "toggle_closed":
             ev.closed = not ev.closed
+            A.record(
+                "evenement.fermeture",
+                target=ev.name,
+                details="Événement fermé" if ev.closed else "Événement réouvert",
+            )
         db.session.commit()
         flash("Événement mis à jour.", "success")
         return redirect(url_for("admin.evenement", event_id=ev.id))
@@ -743,6 +845,56 @@ def journaux():
     return render_template("admin/journaux.html", logs=logs, filters=request.args)
 
 
+@bp.route("/audit")
+@login_required
+def audit():
+    days = S.int_setting("audit_logs_retention_days")
+    if days > 0:
+        db.session.query(AuditLog).filter(
+            AuditLog.created_at < utcnow() - timedelta(days=days)
+        ).delete()
+        db.session.commit()
+    faction = request.args.get("action", "").strip()
+    fuser = request.args.get("user", "").strip()
+    ffrom = request.args.get("from", "")
+    fto = request.args.get("to", "")
+    stmt = select(AuditLog)
+    if faction in A.ACTION_LABELS:
+        stmt = stmt.where(AuditLog.action == faction)
+    if fuser:
+        like = f"%{fuser}%"
+        stmt = stmt.where(or_(AuditLog.actor.ilike(like), AuditLog.target.ilike(like)))
+    if ffrom:
+        with contextlib.suppress(ValueError):
+            stmt = stmt.where(AuditLog.created_at >= datetime.strptime(ffrom, "%Y-%m-%d"))
+    if fto:
+        with contextlib.suppress(ValueError):
+            stmt = stmt.where(
+                AuditLog.created_at
+                <= datetime.strptime(fto, "%Y-%m-%d") + timedelta(days=1, microseconds=-1)
+            )
+    stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
+    total = db.session.scalar(select(func.count()).select_from(stmt.subquery()))
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    logs = db.session.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).all()
+    return render_template(
+        "admin/audit.html",
+        logs=logs,
+        actions=A.ACTION_LABELS,
+        filters=request.args,
+        page=page,
+        pages=pages,
+        total=total,
+        link_args={k: v for k, v in request.args.items() if k != "page"},
+    )
+
+
 @bp.route("/module-dev", methods=["GET", "POST"])
 @login_required
 def module_dev():
@@ -756,6 +908,7 @@ def module_dev():
                 "deposit_enabled",
                 "max_history_days",
                 "login_logs_retention_days",
+                "audit_logs_retention_days",
                 "session_timeout_minutes",
                 "max_postits_private",
                 "max_postits_public",
@@ -803,10 +956,12 @@ def module_dev():
                 S.set_setting(f"logo_{own}", logo_own)
             if payment_photo_own:
                 S.set_setting(f"payment_photo_{own}", payment_photo_own)
+            A.record("reglages.modification", details=f"Campus {CAMPUSSES[own]}")
             flash("Paramètres enregistrés.", "success")
         elif action == "reset_theme_colors":
             for key in ("theme_color_public", f"theme_color_{own}"):
                 S.set_setting(key, S.DEFAULTS[key])
+            A.record("reglages.couleurs", details=f"Campus {CAMPUSSES[own]}")
             flash("Couleurs réinitialisées aux valeurs par défaut.", "success")
         elif action == "password":
             current = request.form.get("current_password", "")
@@ -817,6 +972,7 @@ def module_dev():
                 flash("Nouveau mot de passe trop court.", "danger")
             else:
                 S.set_admin_password(new)
+                A.record("reglages.mot_de_passe")
                 flash("Mot de passe administrateur modifié.", "success")
         elif action == "add_link":
             label = clamp_text((request.form.get("label") or "").strip(), 160)
@@ -827,6 +983,7 @@ def module_dev():
                 except (TypeError, ValueError):
                     position = 0
                 db.session.add(UsefulLink(label=label, url=url, position=position))
+                A.record("lien.ajout", target=label, details=url)
                 db.session.commit()
                 flash("Lien ajouté.", "success")
         elif action == "del_link":
@@ -836,6 +993,7 @@ def module_dev():
                 link_id = None
             link = db.session.get(UsefulLink, link_id) if link_id is not None else None
             if link:
+                A.record("lien.suppression", target=link.label, details=link.url)
                 db.session.delete(link)
                 db.session.commit()
                 flash("Lien supprimé.", "success")
@@ -857,6 +1015,11 @@ def module_dev():
                 )
                 if photo:
                     member.photo = photo
+                A.record(
+                    "trombinoscope.modification",
+                    target=member.display_name,
+                    details=f"Visible : {'oui' if member.trombinoscope_visible else 'non'}",
+                )
                 db.session.commit()
                 flash(f"Trombinoscope de {member.display_name} mis à jour.", "success")
             else:

@@ -41,6 +41,10 @@
               <input class="form-control" type="number" name="login_logs_retention_days" value="{{ values['login_logs_retention_days'] }}">
             </div>
             <div class="col-md-4">
+              <label class="form-label">Conservation du journal d'audit (jours)</label>
+              <input class="form-control" type="number" name="audit_logs_retention_days" value="{{ values['audit_logs_retention_days'] }}">
+            </div>
+            <div class="col-md-4">
               <label class="form-label">Déconnexion pour inactivité (minutes)</label>
               <input class="form-control" type="number" name="session_timeout_minutes" value="{{ values['session_timeout_minutes'] }}">
             </div>

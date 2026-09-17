@@ -19,6 +19,7 @@ DEFAULTS = {
     "payment_photo_paris": "",
     "max_history_days": "365",
     "login_logs_retention_days": "90",
+    "audit_logs_retention_days": "365",
     "session_timeout_minutes": "30",
     "max_postits_private": "20",
     "max_postits_public": "10",

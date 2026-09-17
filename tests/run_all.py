@@ -28,6 +28,7 @@ SQLITE_SUITES = [
     "tests.test_hardening",
     "tests.test_ux",
     "tests.test_monitoring",
+    "tests.test_audit",
     "tests.test_performance",
     "tests.migration.test_migration",
     "tests.test_ops",
@@ -44,6 +45,7 @@ POSTGRES_SUITES = [
     "tests.test_hardening",
     "tests.test_ux",
     "tests.test_monitoring",
+    "tests.test_audit",
     "tests.test_security",
     "tests.test_identifiers",
 ]
