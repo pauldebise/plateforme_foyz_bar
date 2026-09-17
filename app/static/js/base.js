@@ -1,7 +1,36 @@
 // Comportements génériques, sans script inline (compatibles CSP).
 // - data-confirm : confirmation avant soumission d'un formulaire.
 // - data-copy : copie d'une URL relative dans le presse-papiers.
+// - toast(message, type) : notification éphémère (remplace alert()).
 (() => {
+  window.toast = function toast(message, type = 'danger') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    if (typeof bootstrap === 'undefined' || !bootstrap.Toast) {
+      window.alert(message);
+      return;
+    }
+    const el = document.createElement('div');
+    el.className = `toast align-items-center text-bg-${type} border-0`;
+    el.setAttribute('role', 'status');
+    const body = document.createElement('div');
+    body.className = 'd-flex';
+    const text = document.createElement('div');
+    text.className = 'toast-body';
+    text.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn-close btn-close-white me-2 m-auto';
+    close.setAttribute('data-bs-dismiss', 'toast');
+    close.setAttribute('aria-label', 'Fermer');
+    body.appendChild(text);
+    body.appendChild(close);
+    el.appendChild(body);
+    container.appendChild(el);
+    el.addEventListener('hidden.bs.toast', () => el.remove());
+    new bootstrap.Toast(el, { delay: 4000 }).show();
+  };
+
   document.addEventListener('submit', (event) => {
     const message = event.target.getAttribute && event.target.getAttribute('data-confirm');
     if (message && !window.confirm(message)) event.preventDefault();

@@ -55,15 +55,17 @@
         </div>
         <hr>
         {% endif %}
-        <div class="d-flex justify-content-between align-items-center">
-          <span class="h5 mb-0">Total</span>
-          <span class="h3 mb-0 fw-bold" id="cart-total">0,00 €</span>
+        <div class="{% if not read_only %}d-none d-lg-block{% endif %}">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="h5 mb-0">Total</span>
+            <span class="h3 mb-0 fw-bold" id="cart-total" data-total>0,00 €</span>
+          </div>
+          {% if read_only %}
+          <p class="small text-muted mt-3 mb-0"><i class="bi bi-lock"></i> Lecture seule</p>
+          {% else %}
+          <button class="btn btn-primary w-100 mt-3" id="pay-button" data-pay disabled><i class="bi bi-credit-card"></i> Encaisser</button>
+          {% endif %}
         </div>
-        {% if read_only %}
-        <p class="small text-muted mt-3 mb-0"><i class="bi bi-lock"></i> Lecture seule</p>
-        {% else %}
-        <button class="btn btn-primary w-100 mt-3" id="pay-button" disabled><i class="bi bi-credit-card"></i> Encaisser</button>
-        {% endif %}
       </div>
     </div>
 
@@ -116,6 +118,16 @@
     </div>
   </div>
 </div>
+
+{% if not read_only %}
+<div class="mobile-pay-bar d-lg-none" id="mobile-pay-bar">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-muted">Total</span>
+    <span class="h4 mb-0 fw-bold" data-total>0,00 €</span>
+  </div>
+  <button class="btn btn-primary w-100" id="pay-button-mobile" data-pay disabled><i class="bi bi-credit-card"></i> Encaisser</button>
+</div>
+{% endif %}
 
 <div class="modal fade" id="admin-modal" tabindex="-1">
   <div class="modal-dialog">

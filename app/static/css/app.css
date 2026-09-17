@@ -121,6 +121,21 @@ a, .btn-link { color: var(--primary); }
 .card { border: 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .card-header { background: #fff; border-bottom: 1px solid #eef0f2; font-weight: 600; }
 
+/* Barre d'action caisse collante (mobile) : total + Encaisser toujours
+   accessibles sans remonter le catalogue (U3). */
+.mobile-pay-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1040;
+  padding: .6rem .9rem calc(.6rem + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #eef0f2;
+  box-shadow: 0 -2px 8px rgba(0,0,0,.08);
+}
+body.has-mobile-pay-bar .main-area { padding-bottom: 7.5rem; }
+
 .table-sm td, .table-sm th { padding: .35rem .5rem; }
 
 .postit {

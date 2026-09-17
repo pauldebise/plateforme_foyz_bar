@@ -17,12 +17,11 @@ const els = {
   catalog: $('catalog'),
   cartBody: $('cart-body'),
   cartEmpty: $('cart-empty'),
-  total: $('cart-total'),
+  mobileBar: $('mobile-pay-bar'),
   depositSwitch: $('deposit-switch'),
   glasses: $('deposit-glasses'),
   directSwitch: $('direct-switch'),
   directMethods: $('direct-methods'),
-  payBtn: $('pay-button'),
   adminModal: $('admin-modal') ? new bootstrap.Modal($('admin-modal')) : null,
   successModal: $('success-modal') ? new bootstrap.Modal($('success-modal')) : null,
   rgSearch: $('glasses-search'),
@@ -87,6 +86,10 @@ function renderContributors() {
     button.addEventListener('click', () => {
       contributors = contributors.filter((x) => x.id !== c.id);
       renderContributors();
+      // Les tarifs (équipe ou standard) et donc le panier dépendent des
+      // contributeurs : on recalcule catalogue et total (U2).
+      renderCatalog();
+      renderCart();
     });
     li.appendChild(info);
     li.appendChild(button);
@@ -98,8 +101,19 @@ function renderContributors() {
   updatePayButton();
 }
 
+function payButtons() {
+  return Array.from(document.querySelectorAll('[data-pay]'));
+}
+
 function updatePayButton() {
-  if (els.payBtn) els.payBtn.disabled = cart.size === 0 || (!contributors.length && !isDirect());
+  const disabled = cart.size === 0 || (!contributors.length && !isDirect());
+  payButtons().forEach((b) => { b.disabled = disabled; });
+}
+
+function syncTotals() {
+  document.querySelectorAll('[data-total]').forEach((el) => {
+    el.textContent = (grandTotal() / 100).toFixed(2) + ' €';
+  });
 }
 
 const TYPE_LABELS = {
@@ -394,7 +408,7 @@ function renderCart() {
     drow.appendChild(makeEl('td', 'text-end fw-bold', `${((glassesCount() * DEPOSIT_VALUE) / 100).toFixed(2)} €`));
     drow.appendChild(makeEl('td'));
   }
-  els.total.textContent = (grandTotal() / 100).toFixed(2) + ' €';
+  syncTotals();
   updatePayButton();
 }
 
@@ -453,7 +467,7 @@ async function pay(adminPassword) {
       $('admin-negative-users').textContent = (e.extra.negative_users || []).join(', ');
       els.adminModal.show();
     } else {
-      alert(e.message);
+      toast(e.message);
     }
   } finally {
     paying = false;
@@ -468,13 +482,19 @@ function showSuccess(total) {
   if (els.depositSwitch) els.depositSwitch.checked = false;
   if (els.glasses) els.glasses.value = 1;
   if (els.directSwitch) els.directSwitch.checked = false;
+  if (els.contributorsCard) els.contributorsCard.classList.remove('d-none');
+  const depositCard = $('deposit-card');
+  const directCard = $('direct-card');
+  if (depositCard) depositCard.classList.remove('d-none');
+  if (directCard) directCard.classList.add('d-none');
   orderKey = null;
   orderSignature = null;
   renderContributors();
   renderCart();
   renderCatalog();
+  // Pas de rechargement : l'état (panier, contributeurs, défilement) est déjà
+  // remis à zéro, la page reste en place (U4).
   els.successModal.show();
-  setTimeout(() => window.location.reload(), 2600);
 }
 
 if ($('admin-validate')) {
@@ -530,7 +550,7 @@ if (els.catalogSearch) {
         addToCart(a);
         els.catalogSearch.value = '';
         renderCatalog();
-      } else if (!els.catalogSearch.value.trim() && els.payBtn && !els.payBtn.disabled) {
+      } else if (!els.catalogSearch.value.trim() && payButtons().some((b) => !b.disabled)) {
         pay();
       }
     } else if (e.key === 'Escape') {
@@ -539,12 +559,16 @@ if (els.catalogSearch) {
     }
   });
 }
-if (els.payBtn) els.payBtn.addEventListener('click', () => pay());
+payButtons().forEach((button) => button.addEventListener('click', () => pay()));
+if (els.mobileBar) document.body.classList.add('has-mobile-pay-bar');
 
 initStudentSearch(els.search, els.results, (r) => {
   if (contributors.find((c) => c.id === r.id)) return;
   contributors.push(r);
   renderContributors();
+  // Les tarifs dépendent des contributeurs : catalogue et panier recalculés (U2).
+  renderCatalog();
+  renderCart();
   if (els.catalogSearch) els.catalogSearch.focus();
 }, { campus: CAMPUS });
 
@@ -570,10 +594,22 @@ if (els.rgSearch) {
     if (!rgUser) return;
     try {
       const res = await apiFetch('/api/glasses/return', { json: { user_id: rgUser.id, count } });
-      alert(`Retour enregistré : ${(res.total / 100).toFixed(2)} € crédités.`);
-      window.location.reload();
+      toast(`Retour enregistré : ${(res.total / 100).toFixed(2)} € crédités.`, 'success');
+      // Mise à jour sur place : pas de rechargement de page (U4).
+      rgUser.glasses = Math.max(0, (rgUser.glasses || 0) - count);
+      if (rgUser.glasses > 0) {
+        const info = $('glasses-info');
+        info.replaceChildren();
+        info.appendChild(makeEl('strong', '', rgUser.name));
+        info.appendChild(document.createTextNode(' — verres consignés en cours : '));
+        info.appendChild(makeEl('span', 'badge bg-secondary', `${rgUser.glasses}`));
+      } else {
+        els.rgPanel.classList.add('d-none');
+        els.rgSearch.value = '';
+        rgUser = null;
+      }
     } catch (e) {
-      alert(e.message);
+      toast(e.message);
     }
   }
 }
