@@ -170,6 +170,34 @@ function tapRow(group) {
   return row;
 }
 
+function tapCard(taps) {
+  const card = document.createElement('div');
+  card.className = 'card mb-2 border-warning';
+  card.innerHTML = `<div class="card-header py-1 small fw-bold"><i class="bi bi-cup-straw"></i> Tireuses</div><div class="card-body p-0"></div>`;
+  const body = card.querySelector('.card-body');
+  taps.forEach((g) => body.appendChild(tapRow(g)));
+  return card;
+}
+
+function eventCard(eventItems) {
+  const card = document.createElement('div');
+  card.className = 'card mb-2 border-warning';
+  card.innerHTML = `<div class="card-header py-1 small fw-bold text-warning-emphasis"><i class="bi bi-calendar-event"></i> Articles de l'événement</div><div class="card-body p-0"></div>`;
+  const body = card.querySelector('.card-body');
+  eventItems.forEach((a) => body.appendChild(catalogRow(a)));
+  return card;
+}
+
+function standardCards() {
+  const groups = {};
+  CATALOG.filter((a) => !a.event && !a.tap).forEach((a) => {
+    (groups[a.type] = groups[a.type] || []).push(a);
+  });
+  return Object.entries(groups).map(([type, items]) => (
+    catalogCard(TYPE_LABELS[type] || type, '', '', items)
+  ));
+}
+
 function renderCatalog() {
   if (!els.catalog) return;
   const q = els.catalogSearch.value.trim().toLowerCase();
@@ -194,20 +222,26 @@ function renderCatalog() {
     els.catalog.appendChild(card);
     return;
   }
+  // Passerelle : événement, tireuses puis catalogue standard — sans réduction
+  // aux « tendances » (les articles de l'événement doivent rester visibles
+  // même sans historique de vente).
+  if (window.GATEWAY_MODE) {
+    const eventItems = CATALOG.filter((a) => a.event);
+    if (eventItems.length) els.catalog.appendChild(eventCard(eventItems));
+    const taps = tapGroups();
+    if (taps.length) els.catalog.appendChild(tapCard(taps));
+    standardCards().forEach((card) => els.catalog.appendChild(card));
+    clearCatalogActive();
+    return;
+  }
+
   const trending = CATALOG
     .filter((a) => a.rank != null && !a.tap)
     .sort(popularitySort)
     .slice(0, 9);
   const taps = tapGroups();
   if (trending.length || taps.length) {
-    if (taps.length) {
-      const card = document.createElement('div');
-      card.className = 'card mb-2 border-warning';
-      card.innerHTML = `<div class="card-header py-1 small fw-bold"><i class="bi bi-cup-straw"></i> Tireuses</div><div class="card-body p-0"></div>`;
-      const body = card.querySelector('.card-body');
-      taps.forEach((g) => body.appendChild(tapRow(g)));
-      els.catalog.appendChild(card);
-    }
+    if (taps.length) els.catalog.appendChild(tapCard(taps));
     if (trending.length) {
       els.catalog.appendChild(catalogCard(
         'Articles tendances', '<i class="bi bi-fire"></i>', 'border-success', trending,

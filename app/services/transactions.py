@@ -107,7 +107,7 @@ def search_students(query, campus=None, limit=15):
     return results
 
 
-def _resolve_items(items, event_id=None):
+def _resolve_items(items, event_id=None, campus=None):
     if not items:
         raise OperationError("invalid", "Aucun article sélectionné.")
     merged = {}
@@ -131,7 +131,17 @@ def _resolve_items(items, event_id=None):
         if a is None:
             raise OperationError("invalid", "Article indisponible.")
         if a.event_id != event_id:
-            raise OperationError("invalid", "Article indisponible.")
+            # hors d'un événement, seuls les articles standard sont vendables ;
+            # en contexte événement (passerelle), le catalogue standard du
+            # campus reste disponible en plus des articles de l'événement
+            standard_ok = (
+                event_id is not None
+                and a.event_id is None
+                and campus in ("brest", "paris")
+                and a.price_for(campus) > 0
+            )
+            if not standard_ok:
+                raise OperationError("invalid", "Article indisponible.")
         lines.append((a, qty))
     return lines
 
@@ -162,7 +172,7 @@ def create_purchase(
         if not contributor_ids:
             raise OperationError("invalid", "Aucun étudiant sélectionné.")
 
-    lines = _resolve_items(items, event_id=event_id)
+    lines = _resolve_items(items, event_id=event_id, campus=campus)
     users = []
     if not direct:
         seen = set()

@@ -1,8 +1,8 @@
 from flask import Blueprint, abort, flash, g, jsonify, redirect, render_template, request, session, url_for
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from app.extensions import db
-from app.models import Article, Event
+from app.models import Article, Event, Tap
 from app.services import transactions as T
 from app.services.stats import top_article_ids
 from app.utils import utcnow
@@ -37,11 +37,25 @@ def gateway(token):
 
     session["last_activity"] = time.time()
     session.permanent = True
+    # Catalogue de la passerelle : articles de l'événement + catalogue
+    # standard du campus de l'événement (cahier des charges, §Gestion des
+    # événements), dans les mêmes conditions de disponibilité que l'onglet
+    # Paiement de l'équipe.
+    campus_tap_numbers = select(Tap.number).where(Tap.campus == ev.campus)
     articles = db.session.scalars(
         select(Article)
-        .where(Article.active.is_(True), Article.event_id == ev.id)
-        .order_by(Article.name)
+        .where(
+            Article.active.is_(True),
+            or_(Article.event_id == ev.id, Article.event_id.is_(None)),
+            or_(Article.is_tap.is_(False), Article.tap_number.in_(campus_tap_numbers)),
+        )
+        .order_by(Article.event_id.is_(None), Article.name)
     ).all()
+    # un article standard absent du campus (aucun prix public) est exclu
+    articles = [
+        a for a in articles
+        if a.event_id == ev.id or a.price_for(ev.campus) > 0
+    ]
     data = []
     rank_of = {aid: i for i, aid in enumerate(top_article_ids(ev.campus))}
     for a in articles:
