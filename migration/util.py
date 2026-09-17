@@ -3,10 +3,11 @@
 Aucune dépendance Flask : ce module doit rester importable seul.
 """
 
+import contextlib
 import html
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo
 
@@ -15,7 +16,6 @@ from .errors import MigrationError
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
 _INT_RE = re.compile(r"^[+-]?\d+$")
-_FLOAT_RE = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
 
 _MONEY_ERROR = (
     "montant illisible : {!r} (les montants doivent être des décimaux en euros "
@@ -101,7 +101,7 @@ def unescape_html(value):
         return value
     try:
         return html.unescape(value)
-    except Exception:  # noqa: BLE001 — dégradation douce sur une chaîne exotique
+    except Exception:
         return value
 
 
@@ -149,23 +149,21 @@ def parse_dt(raw, assume_tz=PARIS_TZ):
             if dt is not None:
                 break
         if dt is None:
-            try:
+            with contextlib.suppress(ValueError):
                 dt = datetime.fromisoformat(text)
-            except ValueError:
-                pass
         if dt is None:
             try:
-                return datetime.fromtimestamp(int(float(text)), tz=timezone.utc).replace(tzinfo=None)
+                return datetime.fromtimestamp(int(float(text)), tz=UTC).replace(tzinfo=None)
             except (ValueError, OverflowError):
                 raise MigrationError(f"date illisible : {raw!r}") from None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=assume_tz)
-    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.astimezone(UTC).replace(tzinfo=None)
 
 
 def utcnow():
     """Horodatage naive UTC (convention de la plateforme)."""
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def fmt_euros(cents):

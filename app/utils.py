@@ -3,7 +3,7 @@ import math
 import re
 import secrets
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 from functools import wraps
 from zoneinfo import ZoneInfo
 
@@ -12,7 +12,12 @@ from flask import current_app, redirect, request, url_for, g
 PARIS_TZ = ZoneInfo("Europe/Paris")
 
 CAMPUSSES = {"brest": "Brest", "paris": "Paris"}
-PAYMENT_METHODS = {"cb": "Carte Bancaire", "lydia": "Lydia", "especes": "Espèces", "helloasso": "HelloAsso"}
+PAYMENT_METHODS = {
+    "cb": "Carte Bancaire",
+    "lydia": "Lydia",
+    "especes": "Espèces",
+    "helloasso": "HelloAsso",
+}
 ARTICLE_TYPES = {
     "biere": "Bière",
     "vin": "Vin",
@@ -34,19 +39,19 @@ TAP_SIZES = {"demi": ("Demi", 25), "pinte": ("Pinte", 50), "pot": ("Pot", 33)}
 
 
 def utcnow():
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def to_paris(dt):
     if dt is None:
         return None
-    return dt.replace(tzinfo=timezone.utc).astimezone(PARIS_TZ)
+    return dt.replace(tzinfo=UTC).astimezone(PARIS_TZ)
 
 
 def paris_to_utc(dt):
     if dt is None:
         return None
-    return dt.replace(tzinfo=PARIS_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.replace(tzinfo=PARIS_TZ).astimezone(UTC).replace(tzinfo=None)
 
 
 def new_token():
@@ -80,7 +85,7 @@ def cents(value):
         raise ValueError("montant invalide") from exc
     if not math.isfinite(number):
         raise ValueError("montant invalide")
-    amount = int(round(number * 100))
+    amount = round(number * 100)
     if abs(amount) > MAX_CENTS:
         raise ValueError("montant hors limites")
     return amount

@@ -46,10 +46,7 @@ def list_backups(backup_dir: Path, log=print):
         log(f"Aucune sauvegarde dans {backup_dir}")
         return []
     for stamp, dump, archive in entries:
-        log(
-            f"{stamp.strftime(STAMP_FORMAT)}  "
-            f"{dump.name:32} {archive.name if archive else '-'}"
-        )
+        log(f"{stamp.strftime(STAMP_FORMAT)}  {dump.name:32} {archive.name if archive else '-'}")
     return [stamp for stamp, _, _ in entries]
 
 
@@ -79,21 +76,27 @@ def parse_args(argv=None):
         prog="python -m ops.restore",
         description="Restaure la base et les téléversements depuis une sauvegarde.",
     )
-    parser.add_argument("--backup-dir", type=Path,
-                        default=Path(os.environ.get("BACKUP_DIR", "backups")))
-    parser.add_argument("--database", type=Path, default=None,
-                        help="fichier .dump précis (défaut : --latest)")
-    parser.add_argument("--uploads", type=Path, default=None,
-                        help="archive .tgz précise (défaut : même horodatage que le dump)")
-    parser.add_argument("--latest", action="store_true",
-                        help="prend la sauvegarde la plus récente")
+    parser.add_argument(
+        "--backup-dir", type=Path, default=Path(os.environ.get("BACKUP_DIR", "backups"))
+    )
+    parser.add_argument(
+        "--database", type=Path, default=None, help="fichier .dump précis (défaut : --latest)"
+    )
+    parser.add_argument(
+        "--uploads",
+        type=Path,
+        default=None,
+        help="archive .tgz précise (défaut : même horodatage que le dump)",
+    )
+    parser.add_argument("--latest", action="store_true", help="prend la sauvegarde la plus récente")
     parser.add_argument("--list", action="store_true", help="liste les sauvegardes")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL"))
     parser.add_argument("--pg-container", default=os.environ.get("BACKUP_PG_CONTAINER"))
     parser.add_argument("--pg-user", default=os.environ.get("BACKUP_PG_USER", "foyz"))
     parser.add_argument("--pg-database", default=os.environ.get("BACKUP_PG_DATABASE", "foyz"))
-    parser.add_argument("--uploads-dir", type=Path,
-                        default=Path(os.environ.get("UPLOAD_DIR", "instance/uploads")))
+    parser.add_argument(
+        "--uploads-dir", type=Path, default=Path(os.environ.get("UPLOAD_DIR", "instance/uploads"))
+    )
     parser.add_argument("--uploads-container", default=os.environ.get("BACKUP_UPLOADS_CONTAINER"))
     parser.add_argument("--yes", action="store_true", help="confirme l'écrasement de la cible")
     parser.add_argument("--dry-run", action="store_true", help="affiche sans exécuter")
@@ -123,9 +126,20 @@ def run(cmd, log=print, dry_run=False, stdin=None):
 
 def restore_database(args, dump, log, dry_run):
     if args.pg_container:
-        cmd = ["docker", "exec", "-i", args.pg_container, "pg_restore",
-               "--clean", "--if-exists", "--no-owner",
-               "-U", args.pg_user, "-d", args.pg_database]
+        cmd = [
+            "docker",
+            "exec",
+            "-i",
+            args.pg_container,
+            "pg_restore",
+            "--clean",
+            "--if-exists",
+            "--no-owner",
+            "-U",
+            args.pg_user,
+            "-d",
+            args.pg_database,
+        ]
         log("  $ " + " ".join(cmd) + f" < {dump}")
         if dry_run:
             return
@@ -137,8 +151,7 @@ def restore_database(args, dump, log, dry_run):
     if not shutil.which("pg_restore"):
         raise SystemExit("pg_restore introuvable : installez postgresql-client.")
     env = {**os.environ, "PGPASSWORD": password_of(args.database_url)}
-    cmd = ["pg_restore", "--clean", "--if-exists", "--no-owner",
-           "-d", args.database_url, str(dump)]
+    cmd = ["pg_restore", "--clean", "--if-exists", "--no-owner", "-d", args.database_url, str(dump)]
     log("  $ pg_restore ... " + dump.name)
     if not dry_run:
         checked(cmd, env=env)
@@ -150,8 +163,7 @@ def restore_uploads(args, archive, log, dry_run):
         return
     if args.uploads_container:
         container, _, path = args.uploads_container.partition(":")
-        cmd = ["docker", "exec", "-i", container, "tar", "-xzf", "-", "-C",
-               path or "/data/uploads"]
+        cmd = ["docker", "exec", "-i", container, "tar", "-xzf", "-", "-C", path or "/data/uploads"]
         log("  $ " + " ".join(cmd) + f" < {archive}")
         if dry_run:
             return

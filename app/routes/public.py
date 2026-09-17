@@ -86,7 +86,9 @@ def reglement():
 
 @bp.route("/liens")
 def liens():
-    links = db.session.scalars(select(UsefulLink).order_by(UsefulLink.position, UsefulLink.id)).all()
+    links = db.session.scalars(
+        select(UsefulLink).order_by(UsefulLink.position, UsefulLink.id)
+    ).all()
     return render_template("public/liens.html", links=links)
 
 
@@ -95,11 +97,15 @@ def trombinoscopes():
     """Présentation nominative et visuelle des équipes de mandat (cahier des
     charges, interface publique). Seuls les membres marqués visibles par
     l'équipe apparaissent ; l'édition se fait dans le module développement."""
-    members = db.session.scalars(
-        select(User)
-        .where(User.team_status == "mandat", User.trombinoscope_visible.is_(True))
-        .order_by(User.name)
-    ).unique().all()
+    members = (
+        db.session.scalars(
+            select(User)
+            .where(User.team_status == "mandat", User.trombinoscope_visible.is_(True))
+            .order_by(User.name)
+        )
+        .unique()
+        .all()
+    )
     by_campus = {c: [] for c in CAMPUSSES}
     for member in members:
         if member.team_campus in by_campus:

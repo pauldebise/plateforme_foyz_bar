@@ -18,6 +18,7 @@ Le parseur fournit :
 import re
 from collections import defaultdict
 from pathlib import Path
+from typing import ClassVar
 
 from ..errors import SourceError
 from .. import settings
@@ -35,10 +36,16 @@ _DECIDE_CREATE = re.compile(
 )
 _DECIDE_START = re.compile(r"^\s*(INSERT|CREATE|REPLACE)\b", re.IGNORECASE)
 _SIGNIFICANT = re.compile(r"[^ \t\r\n;]+")
-_COL_DEF = re.compile(r"^\s*`?(\w+)`?\s+([A-Za-z]+)")
 _KEYWORD_LINES = {
-    "PRIMARY", "UNIQUE", "KEY", "INDEX", "FULLTEXT", "SPATIAL", "CONSTRAINT",
-    "FOREIGN", "CHECK",
+    "PRIMARY",
+    "UNIQUE",
+    "KEY",
+    "INDEX",
+    "FULLTEXT",
+    "SPATIAL",
+    "CONSTRAINT",
+    "FOREIGN",
+    "CHECK",
 }
 _HEADER_INSERT = re.compile(
     r"^\s*(?:INSERT\s+(?:IGNORE\s+)?|REPLACE\s+(?:IGNORE\s+)?)INTO\s+"
@@ -61,10 +68,10 @@ class SqlDumpScanner:
         self.chunk_size = chunk_size
         # Statistiques remplie pendant le scan (consommées par le rapport).
         self.tables_seen = set()
-        self.tables_created = {}                    # table -> [colonnes] (métier)
-        self.insert_statements = defaultdict(int)   # table -> nb statements (métier)
+        self.tables_created = {}  # table -> [colonnes] (métier)
+        self.insert_statements = defaultdict(int)  # table -> nb statements (métier)
         self.skipped_statements = defaultdict(int)  # table/clé -> nb statements ignorés
-        self.skipped_rows_approx = defaultdict(int) # table/clé -> ~ lignes ignorées
+        self.skipped_rows_approx = defaultdict(int)  # table/clé -> ~ lignes ignorées
 
     # ------------------------------------------------------------------ scan
 
@@ -74,11 +81,11 @@ class SqlDumpScanner:
         kind : "create" (structure d'une table métier), "insert" (données d'une
         table métier), "other" (statement technique : jamais mémorisé).
         """
-        state = "start"      # start | decide | keep | skip | comment_line | comment_block
+        state = "start"  # start | decide | keep | skip | comment_line | comment_block
         table = kind = None
-        str_q = None         # quote ouvrant de la chaîne courante (' ou ")
+        str_q = None  # quote ouvrant de la chaîne courante (' ou ")
         escape = False
-        ident = False        # dans un identifiant `backticks`
+        ident = False  # dans un identifiant `backticks`
         decide_buf = []
         keep_buf = []
 
@@ -140,7 +147,7 @@ class SqlDumpScanner:
                         state = "decide"
                         decide_buf = []
                     # state == decide : on accumule un préfixe borné
-                    take = chunk[m.start():m.start() + _DECIDE_MAX]
+                    take = chunk[m.start() : m.start() + _DECIDE_MAX]
                     decide_buf.append(take)
                     buf = "".join(decide_buf)
                     mi, mc = _DECIDE_INSERT.match(buf), _DECIDE_CREATE.match(buf)
@@ -180,7 +187,7 @@ class SqlDumpScanner:
                         keep_buf.append(chunk[pos:])
                         pos = n
                         break
-                    keep_buf.append(chunk[pos:m.end()])
+                    keep_buf.append(chunk[pos : m.end()])
                 elif state == "skip":
                     if kind == "insert" and table:
                         stop = m.start() if m else n
@@ -241,7 +248,7 @@ class SqlDumpScanner:
                 return n, quote, escape
             ch = m.group()
             if sink is not None:
-                sink.append(chunk[pos:m.end()])
+                sink.append(chunk[pos : m.end()])
             pos = m.end()
             if escape:
                 escape = False
@@ -263,7 +270,7 @@ class SqlDumpScanner:
                     sink.append(chunk[pos:])
                 return len(chunk), False
             if sink is not None:
-                sink.append(chunk[pos:close + 1])
+                sink.append(chunk[pos : close + 1])
             doubled = close + 1 < len(chunk) and chunk[close + 1] == "`"
             if doubled:
                 if sink is not None:
@@ -325,7 +332,7 @@ class SqlDumpScanner:
             elif ch == ")":
                 depth -= 1
                 if depth == 0:
-                    return text[open_pos + 1:i], i + 1
+                    return text[open_pos + 1 : i], i + 1
             i += 1
         return None, open_pos
 
@@ -358,14 +365,14 @@ class SqlDumpScanner:
         return segments
 
 
-def _looks_terminated(buf):
-    """(conservé pour lisibilité des tests) True si le buffer n'est pas INSERT/CREATE."""
-    head = buf.lstrip()[:12].upper()
-    return not (head.startswith("INSERT") or head.startswith("CREATE") or head.startswith("REPLACE"))
-
-
-def iter_business_rows(path, keep_map=None, batch_size=settings.DEFAULT_CHUNK_ROWS,
-                       encoding=None, keep_predicate=None, on_scan_done=None):
+def iter_business_rows(
+    path,
+    keep_map=None,
+    batch_size=settings.DEFAULT_CHUNK_ROWS,
+    encoding=None,
+    keep_predicate=None,
+    on_scan_done=None,
+):
     """Itère (table, colonnes, lignes[dict]) par batchs pour les tables métier.
 
     keep_map : dict table_minuscules -> identifiant logique (liste blanche),
@@ -380,7 +387,7 @@ def iter_business_rows(path, keep_map=None, batch_size=settings.DEFAULT_CHUNK_RO
     if keep_predicate is None:
         keep_predicate = lambda t: bool(t) and t.lower() in keep_map  # noqa: E731
     enc = encoding or _sniff_encoding(path)
-    with open(path, "r", encoding=enc, newline="") as fh:
+    with open(path, encoding=enc, newline="") as fh:
         scanner = SqlDumpScanner(fh, keep_predicate=keep_predicate)
         pending_table, pending_cols, batch = None, None, []
         for kind, table, text in scanner.statements():
@@ -434,9 +441,16 @@ def _sniff_encoding(path):
 class _ValueParser:
     """Tokeniseur des tuples VALUES d'un INSERT (échappements MySQL gérés)."""
 
-    _UNESCAPE = {
-        "0": "\0", "'": "'", '"': '"', "b": "\b", "n": "\n", "r": "\r",
-        "t": "\t", "Z": "\x1a", "\\": "\\",
+    _UNESCAPE: ClassVar[dict] = {
+        "0": "\0",
+        "'": "'",
+        '"': '"',
+        "b": "\b",
+        "n": "\n",
+        "r": "\r",
+        "t": "\t",
+        "Z": "\x1a",
+        "\\": "\\",
     }
     _QUOTE_OR_BACKSLASH = re.compile(r"['\"\\]")
 
@@ -458,7 +472,7 @@ class _ValueParser:
             if not m:
                 raise ValueError("chaîne non terminée dans l'INSERT")
             ch = m.group()
-            out.append(self.text[i:m.start()])
+            out.append(self.text[i : m.start()])
             i = m.end()
             if ch == "\\":
                 nxt = self.text[i] if i < self.n else ""
@@ -531,7 +545,7 @@ def _parse_values(statement, columns, table, filename):
                 f"pour {n_cols} colonnes attendues."
             )
         row_index += 1
-        yield dict(zip(columns, values))
+        yield dict(zip(columns, values, strict=True))
         i = parser.skip_ws(i)
         if i < parser.n and text[i] == ",":
             i += 1

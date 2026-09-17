@@ -6,7 +6,7 @@ manifest détecté sont supprimés ou archivés — jamais d'autre contenu.
 """
 
 import shutil
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 from pathlib import Path
 
 from .errors import SourceError
@@ -32,14 +32,16 @@ def dispose(source_files, keep_archives=False, source_dir=None, consumed=None):
                 "Nettoyage refusé : fichiers jamais consommés : " + ", ".join(refused)
             )
     if keep_archives:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-        archive_dir = Path(source_dir or Path(source_files[0].path).parent) / ARCHIVE_DIRNAME / stamp
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        archive_dir = (
+            Path(source_dir or Path(source_files[0].path).parent) / ARCHIVE_DIRNAME / stamp
+        )
         archive_dir.mkdir(parents=True, exist_ok=True)
     moved = 0
     for src in source_files:
         path = Path(src.path)
         if not path.exists():
-            kv(f"Déjà absent", path.name)
+            kv("Déjà absent", path.name)
             continue
         if keep_archives:
             target = archive_dir / path.name
@@ -76,13 +78,13 @@ def purge_archives(source_dir, days, dry_run=False, now=None, log=print):
     if not archives_dir.is_dir():
         log(f"  Aucune archive dans {archives_dir}")
         return []
-    cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=days)
+    cutoff = (now or datetime.now(UTC)) - timedelta(days=days)
     removed = []
     for entry in sorted(archives_dir.iterdir()):
         if not entry.is_dir():
             continue
         try:
-            stamp = datetime.strptime(entry.name, "%Y%m%d-%H%M%S").replace(tzinfo=timezone.utc)
+            stamp = datetime.strptime(entry.name, "%Y%m%d-%H%M%S").replace(tzinfo=UTC)
         except ValueError:
             continue
         if stamp >= cutoff:

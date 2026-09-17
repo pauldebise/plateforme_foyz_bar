@@ -2,7 +2,18 @@ import csv
 import io
 from datetime import datetime, timedelta
 
-from flask import Blueprint, Response, abort, flash, g, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    flash,
+    g,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from sqlalchemy import func, or_, select
 
 from app.extensions import db
@@ -75,8 +86,7 @@ def payment():
     # un article absent du campus courant (tous ses prix y valent 0) est exclu
     # de l'encaissement ; il reste listé dans l'onglet admin Articles
     articles = [
-        a for a in articles
-        if a.is_tap or a.price_for(campus()) or a.price_for(campus(), team=True)
+        a for a in articles if a.is_tap or a.price_for(campus()) or a.price_for(campus(), team=True)
     ]
     data = []
     rank_of = {aid: i for i, aid in enumerate(top_article_ids(campus()))}
@@ -109,10 +119,16 @@ def rechargement():
             user = _get_user_or_fail(request.form.get("user_id"))
             amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
             t = T.create_reload(
-                operator_label=operator(), campus=campus(), user=user,
-                amount_cents=amount, payment_method=request.form.get("method", ""),
+                operator_label=operator(),
+                campus=campus(),
+                user=user,
+                amount_cents=amount,
+                payment_method=request.form.get("method", ""),
             )
-            flash(f"Rechargement de {t.total / 100:.2f} € pour {user.display_name} enregistré.", "success")
+            flash(
+                f"Rechargement de {t.total / 100:.2f} € pour {user.display_name} enregistré.",
+                "success",
+            )
             return redirect(url_for("team.rechargement"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Montant invalide."), "danger")
@@ -128,8 +144,12 @@ def retrait():
         try:
             user = _get_user_or_fail(request.form.get("user_id"))
             amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
-            T.create_withdrawal(operator_label=operator(), campus=campus(), user=user, amount_cents=amount)
-            flash(f"Retrait de {amount / 100:.2f} € pour {user.display_name} enregistré.", "success")
+            T.create_withdrawal(
+                operator_label=operator(), campus=campus(), user=user, amount_cents=amount
+            )
+            flash(
+                f"Retrait de {amount / 100:.2f} € pour {user.display_name} enregistré.", "success"
+            )
             return redirect(url_for("team.retrait"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Montant invalide."), "danger")
@@ -146,8 +166,17 @@ def transfert():
             src = _get_user_or_fail(request.form.get("from_id"))
             dst = _get_user_or_fail(request.form.get("to_id"))
             amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
-            T.create_transfer(operator_label=operator(), campus=campus(), from_user=src, to_user=dst, amount_cents=amount)
-            flash(f"Transfert de {amount / 100:.2f} € de {src.display_name} vers {dst.display_name} effectué.", "success")
+            T.create_transfer(
+                operator_label=operator(),
+                campus=campus(),
+                from_user=src,
+                to_user=dst,
+                amount_cents=amount,
+            )
+            flash(
+                f"Transfert de {amount / 100:.2f} € de {src.display_name} vers {dst.display_name} effectué.",
+                "success",
+            )
             return redirect(url_for("team.transfert"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Transfert invalide."), "danger")
@@ -158,7 +187,7 @@ def _get_user_or_fail(raw_id):
     try:
         uid = int(raw_id)
     except (TypeError, ValueError):
-        raise T.OperationError("invalid", "Sélectionnez un étudiant dans la liste.")
+        raise T.OperationError("invalid", "Sélectionnez un étudiant dans la liste.") from None
     u = db.session.get(User, uid)
     if u is None:
         raise T.OperationError("invalid", "Étudiant introuvable.")
@@ -174,7 +203,10 @@ def consigne_return():
         user = _get_user_or_fail(request.form.get("user_id"))
         count = int(request.form.get("count", "1"))
         t = T.return_glasses(operator_label=operator(), campus=campus(), user=user, count=count)
-        flash(f"{t.deposit_glasses} verre(s) rendu(s) : {t.total / 100:.2f} € crédités à {user.display_name}.", "success")
+        flash(
+            f"{t.deposit_glasses} verre(s) rendu(s) : {t.total / 100:.2f} € crédités à {user.display_name}.",
+            "success",
+        )
     except (T.OperationError, ValueError) as e:
         flash(getattr(e, "message", "Erreur."), "danger")
     return redirect(request.form.get("next") or url_for("team.payment"))
@@ -208,10 +240,14 @@ def historique():
     if fuser:
         like = f"%{fuser}%"
         ids = set(
-            db.session.scalars(select(User.id).where(or_(
-                User.name.ilike(like),
-                User.nickname.ilike(like),
-            ))).all()
+            db.session.scalars(
+                select(User.id).where(
+                    or_(
+                        User.name.ilike(like),
+                        User.nickname.ilike(like),
+                    )
+                )
+            ).all()
         )
         if ids:
             query = query.filter(Transaction.contributions.any(Contribution.user_id.in_(ids)))
@@ -379,7 +415,9 @@ def tresorerie_export_mensuel():
         rows.append(["Ventes", label, f"{entry['sales_by_type'][key] / 100:.2f}"])
     rows.append(["Ventes", "Total consommation virtuelle", f"{entry['sales_total'] / 100:.2f}"])
     rows.append(["Événements", "Recettes", f"{entry['events_total'] / 100:.2f}"])
-    rows.append(["Total entrées", "Rechargements + événements", f"{entry['grand_total'] / 100:.2f}"])
+    rows.append(
+        ["Total entrées", "Rechargements + événements", f"{entry['grand_total'] / 100:.2f}"]
+    )
     return _csv_response(
         f"rapport_mensuel_{c}_{year}-{month:02d}.csv",
         ["Section", "Détail", "Montant (EUR)"],
@@ -412,21 +450,31 @@ def tresorerie_export_annuel():
         tot_sales += e["sales_total"]
         tot_events += e["events_total"]
         tot_entries += e["grand_total"]
-        row += [f"{e['sales_total'] / 100:.2f}", f"{e['events_total'] / 100:.2f}", f"{e['grand_total'] / 100:.2f}"]
+        row += [
+            f"{e['sales_total'] / 100:.2f}",
+            f"{e['events_total'] / 100:.2f}",
+            f"{e['grand_total'] / 100:.2f}",
+        ]
         rows.append(row)
-    rows.append([
-        "TOTAL (12 mois)",
-        *[f"{totals[k] / 100:.2f}" for k in PAYMENT_METHODS],
-        *[f"{totals_type[k] / 100:.2f}" for k in ARTICLE_TYPES],
-        f"{tot_sales / 100:.2f}", f"{tot_events / 100:.2f}", f"{tot_entries / 100:.2f}",
-    ])
+    rows.append(
+        [
+            "TOTAL (12 mois)",
+            *[f"{totals[k] / 100:.2f}" for k in PAYMENT_METHODS],
+            *[f"{totals_type[k] / 100:.2f}" for k in ARTICLE_TYPES],
+            f"{tot_sales / 100:.2f}",
+            f"{tot_events / 100:.2f}",
+            f"{tot_entries / 100:.2f}",
+        ]
+    )
     return _csv_response(
         f"rapport_annuel_{c}_12mois_glissants.csv",
         [
             "Mois",
             *[PAYMENT_METHODS[k] for k in PAYMENT_METHODS],
             *[ARTICLE_TYPES[k] for k in ARTICLE_TYPES],
-            "Ventes (total)", "Événements", "Total entrées",
+            "Ventes (total)",
+            "Événements",
+            "Total entrées",
         ],
         rows,
     )
@@ -461,15 +509,9 @@ def notes():
     private = db.session.scalars(
         private_query if show_all else private_query.limit(limit_priv)
     ).all()
-    public = db.session.scalars(
-        public_query if show_all else public_query.limit(limit_pub)
-    ).all()
-    total_private = db.session.scalar(
-        select(func.count(Note.id)).where(Note.is_public.is_(False))
-    )
-    total_public = db.session.scalar(
-        select(func.count(Note.id)).where(Note.is_public.is_(True))
-    )
+    public = db.session.scalars(public_query if show_all else public_query.limit(limit_pub)).all()
+    total_private = db.session.scalar(select(func.count(Note.id)).where(Note.is_public.is_(False)))
+    total_public = db.session.scalar(select(func.count(Note.id)).where(Note.is_public.is_(True)))
     return render_template(
         "team/notes.html",
         private=private,
@@ -491,19 +533,22 @@ def notes_action():
 
     if action == "create":
         if content:
-            n = Note(content=content, is_public=scope_public, author_id=g.current_user.id, author_name=g.current_user.display_name[:120])
+            n = Note(
+                content=content,
+                is_public=scope_public,
+                author_id=g.current_user.id,
+                author_name=g.current_user.display_name[:120],
+            )
             db.session.add(n)
             db.session.commit()
             flash("Note publiée.", "success")
-    elif action == "update":
-        if note and content:
-            note.content = content
-            note.updated_at = utcnow()
-            db.session.commit()
-            flash("Note modifiée.", "success")
-    elif action == "delete":
-        if note:
-            db.session.delete(note)
-            db.session.commit()
-            flash("Note supprimée.", "success")
+    elif action == "update" and note and content:
+        note.content = content
+        note.updated_at = utcnow()
+        db.session.commit()
+        flash("Note modifiée.", "success")
+    elif action == "delete" and note:
+        db.session.delete(note)
+        db.session.commit()
+        flash("Note supprimée.", "success")
     return redirect(url_for("team.notes"))

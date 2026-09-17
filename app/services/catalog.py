@@ -1,7 +1,7 @@
 from sqlalchemy import select
 
 from app.extensions import db
-from app.models import Article, Keg, Note, Tap
+from app.models import Article, Note, Tap
 from app.utils import TAP_SIZES
 
 

@@ -1,7 +1,11 @@
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from app.extensions import db
 from app.utils import utcnow
+
+if TYPE_CHECKING:
+    from app.models.catalog import Article
 
 GATEWAY_MARGIN = timedelta(hours=12)
 

@@ -5,7 +5,19 @@ from pathlib import Path
 
 import click
 from dotenv import load_dotenv
-from flask import Flask, current_app, g, jsonify, redirect, render_template, request, session, url_for, send_from_directory, abort
+from flask import (
+    Flask,
+    current_app,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+    send_from_directory,
+    abort,
+)
 from sqlalchemy import select
 from werkzeug.security import generate_password_hash
 
@@ -46,8 +58,7 @@ def ensure_schema_upgrades():
 
     inspector = inspect(db.engine)
     table_columns = {
-        t: {c["name"] for c in inspector.get_columns(t)}
-        for t in inspector.get_table_names()
+        t: {c["name"] for c in inspector.get_columns(t)} for t in inspector.get_table_names()
     }
     if "taps" in table_columns and "name" not in table_columns["taps"]:
         with db.engine.begin() as conn:
@@ -60,10 +71,12 @@ def ensure_schema_upgrades():
             conn.execute(text("ALTER TABLE transactions ADD COLUMN idempotency_key VARCHAR(64)"))
     if "transactions" in table_columns:
         with db.engine.begin() as conn:
-            conn.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ix_transactions_idempotency_key "
-                "ON transactions (idempotency_key)"
-            ))
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_transactions_idempotency_key "
+                    "ON transactions (idempotency_key)"
+                )
+            )
     if "users" in table_columns:
         cols = table_columns["users"]
         with db.engine.begin() as conn:
@@ -74,9 +87,9 @@ def ensure_schema_upgrades():
             if "disabled" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT FALSE"))
             if "trombinoscope_visible" not in cols:
-                conn.execute(text(
-                    "ALTER TABLE users ADD COLUMN trombinoscope_visible BOOLEAN DEFAULT TRUE"
-                ))
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN trombinoscope_visible BOOLEAN DEFAULT TRUE")
+                )
             if "trombinoscope_role" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN trombinoscope_role VARCHAR(80)"))
             if "photo" not in cols:
@@ -85,21 +98,24 @@ def ensure_schema_upgrades():
         # créés hors app) : slug du nom, dédoublonné par suffixe numérique.
         with db.engine.begin() as conn:
             taken = {
-                r[0] for r in conn.execute(text(
-                    "SELECT username FROM users WHERE username IS NOT NULL AND username != ''"
-                ))
+                r[0]
+                for r in conn.execute(
+                    text("SELECT username FROM users WHERE username IS NOT NULL AND username != ''")
+                )
             }
-            for user_id, name in conn.execute(text(
-                "SELECT id, name FROM users WHERE username IS NULL OR username = ''"
-            )).fetchall():
+            for user_id, name in conn.execute(
+                text("SELECT id, name FROM users WHERE username IS NULL OR username = ''")
+            ).fetchall():
                 base = slug_username(name) or "user"
                 candidate, i = base, 1
                 while candidate in taken:
                     i += 1
                     candidate = f"{base}{i}"
                 taken.add(candidate)
-                conn.execute(text("UPDATE users SET username = :u WHERE id = :i"),
-                             {"u": candidate, "i": user_id})
+                conn.execute(
+                    text("UPDATE users SET username = :u WHERE id = :i"),
+                    {"u": candidate, "i": user_id},
+                )
         # L'unicité migre de name (désormais doublable : homonymes) vers username.
         indexes = {ix["name"]: ix for ix in inspector.get_indexes("users")}
         with db.engine.begin() as conn:
@@ -107,15 +123,19 @@ def ensure_schema_upgrades():
                 conn.execute(text("DROP INDEX ix_users_name"))
                 conn.execute(text("CREATE INDEX ix_users_name ON users (name)"))
             if "ix_users_username" not in indexes:
-                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)"))
+                conn.execute(
+                    text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)")
+                )
     if "transaction_lines" in table_columns:
         indexes = {ix["name"] for ix in inspector.get_indexes("transaction_lines")}
         if "ix_transaction_lines_article_id" not in indexes:
             with db.engine.begin() as conn:
-                conn.execute(text(
-                    "CREATE INDEX IF NOT EXISTS ix_transaction_lines_article_id "
-                    "ON transaction_lines (article_id)"
-                ))
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_transaction_lines_article_id "
+                        "ON transaction_lines (article_id)"
+                    )
+                )
 
 
 def _restrict_instance_permissions(app):
@@ -127,7 +147,7 @@ def _restrict_instance_permissions(app):
 
     try:
         url = make_url(app.config["SQLALCHEMY_DATABASE_URI"])
-    except Exception:  # noqa: BLE001 — URL exotique : on ne durcit rien
+    except Exception:
         return
     if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
         return
@@ -238,10 +258,9 @@ def create_app():
         last = session.get("last_activity", now)
         if now - last > timeout_min * 60:
             session.clear()
-            if request.path.startswith(("/api/", "/equipe", "/admin")):
-                if request.path.startswith("/api/"):
-                    return jsonify(ok=False, error="Session expirée."), 401
-            if request.path.startswith("/equipe") or request.path.startswith("/admin"):
+            if request.path.startswith("/api/"):
+                return jsonify(ok=False, error="Session expirée."), 401
+            if request.path.startswith(("/equipe", "/admin")):
                 return redirect(url_for("auth.login", expired=1))
         session["last_activity"] = now
         session.permanent = True
@@ -274,10 +293,6 @@ def create_app():
             g.scope = "gateway"
         else:
             g.scope = "public"
-
-    @app.teardown_appcontext
-    def close_db(exc):
-        pass
 
     # Assets servis localement (Bootstrap, Icons, Chart.js) : plus aucune
     # dépendance CDN, donc une CSP stricte et un fonctionnement hors ligne.
@@ -319,9 +334,7 @@ def create_app():
         # HSTS uniquement quand l'application est déclarée servie en HTTPS
         # (HTTPS_ONLY=1) ; Cloudflare peut aussi le poser côté périphérie.
         if current_app.config.get("SESSION_COOKIE_SECURE"):
-            response.headers.setdefault(
-                "Strict-Transport-Security", "max-age=31536000"
-            )
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         return response
 
     @app.template_filter("eur")
@@ -353,13 +366,13 @@ def create_app():
             "csrf_token": lambda: ensure_csrf(),
             "site_name": get_setting("site_name") or "Foy'z & Bar",
             "theme_color": safe_color(
-                get_setting(f"theme_color_{campus}") if campus in CAMPUSSES
+                get_setting(f"theme_color_{campus}")
+                if campus in CAMPUSSES
                 else get_setting("theme_color_public"),
             ),
             "logo": get_setting(f"logo_{campus}") or "",
-            "payment_photo": (
-                get_setting(f"payment_photo_{campus}") if campus in CAMPUSSES else ""
-            ) or "",
+            "payment_photo": (get_setting(f"payment_photo_{campus}") if campus in CAMPUSSES else "")
+            or "",
             "current_user": getattr(g, "current_user", None),
             "current_campus": session.get("campus", ""),
             "own_campus": own,
@@ -401,16 +414,16 @@ def create_app():
             with db.engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             checks["database"] = "ok"
-        except Exception:  # noqa: BLE001 — une sonde ne doit jamais lever
+        except Exception:
             checks["database"] = "error"
         uploads = Path(app.config["UPLOAD_FOLDER"])
-        checks["uploads"] = (
-            "ok" if uploads.is_dir() and os.access(uploads, os.W_OK) else "error"
-        )
+        checks["uploads"] = "ok" if uploads.is_dir() and os.access(uploads, os.W_OK) else "error"
         try:
             current = current_revision()
-            checks["schema"] = "ok" if current == head_revision() else f"outdated:{current or 'none'}"
-        except Exception:  # noqa: BLE001
+            checks["schema"] = (
+                "ok" if current == head_revision() else f"outdated:{current or 'none'}"
+            )
+        except Exception:
             checks["schema"] = "unknown"
         degraded = "error" in (checks["database"], checks["uploads"])
         return jsonify(status="degraded" if degraded else "ok", **checks), (
@@ -465,8 +478,12 @@ def create_app():
         print("Schéma à jour.")
 
     @app.cli.command("purge-logs")
-    @click.option("--days", type=int, default=None,
-                  help="Rétention en jours (défaut : réglage login_logs_retention_days).")
+    @click.option(
+        "--days",
+        type=int,
+        default=None,
+        help="Rétention en jours (défaut : réglage login_logs_retention_days).",
+    )
     @click.option("--dry-run", is_flag=True, help="Affiche sans supprimer.")
     def purge_logs_command(days, dry_run):
         """Purge le registre des connexions au-delà de la rétention (D13)."""
@@ -484,7 +501,9 @@ def create_app():
             cutoff = utcnow() - timedelta(days=retention)
             query = db.session.query(LoginLog).filter(LoginLog.created_at < cutoff)
             if dry_run:
-                print(f"{query.count()} entrée(s) antérieure(s) au {cutoff:%Y-%m-%d} seraient supprimées.")
+                print(
+                    f"{query.count()} entrée(s) antérieure(s) au {cutoff:%Y-%m-%d} seraient supprimées."
+                )
                 return
             removed = query.delete(synchronize_session=False)
             db.session.commit()
@@ -493,12 +512,18 @@ def create_app():
     @app.cli.command("legacy-passwords")
     @click.option("--purge", is_flag=True, help="Vider legacy_password des comptes listés.")
     @click.option(
-        "--weak-only", is_flag=True,
+        "--weak-only",
+        is_flag=True,
         help="Ne purger que les formats faibles (clair/md5/sha1/sha256).",
     )
     def legacy_passwords_command(purge, weak_only):
         """Audite (et éventuellement purge) les mots de passe hérités."""
-        from app.services.legacy_passwords import accounts_with_legacy, audit, format_of, purge as purge_legacy
+        from app.services.legacy_passwords import (
+            accounts_with_legacy,
+            audit,
+            format_of,
+            purge as purge_legacy,
+        )
 
         with app.app_context():
             users = accounts_with_legacy()
@@ -511,6 +536,8 @@ def create_app():
             print("Total : " + ", ".join(f"{fmt}={n}" for fmt, n in sorted(counts.items())))
             if purge:
                 removed = purge_legacy(weak_only=weak_only)
-                print(f"{removed} compte(s) purgé(s) — réinitialisation requise à la prochaine connexion.")
+                print(
+                    f"{removed} compte(s) purgé(s) — réinitialisation requise à la prochaine connexion."
+                )
 
     return app

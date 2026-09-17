@@ -8,7 +8,6 @@ from app.extensions import db
 from app.models import (
     Article,
     Contribution,
-    Event,
     Keg,
     Tap,
     Transaction,
@@ -20,7 +19,6 @@ from app.services import settings as S
 from app.utils import (
     ALCOHOL_TYPES,
     PAYMENT_METHODS,
-    TAP_SIZES,
     utcnow,
 )
 
@@ -31,6 +29,15 @@ class OperationError(Exception):
         self.code = code
         self.message = message
         self.extra = extra or {}
+
+
+def _int_or_invalid(value, message="Valeur numérique invalide."):
+    """Conversion défensive : une entrée non numérique est un refus métier,
+    jamais une erreur serveur (500)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise OperationError("invalid", message) from None
 
 
 def _get_wallet(user, campus):
@@ -124,11 +131,13 @@ def search_students(query, campus=None, limit=15):
     stmt = select(User).outerjoin(activity, activity.c.user_id == User.id)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(or_(
-            User.name.ilike(like),
-            User.nickname.ilike(like),
-            User.username.ilike(like),
-        ))
+        stmt = stmt.where(
+            or_(
+                User.name.ilike(like),
+                User.nickname.ilike(like),
+                User.username.ilike(like),
+            )
+        )
     stmt = stmt.order_by(
         func.coalesce(activity.c.recent_count, 0).desc(),
         func.coalesce(activity.c.last_at, datetime(1970, 1, 1)).desc(),
@@ -159,11 +168,13 @@ def _resolve_items(items, event_id=None, campus=None):
         raise OperationError("invalid", "Aucun article sélectionné.")
     merged = {}
     for it in items:
+        if not isinstance(it, dict):
+            raise OperationError("invalid", "Commande invalide.")
         try:
             aid = int(it.get("article_id"))
             qty = int(it.get("quantity", 0))
         except (TypeError, ValueError):
-            raise OperationError("invalid", "Commande invalide.")
+            raise OperationError("invalid", "Commande invalide.") from None
         if qty <= 0:
             continue
         merged[aid] = merged.get(aid, 0) + qty
@@ -204,7 +215,6 @@ def create_purchase(
     payment_method=None,
     event_id=None,
     admin_password=None,
-    allow_negative=None,
     idempotency_key=None,
 ):
     # Rejeu d'un encaissement déjà traité : on renvoie la transaction existante
@@ -222,7 +232,9 @@ def create_purchase(
         contributor_ids = []
         deposit_glasses = 0
     else:
-        contributor_ids = [int(x) for x in (contributor_ids or [])]
+        contributor_ids = [
+            _int_or_invalid(x, "Étudiant introuvable.") for x in (contributor_ids or [])
+        ]
         if not contributor_ids:
             raise OperationError("invalid", "Aucun étudiant sélectionné.")
 
@@ -272,7 +284,7 @@ def create_purchase(
     deposit_total = 0
     primary = users[0] if users else None
     if not direct and deposit_glasses:
-        glasses = max(0, int(deposit_glasses))
+        glasses = max(0, _int_or_invalid(deposit_glasses, "Nombre de consignes invalide."))
         if glasses > 0:
             if not S.deposit_enabled():
                 raise OperationError("invalid", "La consigne est désactivée.")
@@ -292,7 +304,7 @@ def create_purchase(
 
     negative = []
     if not direct:
-        for u, share in zip(users, shares):
+        for u, share in zip(users, shares, strict=True):
             w = wallets[u.id]
             new_balance = w.balance - share
             if new_balance < 0:
@@ -303,13 +315,12 @@ def create_purchase(
                     "overdraft_limit",
                     f"Découvert maximum dépassé pour {u.display_name} : transaction refusée.",
                 )
-        if negative:
-            if not S.check_admin_password(admin_password):
-                raise OperationError(
-                    "admin_password_required",
-                    "Un étudiant passera en négatif : mot de passe administrateur requis.",
-                    {"negative_users": [u.display_name for u, _ in negative]},
-                )
+        if negative and not S.check_admin_password(admin_password):
+            raise OperationError(
+                "admin_password_required",
+                "Un étudiant passera en négatif : mot de passe administrateur requis.",
+                {"negative_users": [u.display_name for u, _ in negative]},
+            )
 
     ttype = "direct" if direct else "achat"
     t = Transaction(
@@ -351,7 +362,7 @@ def create_purchase(
     # référence vient de la base, jamais d'une lecture préalable, donc deux
     # workers concurrents ne peuvent pas écraser mutuellement leur écriture.
     if not direct:
-        for u, share in zip(users, shares):
+        for u, share in zip(users, shares, strict=True):
             wallets[u.id].balance = Wallet.balance - share
         if glasses and primary is not None:
             wp = wallets[primary.id]
@@ -373,7 +384,7 @@ def create_purchase(
                     "overdraft_limit",
                     f"Découvert maximum dépassé pour {u.display_name} : transaction refusée.",
                 )
-        for u, share in zip(users, shares):
+        for u, share in zip(users, shares, strict=True):
             w = wallets[u.id]
             db.session.add(
                 Contribution(
@@ -451,12 +462,14 @@ def _reactivate_keg_articles(keg, tap_numbers):
 
 
 def return_glasses(*, operator_label, campus, user, count):
-    count = int(count or 0)
+    count = _int_or_invalid(count or 0, "Nombre de verres invalide.")
     if count <= 0:
         raise OperationError("invalid", "Nombre de verres invalide.")
     w = _lock_wallets(campus, [user])[user.id]
     if w.glasses_outstanding < count:
-        raise OperationError("invalid", f"{user.display_name} n'a que {w.glasses_outstanding} verre(s) consigné(s).")
+        raise OperationError(
+            "invalid", f"{user.display_name} n'a que {w.glasses_outstanding} verre(s) consigné(s)."
+        )
     credit = count * S.deposit_value()
     t = Transaction(
         type="consigne",
@@ -492,7 +505,7 @@ def return_glasses(*, operator_label, campus, user, count):
 
 
 def create_reload(*, operator_label, campus, user, amount_cents, payment_method):
-    amount = int(amount_cents)
+    amount = _int_or_invalid(amount_cents, "Montant invalide.")
     if amount <= 0:
         raise OperationError("invalid", "Montant invalide.")
     if payment_method not in PAYMENT_METHODS:
@@ -511,7 +524,11 @@ def create_reload(*, operator_label, campus, user, amount_cents, payment_method)
     db.session.flush()
     db.session.add(
         Contribution(
-            transaction_id=t.id, user_id=user.id, campus=campus, amount=amount, balance_after=w.balance
+            transaction_id=t.id,
+            user_id=user.id,
+            campus=campus,
+            amount=amount,
+            balance_after=w.balance,
         )
     )
     db.session.commit()
@@ -519,7 +536,7 @@ def create_reload(*, operator_label, campus, user, amount_cents, payment_method)
 
 
 def create_withdrawal(*, operator_label, campus, user, amount_cents):
-    amount = int(amount_cents)
+    amount = _int_or_invalid(amount_cents, "Montant invalide.")
     if amount <= 0:
         raise OperationError("invalid", "Montant invalide.")
     w = _lock_wallets(campus, [user])[user.id]
@@ -540,7 +557,11 @@ def create_withdrawal(*, operator_label, campus, user, amount_cents):
         raise OperationError("solde", "Solde insuffisant.")
     db.session.add(
         Contribution(
-            transaction_id=t.id, user_id=user.id, campus=campus, amount=-amount, balance_after=w.balance
+            transaction_id=t.id,
+            user_id=user.id,
+            campus=campus,
+            amount=-amount,
+            balance_after=w.balance,
         )
     )
     db.session.commit()
@@ -548,7 +569,7 @@ def create_withdrawal(*, operator_label, campus, user, amount_cents):
 
 
 def create_transfer(*, operator_label, campus, from_user, to_user, amount_cents):
-    amount = int(amount_cents)
+    amount = _int_or_invalid(amount_cents, "Montant invalide.")
     if amount <= 0:
         raise OperationError("invalid", "Montant invalide.")
     if from_user.id == to_user.id:
@@ -575,12 +596,20 @@ def create_transfer(*, operator_label, campus, from_user, to_user, amount_cents)
         raise OperationError("solde", "Solde du donneur insuffisant.")
     db.session.add(
         Contribution(
-            transaction_id=t.id, user_id=from_user.id, campus=campus, amount=-amount, balance_after=wf.balance
+            transaction_id=t.id,
+            user_id=from_user.id,
+            campus=campus,
+            amount=-amount,
+            balance_after=wf.balance,
         )
     )
     db.session.add(
         Contribution(
-            transaction_id=t.id, user_id=to_user.id, campus=campus, amount=amount, balance_after=wt.balance
+            transaction_id=t.id,
+            user_id=to_user.id,
+            campus=campus,
+            amount=amount,
+            balance_after=wt.balance,
         )
     )
     db.session.commit()
@@ -636,7 +665,11 @@ def cancel_transaction(transaction, admin_password):
             if c.user is not None:
                 w = w_of(c.campus, c.user_id)
                 w.balance = Wallet.balance + (-c.amount if c.amount < 0 else 0)
-        if transaction.type == "achat" and transaction.deposit_user_id and transaction.deposit_glasses:
+        if (
+            transaction.type == "achat"
+            and transaction.deposit_user_id
+            and transaction.deposit_glasses
+        ):
             u = db.session.get(User, transaction.deposit_user_id)
             if u:
                 w = w_of(transaction.campus, u.id)
@@ -659,9 +692,13 @@ def cancel_transaction(transaction, admin_password):
                 w.balance = Wallet.balance + (-c.amount)
     elif transaction.type == "transfert":
         if transaction.from_user_id:
-            w_of(transaction.campus, transaction.from_user_id).balance = Wallet.balance + transaction.total
+            w_of(transaction.campus, transaction.from_user_id).balance = (
+                Wallet.balance + transaction.total
+            )
         if transaction.to_user_id:
-            w_of(transaction.campus, transaction.to_user_id).balance = Wallet.balance - transaction.total
+            w_of(transaction.campus, transaction.to_user_id).balance = (
+                Wallet.balance - transaction.total
+            )
 
     for keg_id, volume_l in volumes.items():
         keg = kegs.get(keg_id)
@@ -684,9 +721,9 @@ def history_cutoff():
 
 
 def visible_transactions():
-    return Transaction.query.filter(
-        Transaction.created_at >= history_cutoff()
-    ).order_by(Transaction.created_at.desc())
+    return Transaction.query.filter(Transaction.created_at >= history_cutoff()).order_by(
+        Transaction.created_at.desc()
+    )
 
 
 def describe_transaction(t):
@@ -702,9 +739,19 @@ def describe_transaction(t):
         if t.deposit_glasses:
             label += f" (+{t.deposit_glasses} consigne(s))"
     elif t.type == "direct":
-        label = "Paiement direct" + (f" ({PAYMENT_METHODS[t.payment_method]})" if t.payment_method in PAYMENT_METHODS else "")
+        label = "Paiement direct" + (
+            f" ({PAYMENT_METHODS[t.payment_method]})" if t.payment_method in PAYMENT_METHODS else ""
+        )
     elif t.type == "rechargement":
-        label = "Rechargement — " + ", ".join(names) + (f" ({PAYMENT_METHODS[t.payment_method]})" if t.payment_method in PAYMENT_METHODS else "")
+        label = (
+            "Rechargement — "
+            + ", ".join(names)
+            + (
+                f" ({PAYMENT_METHODS[t.payment_method]})"
+                if t.payment_method in PAYMENT_METHODS
+                else ""
+            )
+        )
     elif t.type == "retrait":
         label = "Retrait — " + ", ".join(names)
     elif t.type == "transfert":

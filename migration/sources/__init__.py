@@ -61,33 +61,67 @@ def as_int(value):
 # Types de transactions cibles (app.utils.TRANSACTION_TYPES) :
 # achat | direct | rechargement | retrait | transfert | consigne
 TYPE_MAP = {
-    "achat": "achat", "achats": "achat", "vente": "achat", "ventes": "achat",
+    "achat": "achat",
+    "achats": "achat",
+    "vente": "achat",
+    "ventes": "achat",
     "achat_comptoir": "achat",
-    "rechargement": "rechargement", "recharge": "rechargement",
-    "rechargements": "rechargement", "credit": "rechargement", "crédit": "rechargement",
-    "depot": "rechargement", "dépôt": "rechargement",
-    "retrait": "retrait", "withdrawal": "retrait", "remboursement": "retrait",
-    "transfert": "transfert", "virement": "transfert", "transfer": "transfert",
-    "consigne": "consigne", "retour_consigne": "consigne", "retour de consigne": "consigne",
-    "direct": "direct", "paiement_direct": "direct",
+    "rechargement": "rechargement",
+    "recharge": "rechargement",
+    "rechargements": "rechargement",
+    "credit": "rechargement",
+    "crédit": "rechargement",
+    "depot": "rechargement",
+    "dépôt": "rechargement",
+    "retrait": "retrait",
+    "withdrawal": "retrait",
+    "remboursement": "retrait",
+    "transfert": "transfert",
+    "virement": "transfert",
+    "transfer": "transfert",
+    "consigne": "consigne",
+    "retour_consigne": "consigne",
+    "retour de consigne": "consigne",
+    "direct": "direct",
+    "paiement_direct": "direct",
 }
 
 # Moyens de paiement cibles (app.utils.PAYMENT_METHODS) :
 # cb | lydia | especes | helloasso
 PAYMENT_MAP = {
-    "cb": "cb", "carte": "cb", "carte bancaire": "cb", "carte_bleue": "cb",
-    "cb bancaire": "cb", "credit card": "cb", "visa": "cb", "mastercard": "cb",
-    "lydia": "lydia", "lydia-commun": "lydia",
-    "especes": "especes", "espèces": "especes", "espece": "especes",
-    "espèce": "especes", "cash": "especes", "monnaie": "especes",
-    "helloasso": "helloasso", "hello asso": "helloasso",
+    "cb": "cb",
+    "carte": "cb",
+    "carte bancaire": "cb",
+    "carte_bleue": "cb",
+    "cb bancaire": "cb",
+    "credit card": "cb",
+    "visa": "cb",
+    "mastercard": "cb",
+    "lydia": "lydia",
+    "lydia-commun": "lydia",
+    "especes": "especes",
+    "espèces": "especes",
+    "espece": "especes",
+    "espèce": "especes",
+    "cash": "especes",
+    "monnaie": "especes",
+    "helloasso": "helloasso",
+    "hello asso": "helloasso",
 }
 
 TEAM_STATUS_MAP = {
-    "mandat": "mandat", "membre": "mandat", "membre_equipe": "mandat",
-    "membre équipe": "mandat", "equipe": "mandat", "équipe": "mandat",
-    "bureau": "mandat", "admin": "mandat", "president": "mandat",
-    "ancien": "ancien", "ancien membre": "ancien", "alumni": "ancien",
+    "mandat": "mandat",
+    "membre": "mandat",
+    "membre_equipe": "mandat",
+    "membre équipe": "mandat",
+    "equipe": "mandat",
+    "équipe": "mandat",
+    "bureau": "mandat",
+    "admin": "mandat",
+    "president": "mandat",
+    "ancien": "ancien",
+    "ancien membre": "ancien",
+    "alumni": "ancien",
     "anciens": "ancien",
     # Brest : users.is_foyz (tinyint 0/1) -> statut équipe
     "1": "mandat",
@@ -116,51 +150,105 @@ def normalize_team_status(value):
 
 # Surnom d'usage source (pseudo) : migré vers `users.nickname` (affichage),
 # sauf s'il est confondu avec le nom réel.
-NAME_FIELDS = ("name", "pseudo", "username", "login", "identifiant", "nom_surnom",
-               "real_name")
+NAME_FIELDS = ("name", "pseudo", "username", "login", "identifiant", "nom_surnom", "real_name")
 # Certaines sources séparent prénom / nom : combinés si aucun champ `name`.
 FIRST_NAME_FIELDS = ("prenom", "prénom", "first_name", "firstname")
 LAST_NAME_FIELDS = ("nom", "last_name", "lastname", "famille")
 
 USER_FIELDS = {
-    "src_id": ("id", "membre_id", "student_id", "utilisateur_id", "user_id", "id_etudiant",
-               "card_id"),
+    "src_id": (
+        "id",
+        "membre_id",
+        "student_id",
+        "utilisateur_id",
+        "user_id",
+        "id_etudiant",
+        "card_id",
+    ),
     "email": ("email", "mail", "courriel", "adresse_mail"),
     "password": ("mdp", "password", "password_hash", "mot_de_passe", "pass", "hash"),
     "real_name": ("real_name", "vrai_nom", "nom_reel", "full_name", "nom_complet"),
     "balance": ("solde", "balance", "solde_euros", "credit", "solde_compte"),
-    "team_status": ("statut", "statut_equipe", "team_status", "role_equipe", "status",
-                    "is_foyz"),
+    "team_status": ("statut", "statut_equipe", "team_status", "role_equipe", "status", "is_foyz"),
     "team_campus": ("campus_equipe", "team_campus", "campus"),
     "blacklist": ("blacklist", "blacklisted", "interdit", "liste_noire"),
-    "blacklist_alcohol": ("blacklist_alcool", "blacklist_alcohol", "sans_alcool",
-                          "alcohol_blacklisted"),
-    "blacklist_reason": ("blacklist_reason", "motif_blacklist", "motif_blacklisting",
-                         "raison_blacklist", "raison_interdiction", "motif_interdiction"),
-    "glasses_outstanding": ("verres_restants", "verres", "glasses_outstanding",
-                            "consignes_restantes", "verres_sortis", "ecocups"),
-    "created_at": ("date_inscription", "created_at", "date_creation", "inscription", "cree_le",
-                   "registration"),
+    "blacklist_alcohol": (
+        "blacklist_alcool",
+        "blacklist_alcohol",
+        "sans_alcool",
+        "alcohol_blacklisted",
+    ),
+    "blacklist_reason": (
+        "blacklist_reason",
+        "motif_blacklist",
+        "motif_blacklisting",
+        "raison_blacklist",
+        "raison_interdiction",
+        "motif_interdiction",
+    ),
+    "glasses_outstanding": (
+        "verres_restants",
+        "verres",
+        "glasses_outstanding",
+        "consignes_restantes",
+        "verres_sortis",
+        "ecocups",
+    ),
+    "created_at": (
+        "date_inscription",
+        "created_at",
+        "date_creation",
+        "inscription",
+        "cree_le",
+        "registration",
+    ),
     "promotion": ("promotion", "promo", "annee", "année", "year", "promotion_annee"),
     # Date de naissance : seconde composante de la clé de fusion inter-campus
     # quand l'email est absent (R6), et discriminant des homonymes.
-    "birth_date": ("date_naissance", "date_de_naissance", "naissance", "birth_date",
-                   "birthdate", "dob", "anniversaire"),
+    "birth_date": (
+        "date_naissance",
+        "date_de_naissance",
+        "naissance",
+        "birth_date",
+        "birthdate",
+        "dob",
+        "anniversaire",
+    ),
     # Compte désactivé côté source (R19) : conservé désactivé en cible.
-    "disabled": ("disabled", "desactive", "désactivé", "desactivee", "inactif",
-                 "is_disabled", "compte_desactive"),
+    "disabled": (
+        "disabled",
+        "desactive",
+        "désactivé",
+        "desactivee",
+        "inactif",
+        "is_disabled",
+        "compte_desactive",
+    ),
 }
 
 TXN_FIELDS = {
     "src_id": ("id", "transaction_id", "vente_id", "operation_id", "id_vente"),
-    "created_at": ("date", "date_heure", "date_transaction", "created_at", "horodatage",
-                   "date_vente", "timestamp"),
+    "created_at": (
+        "date",
+        "date_heure",
+        "date_transaction",
+        "created_at",
+        "horodatage",
+        "date_vente",
+        "timestamp",
+    ),
     "type": ("type", "type_transaction", "categorie", "catégorie", "nature"),
-    "total": ("montant", "montant_total", "total", "prix_total", "valeur", "somme",
-              "balance"),
+    "total": ("montant", "montant_total", "total", "prix_total", "valeur", "somme", "balance"),
     "user_id": ("membre_id", "user_id", "etudiant_id", "compte_id", "client_id"),
-    "operator": ("operateur", "opérateur", "operator", "caissier", "vendeur",
-                 "operateur_label", "logged_user_id"),
+    "operator": (
+        "operateur",
+        "opérateur",
+        "operator",
+        "caissier",
+        "vendeur",
+        "operateur_label",
+        "logged_user_id",
+    ),
     "payment_method": ("moyen", "moyen_paiement", "payment_method", "paiement", "reglement"),
     "cancelled": ("annule", "annulée", "annulee", "cancelled", "est_annule", "annulation"),
     "cancelled_at": ("date_annulation", "cancelled_at", "annule_le"),
@@ -210,11 +298,17 @@ OPERATION_TYPES = {
 }
 
 LINE_FIELDS = {
-    "transaction_id": ("transaction_id", "vente_id", "id_vente", "id_transaction",
-                       "operation_id"),
+    "transaction_id": ("transaction_id", "vente_id", "id_vente", "id_transaction", "operation_id"),
     "article_id": ("article_id", "id_article", "produit_id", "code_barre", "barcode"),
-    "article_name": ("produit", "article", "article_name", "nom_produit", "designation",
-                     "désignation", "nom"),
+    "article_name": (
+        "produit",
+        "article",
+        "article_name",
+        "nom_produit",
+        "designation",
+        "désignation",
+        "nom",
+    ),
     "quantity": ("quantite", "quantité", "quantity", "qte", "qté"),
     "unit_price": ("prix_unitaire", "unit_price", "pu", "prix", "article_price"),
     "line_total": ("total", "montant", "line_total", "montant_ligne", "prix_total", "sous_total"),
@@ -225,14 +319,28 @@ LINE_FIELDS = {
 # `price` / `price_foyz`). Le volume source Brest est exprimé en litres.
 ARTICLE_FIELDS = {
     "src_id": ("id", "article_id", "id_article", "code", "code_barre", "barcode", "ref"),
-    "name": ("name", "nom", "article", "produit", "designation", "désignation",
-             "libelle", "libellé"),
+    "name": (
+        "name",
+        "nom",
+        "article",
+        "produit",
+        "designation",
+        "désignation",
+        "libelle",
+        "libellé",
+    ),
     "type": ("type", "type_article", "article_type", "categorie", "catégorie", "famille"),
     "volume_l": ("volume", "volume_l"),
     "volume_cl": ("volume_cl", "contenance", "contenance_cl"),
     "price_std": ("price", "prix", "price_std", "prix_std", "prix_vente"),
-    "price_team": ("price_foyz", "prix_foyz", "price_team", "prix_equipe", "prix_équipe",
-                   "prix_membre"),
+    "price_team": (
+        "price_foyz",
+        "prix_foyz",
+        "price_team",
+        "prix_equipe",
+        "prix_équipe",
+        "prix_membre",
+    ),
     "active": ("active", "actif", "visible", "disponible"),
 }
 
@@ -241,8 +349,15 @@ KEG_FIELDS = {
     "src_id": ("id", "keg_id", "fut_id", "draft_beer_id"),
     "name": ("name", "nom", "beer_name", "biere", "bière"),
     "volume_l": ("volume", "volume_l", "contenance_l"),
-    "alcohol_degree": ("alcohol_volume", "alcohol_degree", "degre", "degré", "degres",
-                       "degrés", "alcool"),
+    "alcohol_degree": (
+        "alcohol_volume",
+        "alcohol_degree",
+        "degre",
+        "degré",
+        "degres",
+        "degrés",
+        "alcool",
+    ),
     "price_half_std": ("half_pint_price", "prix_demi", "price_half"),
     "price_half_team": ("half_pint_price_foyz", "prix_demi_foyz", "price_half_team"),
     "price_pint_std": ("pint_price", "prix_pinte", "price_pint"),
@@ -266,18 +381,24 @@ TAP_FIELDS = {
 # « Boisson Chaude » / « Boisson Froide » n'existent pas en cible : rattachés
 # aux consommables non alcoolisés (`snack`). Ajustable la veille de la bascule.
 ARTICLE_TYPE_MAP = {
-    "bière": "biere", "biere": "biere",
+    "bière": "biere",
+    "biere": "biere",
     "vin": "vin",
     "cidre": "cidre",
-    "snacks": "snack", "snack": "snack",
+    "snacks": "snack",
+    "snack": "snack",
     "saucisson": "saucisson",
     "boisson chaude": "snack",
     "boisson froide": "snack",
     "cocktails/barbecue/soirées": "evenement",
     "cocktails/barbecue/soirees": "evenement",
-    "cocktail": "evenement", "cocktails": "evenement",
-    "soirée": "evenement", "soiree": "evenement",
-    "evenement": "evenement", "évènement": "evenement", "événement": "evenement",
+    "cocktail": "evenement",
+    "cocktails": "evenement",
+    "soirée": "evenement",
+    "soiree": "evenement",
+    "evenement": "evenement",
+    "évènement": "evenement",
+    "événement": "evenement",
 }
 # Type par défaut d'un article de type source inconnu : consommable NON
 # alcoolisé (jamais « biere » : le type pilote le contrôle blacklist alcool).
@@ -301,6 +422,7 @@ TAP_SIZES = {"demi": ("Demi", 25), "pinte": ("Pinte", 50), "pot": ("Pot", 33)}
 
 
 # ---------------------------------------------------------------- mappers
+
 
 def map_user_row(row, campus, money_unit):
     """Convertit une ligne source en compte canonique (montants en centimes).
@@ -344,14 +466,16 @@ def map_user_row(row, campus, money_unit):
         return None, "clé de réconciliation vide"
     password = pick(row, USER_FIELDS["password"])
     from ..util import looks_like_werkzeug_hash
+
     hash_val = str(password) if looks_like_werkzeug_hash(password) else None
     legacy_password = None
     if password is not None and hash_val is None:
         legacy_password = str(password).strip()[:255] or None
-    balance = to_cents(pick(row, USER_FIELDS["balance"]), money_unit,
-                       context=f"solde {campus}")
+    balance = to_cents(pick(row, USER_FIELDS["balance"]), money_unit, context=f"solde {campus}")
     team_campus = pick(row, USER_FIELDS["team_campus"])
-    team_campus = team_campus.lower() if str(team_campus or "").lower() in ("brest", "paris") else None
+    team_campus = (
+        team_campus.lower() if str(team_campus or "").lower() in ("brest", "paris") else None
+    )
     user = {
         "src_id": pick(row, USER_FIELDS["src_id"]),
         "key": key,
@@ -525,17 +649,14 @@ def map_line_row(row, money_unit, type_names=None):
     if name is None and pick(row, LINE_FIELDS["transaction_id"]) is None:
         return None
     raw_type = pick(row, LINE_FIELDS["article_type"])
-    if raw_type is None:
-        article_type = "biere"
-    else:
-        article_type = resolve_article_type(raw_type, type_names)
+    article_type = "biere" if raw_type is None else resolve_article_type(raw_type, type_names)
     if article_type not in ARTICLE_TYPES_KNOWN:
         article_type = "biere"
     quantity = as_int(pick(row, LINE_FIELDS["quantity"])) or 1
-    unit_price = to_cents(pick(row, LINE_FIELDS["unit_price"]), money_unit,
-                          context="ligne (prix unitaire)")
-    line_total = to_cents(pick(row, LINE_FIELDS["line_total"]), money_unit,
-                          context="ligne (total)")
+    unit_price = to_cents(
+        pick(row, LINE_FIELDS["unit_price"]), money_unit, context="ligne (prix unitaire)"
+    )
+    line_total = to_cents(pick(row, LINE_FIELDS["line_total"]), money_unit, context="ligne (total)")
     if not line_total and unit_price:
         line_total = unit_price * quantity
     return {
@@ -557,10 +678,12 @@ def map_article_row(row, money_unit, type_names=None):
     volume_cl = as_int(pick(row, ARTICLE_FIELDS["volume_cl"]))
     if volume_cl is None:
         volume_cl = liters_to_cl(pick(row, ARTICLE_FIELDS["volume_l"]))
-    price_std = to_cents(pick(row, ARTICLE_FIELDS["price_std"]), money_unit,
-                         context="article (prix public)")
-    price_team = to_cents(pick(row, ARTICLE_FIELDS["price_team"]), money_unit,
-                          context="article (prix équipe)")
+    price_std = to_cents(
+        pick(row, ARTICLE_FIELDS["price_std"]), money_unit, context="article (prix public)"
+    )
+    price_team = to_cents(
+        pick(row, ARTICLE_FIELDS["price_team"]), money_unit, context="article (prix équipe)"
+    )
     article_type = resolve_article_type(pick(row, ARTICLE_FIELDS["type"]), type_names)
     active = as_bool(pick(row, ARTICLE_FIELDS["active"]))
     return {
@@ -597,18 +720,24 @@ def map_keg_row(row, money_unit):
         "volume_l": volume_l,
         "remaining_l": volume_l,
         "alcohol_degree": _deg(pick(row, KEG_FIELDS["alcohol_degree"])),
-        "price_half_std": to_cents(pick(row, KEG_FIELDS["price_half_std"]), money_unit,
-                                   context="fût (prix demi)"),
-        "price_half_team": to_cents(pick(row, KEG_FIELDS["price_half_team"]), money_unit,
-                                    context="fût (prix demi équipe)"),
-        "price_pint_std": to_cents(pick(row, KEG_FIELDS["price_pint_std"]), money_unit,
-                                   context="fût (prix pinte)"),
-        "price_pint_team": to_cents(pick(row, KEG_FIELDS["price_pint_team"]), money_unit,
-                                    context="fût (prix pinte équipe)"),
-        "price_pot_std": to_cents(pick(row, KEG_FIELDS["price_pot_std"]), money_unit,
-                                  context="fût (prix pot)"),
-        "price_pot_team": to_cents(pick(row, KEG_FIELDS["price_pot_team"]), money_unit,
-                                   context="fût (prix pot équipe)"),
+        "price_half_std": to_cents(
+            pick(row, KEG_FIELDS["price_half_std"]), money_unit, context="fût (prix demi)"
+        ),
+        "price_half_team": to_cents(
+            pick(row, KEG_FIELDS["price_half_team"]), money_unit, context="fût (prix demi équipe)"
+        ),
+        "price_pint_std": to_cents(
+            pick(row, KEG_FIELDS["price_pint_std"]), money_unit, context="fût (prix pinte)"
+        ),
+        "price_pint_team": to_cents(
+            pick(row, KEG_FIELDS["price_pint_team"]), money_unit, context="fût (prix pinte équipe)"
+        ),
+        "price_pot_std": to_cents(
+            pick(row, KEG_FIELDS["price_pot_std"]), money_unit, context="fût (prix pot)"
+        ),
+        "price_pot_team": to_cents(
+            pick(row, KEG_FIELDS["price_pot_team"]), money_unit, context="fût (prix pot équipe)"
+        ),
     }
 
 

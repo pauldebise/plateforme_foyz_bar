@@ -43,11 +43,13 @@ def _month_case(months):
     whens = []
     for y, m in months:
         start, nxt = _month_bounds(datetime(y, m, 1))
-        whens.append((
-            (Transaction.created_at >= paris_to_utc(start))
-            & (Transaction.created_at < paris_to_utc(nxt)),
-            f"{y}-{m:02d}",
-        ))
+        whens.append(
+            (
+                (Transaction.created_at >= paris_to_utc(start))
+                & (Transaction.created_at < paris_to_utc(nxt)),
+                f"{y}-{m:02d}",
+            )
+        )
     return case(*whens, else_=None)
 
 
@@ -59,16 +61,18 @@ def treasury(campus):
 
     report = []
     for y, m in months:
-        report.append({
-            "year": y,
-            "month": m,
-            "label": f"{m:02d}/{y}",
-            "reloads_total": 0,
-            "reloads_by_method": {k: 0 for k in PAYMENT_METHODS},
-            "sales_total": 0,
-            "sales_by_type": {k: 0 for k in ARTICLE_TYPES},
-            "events_total": 0,
-        })
+        report.append(
+            {
+                "year": y,
+                "month": m,
+                "label": f"{m:02d}/{y}",
+                "reloads_total": 0,
+                "reloads_by_method": {k: 0 for k in PAYMENT_METHODS},
+                "sales_total": 0,
+                "sales_by_type": {k: 0 for k in ARTICLE_TYPES},
+                "events_total": 0,
+            }
+        )
     index = {(e["year"], e["month"]): e for e in report}
 
     reloads = (
@@ -99,12 +103,8 @@ def treasury(campus):
         select(
             month_case.label("month"),
             TransactionLine.article_type,
-            func.sum(
-                case((Transaction.event_id.isnot(None), TransactionLine.line_total), else_=0)
-            ),
-            func.sum(
-                case((Transaction.event_id.is_(None), TransactionLine.line_total), else_=0)
-            ),
+            func.sum(case((Transaction.event_id.isnot(None), TransactionLine.line_total), else_=0)),
+            func.sum(case((Transaction.event_id.is_(None), TransactionLine.line_total), else_=0)),
         )
         .select_from(TransactionLine)
         .join(Transaction, TransactionLine.transaction_id == Transaction.id)

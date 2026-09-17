@@ -42,15 +42,22 @@ _CAMPUS_PREFIX = {
     "paris": re.compile(r"^paris[-_]", re.IGNORECASE),
 }
 
-_IGNORED_NAMES = {".gitkeep", ".gitignore", "readme.md", "lisez-moi.txt", "manifest.json",
-                  "correspondance.csv", "correspondance.json"}
+_IGNORED_NAMES = {
+    ".gitkeep",
+    ".gitignore",
+    "readme.md",
+    "lisez-moi.txt",
+    "manifest.json",
+    "correspondance.csv",
+    "correspondance.json",
+}
 
 
 @dataclass(frozen=True)
 class SourceFile:
     path: Path
     campus: str  # "brest" | "paris"
-    kind: str    # "sql_dump" | "json" | "jsonl" | "csv"
+    kind: str  # "sql_dump" | "json" | "jsonl" | "csv"
 
     @property
     def size(self):

@@ -5,7 +5,16 @@ import threading
 import time
 from collections import defaultdict, deque
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from sqlalchemy import select
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -107,9 +116,9 @@ def login():
         # Le login ne reconnaît que l'identifiant prenom.nom : la saisie est
         # normalisée comme à l'import (casse, accents et séparateurs tolérés).
         slug = slug_username(identifiant)
-        user = db.session.scalars(
-            select(User).where(User.username == slug)
-        ).first() if slug else None
+        user = (
+            db.session.scalars(select(User).where(User.username == slug)).first() if slug else None
+        )
         ok = False
         if user and user.password_hash:
             ok = check_password_hash(user.password_hash, password)
@@ -121,24 +130,31 @@ def login():
                 user.legacy_password = None
                 current_app.logger.info(
                     "Mot de passe legacy converti pour %s (compte %s).",
-                    user.display_name, user.id,
+                    user.display_name,
+                    user.id,
                 )
         if ok and user and user.disabled:
             ok = False
             reason = "Accès refusé : compte désactivé."
         elif ok and user and (not user.is_team or user.blacklist):
             ok = False
-            reason = "Accès refusé : compte blacklisté." if user.blacklist else "Accès réservé aux membres de l'équipe."
+            reason = (
+                "Accès refusé : compte blacklisté."
+                if user.blacklist
+                else "Accès réservé aux membres de l'équipe."
+            )
         else:
             reason = "Identifiants incorrects."
 
-        db.session.add(LoginLog(
-            user_id=user.id if user else None,
-            name=identifiant[:120],  # LoginLog.name = VARCHAR(120)
-            campus=campus,
-            ip=ip,
-            success=bool(ok),
-        ))
+        db.session.add(
+            LoginLog(
+                user_id=user.id if user else None,
+                name=identifiant[:120],  # LoginLog.name = VARCHAR(120)
+                campus=campus,
+                ip=ip,
+                success=bool(ok),
+            )
+        )
         db.session.commit()
         _cleanup_old_logs()
 
@@ -176,7 +192,9 @@ def _cleanup_old_logs():
     days = int_setting("login_logs_retention_days")
     if days <= 0:
         return
-    db.session.query(LoginLog).filter(LoginLog.created_at < utcnow() - timedelta(days=days)).delete()
+    db.session.query(LoginLog).filter(
+        LoginLog.created_at < utcnow() - timedelta(days=days)
+    ).delete()
     db.session.commit()
 
 

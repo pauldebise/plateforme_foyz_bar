@@ -1,8 +1,20 @@
+import contextlib
 import math
 import os
 from datetime import datetime, timedelta
 
-from flask import Blueprint, abort, current_app, flash, g, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    flash,
+    g,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from sqlalchemy import func, or_, select
 from werkzeug.utils import secure_filename
 
@@ -81,11 +93,13 @@ def comptes():
     stmt = select(User).order_by(User.name)
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(or_(
-            User.name.ilike(like),
-            User.nickname.ilike(like),
-            User.username.ilike(like),
-        ))
+        stmt = stmt.where(
+            or_(
+                User.name.ilike(like),
+                User.nickname.ilike(like),
+                User.username.ilike(like),
+            )
+        )
     try:
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
@@ -94,9 +108,7 @@ def comptes():
     total = db.session.scalar(select(func.count()).select_from(stmt.subquery()))
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
-    users = db.session.scalars(
-        stmt.offset((page - 1) * per_page).limit(per_page)
-    ).unique().all()
+    users = db.session.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).unique().all()
     return render_template(
         "admin/comptes.html",
         users=users,
@@ -123,9 +135,7 @@ def comptes_nouveau():
     if not username:
         flash("Identifiant invalide (lettres et chiffres uniquement).", "danger")
         return redirect(url_for("admin.comptes"))
-    existing = db.session.scalars(
-        select(User).where(User.username == username)
-    ).first()
+    existing = db.session.scalars(select(User).where(User.username == username)).first()
     if existing:
         flash(f"L'identifiant « {username} » est déjà utilisé.", "danger")
         return redirect(url_for("admin.comptes"))
@@ -140,7 +150,10 @@ def comptes_nouveau():
     for c in CAMPUSSES:
         u.wallet(c)
     db.session.commit()
-    flash(f"Compte de {u.display_name} créé (identifiant {u.username}, portefeuilles Brest et Paris initialisés).", "success")
+    flash(
+        f"Compte de {u.display_name} créé (identifiant {u.username}, portefeuilles Brest et Paris initialisés).",
+        "success",
+    )
     return redirect(url_for("admin.compte", user_id=u.id))
 
 
@@ -161,9 +174,7 @@ def compte(user_id):
             flash("Identifiant invalide (lettres et chiffres uniquement).", "danger")
             return redirect(url_for("admin.compte", user_id=u.id))
         if new_username != u.username:
-            existing = db.session.scalars(
-                select(User).where(User.username == new_username)
-            ).first()
+            existing = db.session.scalars(select(User).where(User.username == new_username)).first()
             if existing:
                 flash(f"L'identifiant « {new_username} » est déjà utilisé.", "danger")
                 return redirect(url_for("admin.compte", user_id=u.id))
@@ -172,13 +183,22 @@ def compte(user_id):
         u.promotion = int(promotion) if promotion.isdigit() else None
         u.blacklist = request.form.get("blacklist") == "on"
         new_ba = request.form.get("blacklist_alcohol") == "on"
-        if u.blacklist_alcohol and not new_ba:
-            if not S.check_admin_password(request.form.get("admin_password", "")):
-                flash("Le retrait du statut « blacklist alcool » exige le mot de passe administrateur.", "danger")
-                return redirect(url_for("admin.compte", user_id=u.id))
+        if (
+            u.blacklist_alcohol
+            and not new_ba
+            and not S.check_admin_password(request.form.get("admin_password", ""))
+        ):
+            flash(
+                "Le retrait du statut « blacklist alcool » exige le mot de passe administrateur.",
+                "danger",
+            )
+            return redirect(url_for("admin.compte", user_id=u.id))
         u.blacklist_alcohol = new_ba
         if u.blacklist:
-            flash("Statut blacklist activé : tous les accès de ce compte (dont équipe) sont retirés.", "warning")
+            flash(
+                "Statut blacklist activé : tous les accès de ce compte (dont équipe) sont retirés.",
+                "warning",
+            )
         db.session.commit()
         flash("Profil mis à jour.", "success")
         return redirect(url_for("admin.compte", user_id=u.id))
@@ -208,10 +228,7 @@ def _deletion_campus_ok(u):
     own = own_campus()
     if u.team_campus and u.team_campus != own:
         return False
-    return not any(
-        w.campus != own and (w.balance != 0 or w.glasses_outstanding)
-        for w in u.wallets
-    )
+    return not any(w.campus != own and (w.balance != 0 or w.glasses_outstanding) for w in u.wallets)
 
 
 @bp.route("/comptes/<int:user_id>/supprimer", methods=["POST"])
@@ -247,9 +264,11 @@ def compte_supprimer(user_id):
 @bp.route("/equipe")
 @login_required
 def equipe():
-    members = db.session.scalars(
-        select(User).where(User.team_status.is_not(None)).order_by(User.name)
-    ).unique().all()
+    members = (
+        db.session.scalars(select(User).where(User.team_status.is_not(None)).order_by(User.name))
+        .unique()
+        .all()
+    )
     return render_template("admin/equipe.html", members=members, own_campus=own_campus())
 
 
@@ -373,11 +392,17 @@ def tireuses():
     kegs = db.session.scalars(select(Keg).order_by(Keg.active.desc(), Keg.name)).unique().all()
     taps = db.session.scalars(select(Tap).where(Tap.campus == campus).order_by(Tap.number)).all()
     all_taps = db.session.scalars(select(Tap)).all()
-    free_kegs = [k for k in kegs if k.remaining_l > 0.01 and not any(t.keg_id == k.id for t in all_taps)]
+    free_kegs = [
+        k for k in kegs if k.remaining_l > 0.01 and not any(t.keg_id == k.id for t in all_taps)
+    ]
     return render_template(
         "admin/tireuses.html",
-        kegs=kegs, taps=taps, free_kegs=free_kegs,
-        campus=campus, writable=writable, own_campus=own_campus(),
+        kegs=kegs,
+        taps=taps,
+        free_kegs=free_kegs,
+        campus=campus,
+        writable=writable,
+        own_campus=own_campus(),
     )
 
 
@@ -423,12 +448,18 @@ def keg_supprimer(keg_id):
     keg = db.session.get(Keg, keg_id)
     if keg:
         mounted_elsewhere = [
-            t for t in db.session.scalars(select(Tap).where(Tap.keg_id == keg.id))
+            t
+            for t in db.session.scalars(select(Tap).where(Tap.keg_id == keg.id))
             if t.campus != own_campus()
         ]
         if mounted_elsewhere:
-            labels = ", ".join(f"{t.display_name} ({CAMPUSSES[t.campus]})" for t in mounted_elsewhere)
-            flash(f"Suppression impossible : ce fût est monté sur {labels}. Demandez à l'équipe concernée de le détacher.", "danger")
+            labels = ", ".join(
+                f"{t.display_name} ({CAMPUSSES[t.campus]})" for t in mounted_elsewhere
+            )
+            flash(
+                f"Suppression impossible : ce fût est monté sur {labels}. Demandez à l'équipe concernée de le détacher.",
+                "danger",
+            )
             return redirect(url_for("admin.tireuses"))
         for tap in list(db.session.scalars(select(Tap).where(Tap.keg_id == keg.id))):
             C.detach_keg(tap)
@@ -453,7 +484,9 @@ def _keg_from_form(k, writable_campus):
     k.alcohol_degree = _positive_float("alcohol_degree", k.alcohol_degree or 0.0, 100.0)
     k.volume_l = _positive_float("volume_l", k.volume_l or 30.0, 10_000.0)
     k.remaining_l = _positive_float(
-        "remaining_l", k.remaining_l or 0.0, k.volume_l,
+        "remaining_l",
+        k.remaining_l or 0.0,
+        k.volume_l,
     )
     k.active = request.form.get("active", "on") == "on"
     for c in CAMPUSSES:
@@ -564,7 +597,9 @@ def evenements():
         ev.id: len(db.session.scalars(select(Article).where(Article.event_id == ev.id)).all())
         for ev in events
     }
-    return render_template("admin/evenements.html", events=events, article_counts=counts, own_campus=own_campus())
+    return render_template(
+        "admin/evenements.html", events=events, article_counts=counts, own_campus=own_campus()
+    )
 
 
 @bp.route("/evenements/nouveau", methods=["POST"])
@@ -573,7 +608,9 @@ def evenement_nouveau():
     name = (request.form.get("name") or "").strip()
     campus = own_campus()
     try:
-        starts = paris_to_utc(datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"))
+        starts = paris_to_utc(
+            datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M")
+        )
         ends = paris_to_utc(datetime.strptime(request.form.get("ends_at", ""), "%Y-%m-%dT%H:%M"))
     except ValueError:
         flash("Horaires invalides.", "danger")
@@ -582,7 +619,14 @@ def evenement_nouveau():
         flash("Nom et horaires cohérents requis.", "danger")
         return redirect(url_for("admin.evenements"))
     poster = save_upload(request.files.get("poster"), allowed=(".jpg", ".jpeg", ".png", ".webp"))
-    ev = Event(name=clamp_text(name, 160), campus=campus, starts_at=starts, ends_at=ends, token=new_token(), poster=poster)
+    ev = Event(
+        name=clamp_text(name, 160),
+        campus=campus,
+        starts_at=starts,
+        ends_at=ends,
+        token=new_token(),
+        poster=poster,
+    )
     db.session.add(ev)
     db.session.commit()
     flash("Événement créé.", "success")
@@ -604,12 +648,18 @@ def evenement(event_id):
             ev.name = clamp_text((request.form.get("name") or ev.name).strip(), 160)
             ev.campus = own_campus()
             try:
-                ev.starts_at = paris_to_utc(datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M"))
-                ev.ends_at = paris_to_utc(datetime.strptime(request.form.get("ends_at", ""), "%Y-%m-%dT%H:%M"))
+                ev.starts_at = paris_to_utc(
+                    datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M")
+                )
+                ev.ends_at = paris_to_utc(
+                    datetime.strptime(request.form.get("ends_at", ""), "%Y-%m-%dT%H:%M")
+                )
             except ValueError:
                 flash("Horaires invalides.", "danger")
                 return redirect(url_for("admin.evenement", event_id=ev.id))
-            poster = save_upload(request.files.get("poster"), allowed=(".jpg", ".jpeg", ".png", ".webp"))
+            poster = save_upload(
+                request.files.get("poster"), allowed=(".jpg", ".jpeg", ".png", ".webp")
+            )
             if poster:
                 ev.poster = poster
         elif action == "add_article":
@@ -645,7 +695,13 @@ def evenement(event_id):
     temp_articles = db.session.scalars(
         select(Article).where(Article.event_id == ev.id).order_by(Article.name)
     ).all()
-    return render_template("admin/evenement.html", ev=ev, temp_articles=temp_articles, writable=writable, own_campus=own_campus())
+    return render_template(
+        "admin/evenement.html",
+        ev=ev,
+        temp_articles=temp_articles,
+        writable=writable,
+        own_campus=own_campus(),
+    )
 
 
 @bp.route("/journaux")
@@ -653,30 +709,36 @@ def evenement(event_id):
 def journaux():
     days = S.int_setting("login_logs_retention_days")
     if days > 0:
-        db.session.query(LoginLog).filter(LoginLog.created_at < utcnow() - timedelta(days=days)).delete()
+        db.session.query(LoginLog).filter(
+            LoginLog.created_at < utcnow() - timedelta(days=days)
+        ).delete()
         db.session.commit()
     ffrom = request.args.get("from", "")
     fto = request.args.get("to", "")
     fuser = request.args.get("user", "").strip()
     query = LoginLog.query
     if ffrom:
-        try:
+        with contextlib.suppress(ValueError):
             query = query.filter(LoginLog.created_at >= datetime.strptime(ffrom, "%Y-%m-%d"))
-        except ValueError:
-            pass
     if fto:
-        try:
-            query = query.filter(LoginLog.created_at <= datetime.strptime(fto, "%Y-%m-%d") + timedelta(days=1, microseconds=-1))
-        except ValueError:
-            pass
+        with contextlib.suppress(ValueError):
+            query = query.filter(
+                LoginLog.created_at
+                <= datetime.strptime(fto, "%Y-%m-%d") + timedelta(days=1, microseconds=-1)
+            )
     if fuser:
-        query = query.filter(LoginLog.name.ilike(f"%{fuser}%") | LoginLog.user_id.in_(
-            select(User.id).where(or_(
-                User.name.ilike(f"%{fuser}%"),
-                User.nickname.ilike(f"%{fuser}%"),
-                User.username.ilike(f"%{fuser}%"),
-            ))
-        ))
+        query = query.filter(
+            LoginLog.name.ilike(f"%{fuser}%")
+            | LoginLog.user_id.in_(
+                select(User.id).where(
+                    or_(
+                        User.name.ilike(f"%{fuser}%"),
+                        User.nickname.ilike(f"%{fuser}%"),
+                        User.username.ilike(f"%{fuser}%"),
+                    )
+                )
+            )
+        )
     logs = query.order_by(LoginLog.created_at.desc()).limit(500).all()
     return render_template("admin/journaux.html", logs=logs, filters=request.args)
 
@@ -689,11 +751,20 @@ def module_dev():
         action = request.form.get("action", "settings")
         if action == "settings":
             for key in (
-                "overdraft_limit_cents", "deposit_value_cents", "deposit_enabled",
-                "max_history_days", "login_logs_retention_days", "session_timeout_minutes",
-                "max_postits_private", "max_postits_public", "homepage_text",
-                "theme_color_public", "site_name",
-                "link_hosting", "link_database", "link_repository",
+                "overdraft_limit_cents",
+                "deposit_value_cents",
+                "deposit_enabled",
+                "max_history_days",
+                "login_logs_retention_days",
+                "session_timeout_minutes",
+                "max_postits_private",
+                "max_postits_public",
+                "homepage_text",
+                "theme_color_public",
+                "site_name",
+                "link_hosting",
+                "link_database",
+                "link_repository",
             ):
                 if key in request.form:
                     value = request.form[key]
@@ -708,14 +779,20 @@ def module_dev():
             if key_own in request.form:
                 S.set_setting(key_own, safe_color(request.form[key_own], S.DEFAULTS[key_own]))
             try:
-                S.set_setting("overdraft_limit_cents", cents(request.form.get("overdraft_limit_cents", "0")))
-                S.set_setting("deposit_value_cents", cents(request.form.get("deposit_value_cents", "0")))
+                S.set_setting(
+                    "overdraft_limit_cents", cents(request.form.get("overdraft_limit_cents", "0"))
+                )
+                S.set_setting(
+                    "deposit_value_cents", cents(request.form.get("deposit_value_cents", "0"))
+                )
             except Exception:
                 pass
             pdf_own = save_upload(request.files.get(f"regulation_pdf_{own}"), allowed=(".pdf",))
             # SVG exclu volontairement : un SVG servi sur l'origine peut porter
             # du script (XSS stocké). Formats raster uniquement.
-            logo_own = save_upload(request.files.get(f"logo_{own}"), allowed=(".jpg", ".jpeg", ".png", ".webp"))
+            logo_own = save_upload(
+                request.files.get(f"logo_{own}"), allowed=(".jpg", ".jpeg", ".png", ".webp")
+            )
             payment_photo_own = save_upload(
                 request.files.get(f"payment_photo_{own}"),
                 allowed=(".jpg", ".jpeg", ".png", ".webp"),
@@ -745,21 +822,33 @@ def module_dev():
             label = clamp_text((request.form.get("label") or "").strip(), 160)
             url = clamp_text((request.form.get("url") or "").strip(), 500)
             if label and url.startswith("http"):
-                db.session.add(UsefulLink(label=label, url=url, position=int(request.form.get("position", "0") or 0)))
+                try:
+                    position = int(request.form.get("position") or 0)
+                except (TypeError, ValueError):
+                    position = 0
+                db.session.add(UsefulLink(label=label, url=url, position=position))
                 db.session.commit()
                 flash("Lien ajouté.", "success")
         elif action == "del_link":
-            link = db.session.get(UsefulLink, request.form.get("link_id", ""))
+            try:
+                link_id = int(request.form.get("link_id", ""))
+            except (TypeError, ValueError):
+                link_id = None
+            link = db.session.get(UsefulLink, link_id) if link_id is not None else None
             if link:
                 db.session.delete(link)
                 db.session.commit()
                 flash("Lien supprimé.", "success")
         elif action == "trombinoscope":
-            member = db.session.get(User, request.form.get("user_id", ""))
+            try:
+                member_id = int(request.form.get("user_id", ""))
+            except (TypeError, ValueError):
+                member_id = None
+            member = db.session.get(User, member_id) if member_id is not None else None
             if member is not None and member.team_status == "mandat" and member.team_campus == own:
-                member.trombinoscope_role = clamp_text(
-                    (request.form.get("trombinoscope_role") or "").strip(), 80
-                ) or None
+                member.trombinoscope_role = (
+                    clamp_text((request.form.get("trombinoscope_role") or "").strip(), 80) or None
+                )
                 member.trombinoscope_visible = request.form.get("trombinoscope_visible") == "on"
                 if request.form.get("remove_photo"):
                     member.photo = None
@@ -775,11 +864,15 @@ def module_dev():
         db.session.commit()
         return redirect(url_for("admin.module_dev"))
     links = db.session.scalars(select(UsefulLink).order_by(UsefulLink.position)).all()
-    members = db.session.scalars(
-        select(User)
-        .where(User.team_status == "mandat", User.team_campus == own)
-        .order_by(User.name)
-    ).unique().all()
+    members = (
+        db.session.scalars(
+            select(User)
+            .where(User.team_status == "mandat", User.team_campus == own)
+            .order_by(User.name)
+        )
+        .unique()
+        .all()
+    )
     values = {k: S.get_setting(k) for k in S.DEFAULTS}
     return render_template(
         "admin/module_dev.html", values=values, links=links, own_campus=own, members=members

@@ -84,7 +84,10 @@ def purchase():
     payload = request.get_json(silent=True) or {}
     campus = write_campus()
     if campus is None:
-        return jsonify(ok=False, error="Campus consulté en lecture seule : connectez-vous sur votre campus d'équipe."), 403
+        return jsonify(
+            ok=False,
+            error="Campus consulté en lecture seule : connectez-vous sur votre campus d'équipe.",
+        ), 403
     try:
         t = T.create_purchase(
             operator_label=g.current_user.display_name,
@@ -105,12 +108,19 @@ def purchase():
 @bp.route("/glasses/return", methods=["POST"])
 def glasses_return():
     payload = request.get_json(silent=True) or {}
-    u = db.session.get(User, payload.get("user_id"))
+    try:
+        uid = int(payload.get("user_id"))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, error="Étudiant introuvable."), 404
+    u = db.session.get(User, uid)
     if u is None:
         return jsonify(ok=False, error="Étudiant introuvable."), 404
     campus = write_campus()
     if campus is None:
-        return jsonify(ok=False, error="Campus consulté en lecture seule : connectez-vous sur votre campus d'équipe."), 403
+        return jsonify(
+            ok=False,
+            error="Campus consulté en lecture seule : connectez-vous sur votre campus d'équipe.",
+        ), 403
     try:
         t = T.return_glasses(
             operator_label=g.current_user.display_name,
@@ -125,7 +135,10 @@ def glasses_return():
 
 @bp.route("/stats")
 def stats():
-    filters = {k: request.args.get(k, "") for k in ("date_from", "date_to", "category", "promotion", "campus", "team_only")}
+    filters = {
+        k: request.args.get(k, "")
+        for k in ("date_from", "date_to", "category", "promotion", "campus", "team_only")
+    }
     return jsonify(sales_stats(filters))
 
 

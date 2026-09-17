@@ -10,12 +10,35 @@ déterminée par :
 
 from . import map_article_row, map_line_row, map_transaction_row, map_user_row
 
-USER_TABLES = {"etudiants", "étudiants", "users", "user", "membres", "membre",
-               "students", "comptes", "soldes"}
-TXN_TABLES = {"transactions", "transaction", "ventes", "vente", "operations",
-              "opérations", "mouvements", "rechargements"}
-LINE_TABLES = {"lignes", "lines", "vente_lignes", "lignes_vente", "detail_ventes",
-               "transaction_lines"}
+USER_TABLES = {
+    "etudiants",
+    "étudiants",
+    "users",
+    "user",
+    "membres",
+    "membre",
+    "students",
+    "comptes",
+    "soldes",
+}
+TXN_TABLES = {
+    "transactions",
+    "transaction",
+    "ventes",
+    "vente",
+    "operations",
+    "opérations",
+    "mouvements",
+    "rechargements",
+}
+LINE_TABLES = {
+    "lignes",
+    "lines",
+    "vente_lignes",
+    "lignes_vente",
+    "detail_ventes",
+    "transaction_lines",
+}
 ARTICLE_TABLES = {"articles", "article", "produits", "produit", "carte", "catalogue"}
 
 KIND_FIELDS = ("type", "entite", "entité", "entity", "kind", "categorie", "objet")

@@ -37,11 +37,11 @@ class TargetTotals:
 
 @dataclass
 class AuditResult:
-    source: dict = field(default_factory=dict)      # projeté {"brest": c, "paris": c}
+    source: dict = field(default_factory=dict)  # projeté {"brest": c, "paris": c}
     initial: TargetTotals = field(default_factory=TargetTotals)
     final: TargetTotals = field(default_factory=TargetTotals)
-    raw_source: dict | None = None                  # brute (hors mapping)
-    unmapped: list = field(default_factory=list)    # [(campus, fichier, cents)]
+    raw_source: dict | None = None  # brute (hors mapping)
+    unmapped: list = field(default_factory=list)  # [(campus, fichier, cents)]
     collisions: list = field(default_factory=list)  # [(campus, clé, [occurrences])]
 
     @property
@@ -100,9 +100,18 @@ def collision_payload(collisions):
     """Sérialisation JSON des collisions (pour un rapport exploitable)."""
     return json.dumps(
         [
-            {"campus": campus, "key": key,
-             "occurrences": [{"src_id": o.get("src_id"), "name": o.get("name"),
-                              "balance_cents": o.get("balance", 0)} for o in occurrences]}
+            {
+                "campus": campus,
+                "key": key,
+                "occurrences": [
+                    {
+                        "src_id": o.get("src_id"),
+                        "name": o.get("name"),
+                        "balance_cents": o.get("balance", 0),
+                    }
+                    for o in occurrences
+                ],
+            }
             for campus, key, occurrences in collisions
         ],
         ensure_ascii=False,
@@ -111,17 +120,11 @@ def collision_payload(collisions):
 
 def capture_target(conn):
     """Somme des soldes cibles (global + par campus) et compteurs."""
-    row = conn.execute(
-        sa.text(
-            "SELECT COALESCE(SUM(balance), 0), COUNT(*) FROM wallets"
-        )
-    ).one()
+    row = conn.execute(sa.text("SELECT COALESCE(SUM(balance), 0), COUNT(*) FROM wallets")).one()
     totals = TargetTotals(total=int(row[0]), wallets=int(row[1]))
     for campus in ("brest", "paris"):
         sub = conn.execute(
-            sa.text(
-                "SELECT COALESCE(SUM(balance), 0) FROM wallets WHERE campus = :c"
-            ),
+            sa.text("SELECT COALESCE(SUM(balance), 0) FROM wallets WHERE campus = :c"),
             {"c": campus},
         ).scalar_one()
         setattr(totals, campus, int(sub))

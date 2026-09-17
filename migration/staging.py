@@ -15,7 +15,6 @@ from . import settings
 from .errors import SourceError
 from .parsing import files as files_reader
 from .parsing.sqlstream import iter_business_rows
-from .sources import paris as paris_contract
 
 STAGING_COLUMNS = ("id", "source_file", "source_table", "campus", "record", "loaded_at")
 
@@ -107,8 +106,10 @@ def load(conn, source_files, chunk_rows):
 
 def _iter_paris_sql(src):
     """Itère les lignes d'un dump SQL Paris : toutes les tables NON log."""
+
     def predicate(table_name):
         from . import logfilter
+
         return bool(table_name) and not logfilter.is_log_table(table_name)
 
     for table, _cols, rows in iter_business_rows(

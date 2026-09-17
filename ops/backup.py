@@ -23,8 +23,7 @@ import os
 import re
 import shutil
 import subprocess
-import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, UTC
 from pathlib import Path
 
 STAMP_FORMAT = "%Y%m%d-%H%M%S"
@@ -37,7 +36,7 @@ def parse_stamp(path: Path):
     if not match:
         return None
     try:
-        return datetime.strptime(match.group("stamp"), STAMP_FORMAT).replace(tzinfo=timezone.utc)
+        return datetime.strptime(match.group("stamp"), STAMP_FORMAT).replace(tzinfo=UTC)
     except ValueError:
         return None
 
@@ -69,7 +68,7 @@ def promote_weekly(backup_dir: Path, log=print):
     weekly = backup_dir / WEEKLY_DIRNAME
     weekly.mkdir(parents=True, exist_ok=True)
     promoted = []
-    for kind, items in collect(backup_dir).items():
+    for _kind, items in collect(backup_dir).items():
         if not items:
             continue
         _, source = items[-1]
@@ -89,7 +88,7 @@ def prune(backup_dir: Path, daily=7, weekly=4, log=print, dry_run=False):
     """Supprime les copies au-delà de la rétention ; retourne les chemins retirés."""
     backup_dir = Path(backup_dir)
     removed = []
-    for kind, items in collect(backup_dir).items():
+    for _kind, items in collect(backup_dir).items():
         keep = items[-daily:] if daily > 0 else []
         for _, path in items[: len(items) - len(keep)]:
             if not dry_run:
@@ -166,13 +165,13 @@ def dump_database(args, stamp, backup_dir, log, dry_run):
         _docker_exec(
             args.pg_container,
             ["pg_dump", "-U", args.pg_user, "-d", args.pg_database, "-Fc"],
-            target, dry_run,
+            target,
+            dry_run,
         )
     else:
         if not shutil.which("pg_dump"):
             raise SystemExit(
-                "pg_dump introuvable : installez postgresql-client ou utilisez "
-                "--pg-container."
+                "pg_dump introuvable : installez postgresql-client ou utilisez --pg-container."
             )
         if not args.database_url:
             raise SystemExit("DATABASE_URL ou --database-url est requis pour pg_dump.")
@@ -193,7 +192,8 @@ def archive_uploads(args, stamp, backup_dir, log, dry_run):
         _docker_exec(
             container,
             ["tar", "-czf", "-", "-C", path or "/data/uploads", "."],
-            target, dry_run,
+            target,
+            dry_run,
         )
     else:
         source = Path(args.uploads_dir)
@@ -210,7 +210,8 @@ def offsite_sync(backup_dir, target, log, dry_run):
         raise SystemExit("rsync introuvable : impossible d'envoyer hors-site.")
     run(
         ["rsync", "-a", "--delete", f"{backup_dir}/", target],
-        log=log, dry_run=dry_run,
+        log=log,
+        dry_run=dry_run,
     )
 
 
@@ -219,22 +220,26 @@ def parse_args(argv=None):
         prog="python -m ops.backup",
         description="Sauvegarde de la base et des téléversements (rétention + hors-site).",
     )
-    parser.add_argument("--backup-dir", type=Path,
-                        default=Path(os.environ.get("BACKUP_DIR", "backups")))
+    parser.add_argument(
+        "--backup-dir", type=Path, default=Path(os.environ.get("BACKUP_DIR", "backups"))
+    )
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL"))
     parser.add_argument("--pg-container", default=os.environ.get("BACKUP_PG_CONTAINER"))
     parser.add_argument("--pg-user", default=os.environ.get("BACKUP_PG_USER", "foyz"))
     parser.add_argument("--pg-database", default=os.environ.get("BACKUP_PG_DATABASE", "foyz"))
-    parser.add_argument("--uploads-dir", type=Path,
-                        default=Path(os.environ.get("UPLOAD_DIR", "instance/uploads")))
+    parser.add_argument(
+        "--uploads-dir", type=Path, default=Path(os.environ.get("UPLOAD_DIR", "instance/uploads"))
+    )
     parser.add_argument("--uploads-container", default=os.environ.get("BACKUP_UPLOADS_CONTAINER"))
     parser.add_argument("--retention-daily", type=int, default=7)
     parser.add_argument("--retention-weekly", type=int, default=4)
     parser.add_argument("--offsite", default=os.environ.get("BACKUP_OFFSITE"))
-    parser.add_argument("--prune-only", action="store_true",
-                        help="applique uniquement la rétention (aucun dump)")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="affiche les commandes sans rien exécuter")
+    parser.add_argument(
+        "--prune-only", action="store_true", help="applique uniquement la rétention (aucun dump)"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="affiche les commandes sans rien exécuter"
+    )
     args = parser.parse_args(argv)
     if args.retention_daily < 1 or args.retention_weekly < 0:
         parser.error("rétentions invalides (quotidienne >= 1, hebdomadaire >= 0)")
@@ -245,14 +250,19 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
     log = print
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stamp = now.strftime(STAMP_FORMAT)
     args.backup_dir.mkdir(parents=True, exist_ok=True)
 
     if args.prune_only:
         log(f"=== Rétention seule ({args.backup_dir}) ===")
-        prune(args.backup_dir, args.retention_daily, args.retention_weekly,
-              log=log, dry_run=args.dry_run)
+        prune(
+            args.backup_dir,
+            args.retention_daily,
+            args.retention_weekly,
+            log=log,
+            dry_run=args.dry_run,
+        )
         offsite_sync(args.backup_dir, args.offsite, log, args.dry_run)
         return 0
 
@@ -261,11 +271,14 @@ def main(argv=None):
     up_file = archive_uploads(args, stamp, args.backup_dir, log, args.dry_run)
     if is_weekly_day(now) and not args.dry_run:
         promote_weekly(args.backup_dir, log=log)
-    prune(args.backup_dir, args.retention_daily, args.retention_weekly,
-          log=log, dry_run=args.dry_run)
+    prune(
+        args.backup_dir, args.retention_daily, args.retention_weekly, log=log, dry_run=args.dry_run
+    )
     offsite_sync(args.backup_dir, args.offsite, log, args.dry_run)
     if not args.dry_run:
-        log(f"OK : {db_file.name} ({db_file.stat().st_size} o), {up_file.name} ({up_file.stat().st_size} o)")
+        log(
+            f"OK : {db_file.name} ({db_file.stat().st_size} o), {up_file.name} ({up_file.stat().st_size} o)"
+        )
     return 0
 
 

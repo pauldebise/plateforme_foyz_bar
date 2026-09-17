@@ -59,9 +59,17 @@ Ajuster TABLE_MAP / USER_FIELDS / TXN_FIELDS (dans sources/__init__.py) si le
 schéma réel diffère la veille de la bascule.
 """
 
-from . import (ARTICLE_FIELDS, KEG_FIELDS, LINE_FIELDS, PAYMENT_FIELDS,  # noqa: F401
-               TAP_FIELDS, TRANSFER_FIELDS, TXN_FIELDS, WITHDRAWAL_FIELDS,
-               USER_FIELDS)
+from . import (
+    ARTICLE_FIELDS,
+    KEG_FIELDS,
+    LINE_FIELDS,
+    PAYMENT_FIELDS,
+    TAP_FIELDS,
+    TRANSFER_FIELDS,
+    TXN_FIELDS,
+    WITHDRAWAL_FIELDS,
+    USER_FIELDS,
+)
 
 # table source (minuscules) -> entité logique. Toute table absente de cette
 # liste n'est PAS migrée : si son nom ressemble à un log elle est classée

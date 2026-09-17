@@ -1,7 +1,11 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from app.extensions import db
 from app.utils import utcnow
+
+if TYPE_CHECKING:
+    from app.models.event import Event
 
 
 class Article(db.Model):
@@ -18,8 +22,12 @@ class Article(db.Model):
     is_alcohol: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     is_tap: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False, index=True)
     tap_number: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
-    keg_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("kegs.id", ondelete="SET NULL"), nullable=True)
-    event_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("events.id", ondelete="CASCADE"), nullable=True, index=True)
+    keg_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("kegs.id", ondelete="SET NULL"), nullable=True
+    )
+    event_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("events.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     active: db.Mapped[bool] = db.mapped_column(db.Boolean, default=True)
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)
 
@@ -81,7 +89,9 @@ class Tap(db.Model):
     number: db.Mapped[int] = db.mapped_column(db.Integer, unique=True)
     name: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     campus: db.Mapped[str] = db.mapped_column(db.String(10), default="brest")
-    keg_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("kegs.id", ondelete="SET NULL"), nullable=True)
+    keg_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("kegs.id", ondelete="SET NULL"), nullable=True
+    )
 
     keg: db.Mapped["Keg"] = db.relationship(backref="taps")
 

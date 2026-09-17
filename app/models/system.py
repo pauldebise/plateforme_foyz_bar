@@ -15,7 +15,9 @@ class LoginLog(db.Model):
     __tablename__ = "login_logs"
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    user_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     name: db.Mapped[str] = db.mapped_column(db.String(120), default="")
     campus: db.Mapped[str] = db.mapped_column(db.String(10), default="")
     ip: db.Mapped[str] = db.mapped_column(db.String(64), default="")

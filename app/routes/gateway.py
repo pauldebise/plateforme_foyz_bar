@@ -18,7 +18,7 @@ from app.models import Article, Event, Tap
 from app.services import transactions as T
 from app.services.ratelimit import SlidingWindowLimiter
 from app.services.stats import top_article_ids
-from app.utils import client_ip, utcnow
+from app.utils import client_ip
 
 bp = Blueprint("gateway", __name__)
 
@@ -85,10 +85,7 @@ def gateway(token):
         .order_by(Article.event_id.is_(None), Article.name)
     ).all()
     # un article standard absent du campus (aucun prix public) est exclu
-    articles = [
-        a for a in articles
-        if a.event_id == ev.id or a.price_for(ev.campus) > 0
-    ]
+    articles = [a for a in articles if a.event_id == ev.id or a.price_for(ev.campus) > 0]
     data = []
     rank_of = {aid: i for i, aid in enumerate(top_article_ids(ev.campus))}
     for a in articles:

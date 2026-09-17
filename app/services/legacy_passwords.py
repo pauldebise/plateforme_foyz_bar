@@ -34,9 +34,13 @@ def format_of(stored):
 
 
 def accounts_with_legacy():
-    return db.session.scalars(
-        select(User).where(User.legacy_password.is_not(None), User.legacy_password != "")
-    ).unique().all()
+    return (
+        db.session.scalars(
+            select(User).where(User.legacy_password.is_not(None), User.legacy_password != "")
+        )
+        .unique()
+        .all()
+    )
 
 
 def audit():

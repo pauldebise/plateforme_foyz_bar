@@ -16,4 +16,5 @@ def kv(label, value):
 
 def money(label, cents):
     from .util import fmt_euros
+
     kv(label, fmt_euros(cents))

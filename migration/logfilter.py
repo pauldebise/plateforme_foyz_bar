@@ -17,28 +17,32 @@ import re
 _LOG_PATTERNS = tuple(
     re.compile(p, re.IGNORECASE)
     for p in (
-        r"^logs?$",            # log, logs
-        r"^logs?_",            # log_actions, logs_actions...
-        r"_logs?$",            # actions_log, connexion_logs...
-        r"_logs?_",            # app_log_actions...
-        r"^audit",             # audit, audit_events, audit_trail
+        r"^logs?$",  # log, logs
+        r"^logs?_",  # log_actions, logs_actions...
+        r"_logs?$",  # actions_log, connexion_logs...
+        r"_logs?_",  # app_log_actions...
+        r"^audit",  # audit, audit_events, audit_trail
         r"_audits?$",
-        r"^connexions?$",      # connexion, connexions
+        r"^connexions?$",  # connexion, connexions
         r"_connexions?$",
-        r"^login",             # login_log, logins
-        r"^sessions?$",        # session, sessions
+        r"^login",  # login_log, logins
+        r"^sessions?$",  # session, sessions
         r"_sessions?$",
-        r"^debug",             # debug_trace, debug_dump
+        r"^debug",  # debug_trace, debug_dump
         r"^traces?$",
-        r"^journal",           # journal, journalisation
+        r"^journal",  # journal, journalisation
         r"_journals?$",
-        r"^activit(y|e)",      # activity_log, activites
+        r"^activit(y|e)",  # activity_log, activites
         r"_activites?$",
         r"^historique_(connexions?|actions?|evenements|events)",
-        r"^phpbb_", r"^wp_",   # residuals d'outils tiers
+        r"^phpbb_",
+        r"^wp_",  # residuals d'outils tiers
         r"^django_(session|admin)_",
-        r"^phinxlog$", r"^migrations$",  # tables d'outillage, pas de logs mais techniques
-        r"^telemetry", r"^metrics$", r"^track",
+        r"^phinxlog$",
+        r"^migrations$",  # tables d'outillage, pas de logs mais techniques
+        r"^telemetry",
+        r"^metrics$",
+        r"^track",
     )
 )
 

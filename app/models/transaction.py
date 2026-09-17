@@ -1,7 +1,12 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from app.extensions import db
 from app.utils import utcnow
+
+if TYPE_CHECKING:
+    from app.models.event import Event
+    from app.models.user import User
 
 
 class Transaction(db.Model):
@@ -14,11 +19,19 @@ class Transaction(db.Model):
     total: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
     operator_label: db.Mapped[str] = db.mapped_column(db.String(255), default="")
     payment_method: db.Mapped[str | None] = db.mapped_column(db.String(20), nullable=True)
-    event_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     deposit_glasses: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
-    deposit_user_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    from_user_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    to_user_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    deposit_user_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    from_user_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    to_user_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     note: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     cancelled: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False, index=True)
     cancelled_at: db.Mapped[datetime | None] = db.mapped_column(db.DateTime, nullable=True)
@@ -41,8 +54,12 @@ class TransactionLine(db.Model):
     __tablename__ = "transaction_lines"
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    transaction_id: db.Mapped[int] = db.mapped_column(db.ForeignKey("transactions.id", ondelete="CASCADE"), index=True)
-    article_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("articles.id", ondelete="SET NULL"), nullable=True, index=True)
+    transaction_id: db.Mapped[int] = db.mapped_column(
+        db.ForeignKey("transactions.id", ondelete="CASCADE"), index=True
+    )
+    article_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("articles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     article_name: db.Mapped[str] = db.mapped_column(db.String(255))
     article_type: db.Mapped[str] = db.mapped_column(db.String(20), default="biere")
     quantity: db.Mapped[int] = db.mapped_column(db.Integer, default=1)
@@ -56,8 +73,12 @@ class Contribution(db.Model):
     __tablename__ = "contributions"
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    transaction_id: db.Mapped[int] = db.mapped_column(db.ForeignKey("transactions.id", ondelete="CASCADE"), index=True)
-    user_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    transaction_id: db.Mapped[int] = db.mapped_column(
+        db.ForeignKey("transactions.id", ondelete="CASCADE"), index=True
+    )
+    user_id: db.Mapped[int | None] = db.mapped_column(
+        db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     campus: db.Mapped[str] = db.mapped_column(db.String(10), default="brest")
     amount: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
     balance_after: db.Mapped[int] = db.mapped_column(db.Integer, default=0)

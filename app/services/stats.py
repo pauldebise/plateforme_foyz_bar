@@ -127,10 +127,7 @@ def sales_stats(filters=None):
 
     return {
         "grand_total": grand_total,
-        "by_category": {
-            k: v
-            for k, v in sorted(totals.items(), key=lambda kv: -kv[1]["revenue"])
-        },
+        "by_category": {k: v for k, v in sorted(totals.items(), key=lambda kv: -kv[1]["revenue"])},
         "series": dict(sorted(series.items())),
     }
 
@@ -201,14 +198,16 @@ def students_stats(filters=None, search="", page=1, per_page=0):
 
     result = []
     for user, nb, spent, items in db.session.execute(stmt):
-        result.append({
-            "name": user.display_name,
-            "promotion": user.promotion,
-            "is_team": user.is_team,
-            "nb": _int(nb),
-            "articles": round(float(items or 0), 1),
-            "spent": round(float(spent or 0)),
-        })
+        result.append(
+            {
+                "name": user.display_name,
+                "promotion": user.promotion,
+                "is_team": user.is_team,
+                "nb": _int(nb),
+                "articles": round(float(items or 0), 1),
+                "spent": round(float(spent or 0)),
+            }
+        )
     result.sort(key=lambda s: -s["spent"])
     if search:
         needle = _fold(search)
@@ -221,7 +220,7 @@ def students_stats(filters=None, search="", page=1, per_page=0):
     page = min(max(1, page), pages)
     start = (page - 1) * per_page
     return {
-        "rows": result[start:start + per_page],
+        "rows": result[start : start + per_page],
         "top": top,
         "total": total,
         "page": page,
@@ -262,16 +261,19 @@ def top_articles_stats(filters=None, search=""):
 
     articles = []
     for _key, name, article_type, qty, revenue in db.session.execute(stmt):
-        articles.append({
-            "name": name,
-            "type": article_type,
-            "qty": _int(qty),
-            "revenue": _int(revenue),
-        })
+        articles.append(
+            {
+                "name": name,
+                "type": article_type,
+                "qty": _int(qty),
+                "revenue": _int(revenue),
+            }
+        )
     if search:
         needle = _fold(search)
         articles = [
-            a for a in articles
+            a
+            for a in articles
             if needle in _fold(a["name"])
             or needle in _fold(a["type"])
             or needle in _fold(ARTICLE_TYPES.get(a["type"], ""))

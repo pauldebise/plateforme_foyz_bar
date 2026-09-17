@@ -21,16 +21,25 @@ class User(db.Model):
     # Mot de passe hérité de l'ancienne plateforme (bcrypt/md5/texte brut),
     # importé par la migration : vérifié à la connexion puis converti en
     # password_hash (format werkzeug) et vidé.
-    legacy_password: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
-    team_status: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
-    team_campus: db.Mapped[str | None] = db.mapped_column(db.String(10), nullable=True, default=None)
+    legacy_password: db.Mapped[str | None] = db.mapped_column(
+        db.String(255), nullable=True, default=None
+    )
+    team_status: db.Mapped[str | None] = db.mapped_column(
+        db.String(10), nullable=True, default=None
+    )
+    team_campus: db.Mapped[str | None] = db.mapped_column(
+        db.String(10), nullable=True, default=None
+    )
     blacklist: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     blacklist_alcohol: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
-    blacklist_reason: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
+    blacklist_reason: db.Mapped[str | None] = db.mapped_column(
+        db.String(255), nullable=True, default=None
+    )
     # Compte désactivé côté ancienne base : conservé désactivé à la migration,
     # la connexion est refusée (distinct d'une blacklist « comportement »).
-    disabled: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False,
-                                                 server_default=db.false())
+    disabled: db.Mapped[bool] = db.mapped_column(
+        db.Boolean, default=False, server_default=db.false()
+    )
     # Trombinoscope public : membre affiché (mandat) ou masqué, rôle affiché
     # sous le nom, et photo (nom de fichier dans uploads/, facultative).
     trombinoscope_visible: db.Mapped[bool] = db.mapped_column(
@@ -71,7 +80,9 @@ class Wallet(db.Model):
     __table_args__ = (db.UniqueConstraint("user_id", "campus", name="uq_wallet_user_campus"),)
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
-    user_id: db.Mapped[int] = db.mapped_column(db.ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: db.Mapped[int] = db.mapped_column(
+        db.ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     campus: db.Mapped[str] = db.mapped_column(db.String(10))
     balance: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
     glasses_outstanding: db.Mapped[int] = db.mapped_column(db.Integer, default=0)

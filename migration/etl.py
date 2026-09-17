@@ -37,9 +37,19 @@ from .errors import AccountingError
 from .parsing import files as files_reader
 from .parsing.sqlstream import iter_business_rows
 from .sources import brest as brest_contract
-from .sources import (TAP_NUMBERS, TAP_SIZES, USER_FIELDS, map_article_row,
-                      map_keg_row, map_line_row, map_operation_row, map_tap_row,
-                      map_transaction_row, map_user_row, pick)
+from .sources import (
+    TAP_NUMBERS,
+    TAP_SIZES,
+    USER_FIELDS,
+    map_article_row,
+    map_keg_row,
+    map_line_row,
+    map_operation_row,
+    map_tap_row,
+    map_transaction_row,
+    map_user_row,
+    pick,
+)
 from .sources import paris as paris_contract
 from . import staging
 from .util import normalize_key, slug_username, to_cents, utcnow as now_utc
@@ -93,14 +103,16 @@ _KEG_PRICE_SQL = (
     "VALUES (:keg_id, :campus, :price_half_std, :price_pint_std, :price_pot_std, "
     ":price_half_team, :price_pint_team, :price_pot_team)"
 )
-_TAP_SQL = (
-    "INSERT INTO taps (number, campus, keg_id) VALUES (:number, :campus, :keg_id)"
-)
+_TAP_SQL = "INSERT INTO taps (number, campus, keg_id) VALUES (:number, :campus, :keg_id)"
 
 # Sens du flux d'argent par type de transaction : qui est débité/crédité.
 _USER_SIDE = {
-    "achat": "from", "retrait": "from", "transfert": "from",
-    "rechargement": "to", "direct": "to", "consigne": "deposit",
+    "achat": "from",
+    "retrait": "from",
+    "transfert": "from",
+    "rechargement": "to",
+    "direct": "to",
+    "consigne": "deposit",
 }
 
 
@@ -159,8 +171,10 @@ class SourceReader:
                 continue
             self.consumed.add(src.path.name)
             if src.kind == "sql_dump":
+
                 def predicate(table_name):
                     return bool(table_name) and not logfilter.is_log_table(table_name)
+
                 for table, _cols, rows in iter_business_rows(
                     src.path,
                     keep_predicate=predicate,
@@ -200,8 +214,9 @@ class SourceReader:
 
     def _raw_balance(self, row, campus):
         """Somme brute de la colonne de solde d'une ligne source (hors mapping)."""
-        return to_cents(pick(row, USER_FIELDS["balance"]), self.money_unit,
-                        context=f"solde brut {campus}")
+        return to_cents(
+            pick(row, USER_FIELDS["balance"]), self.money_unit, context=f"solde brut {campus}"
+        )
 
     def iter_catalog(self, type_names=None):
         """Passe catalogue : (entité, campus, objet canonique).
@@ -219,7 +234,7 @@ class SourceReader:
                 obj = map_tap_row(row)
             if obj is not None:
                 yield entity, "brest", obj
-        for filename, source_table, record in self._iter_paris():
+        for _filename, source_table, record in self._iter_paris():
             entity, obj = paris_contract.map_record(source_table, record, "paris", self.money_unit)
             if entity == "articles" and obj is not None:
                 yield "articles", "paris", obj
@@ -242,8 +257,9 @@ class SourceReader:
                 if obj["type"] is None and obj.get("type_warning") is None:
                     obj["type"] = "achat"
             else:
-                obj = map_operation_row(row, brest_contract.ENTITY_FIELDS[entity],
-                                        entity, "brest", self.money_unit)
+                obj = map_operation_row(
+                    row, brest_contract.ENTITY_FIELDS[entity], entity, "brest", self.money_unit
+                )
             yield "brest", filename, entity, obj
         for filename, source_table, record in self._iter_paris():
             entity, obj = paris_contract.map_record(source_table, record, "paris", self.money_unit)
@@ -269,26 +285,31 @@ class SourceReader:
 class Migrator:
     """Orchestre l'ingestion cible dans une connexion/transaction donnée."""
 
-    def __init__(self, conn, source_files, chunk_rows=settings.DEFAULT_CHUNK_ROWS,
-                 money_unit=settings.DEFAULT_MONEY_UNIT):
+    def __init__(
+        self,
+        conn,
+        source_files,
+        chunk_rows=settings.DEFAULT_CHUNK_ROWS,
+        money_unit=settings.DEFAULT_MONEY_UNIT,
+    ):
         self.conn = conn
         self.reader = SourceReader(source_files, money_unit, chunk_rows, conn=conn)
         self.chunk_rows = chunk_rows
         self.money_unit = money_unit
-        self.source_sums = {"brest": 0, "paris": 0}      # projeté (1re occurrence)
+        self.source_sums = {"brest": 0, "paris": 0}  # projeté (1re occurrence)
         self.raw_source_sums = {"brest": 0, "paris": 0}  # brut (toutes les lignes)
         self.key_occurrences = {"brest": defaultdict(list), "paris": defaultdict(list)}
-        self.unmapped = []                               # [(campus, fichier, cents)]
-        self.accounts = {"brest": {}, "paris": {}}       # key -> canonical user
+        self.unmapped = []  # [(campus, fichier, cents)]
+        self.accounts = {"brest": {}, "paris": {}}  # key -> canonical user
         self.key_order = {"brest": [], "paris": []}
-        self.id_map = {"brest": {}, "paris": {}}         # src_id -> key
+        self.id_map = {"brest": {}, "paris": {}}  # src_id -> key
         self.target_id_by_key = {}
-        self.target_names = {}                           # id cible -> libellé affiché (opérateurs)
-        self.txn_id_map = {"brest": {}, "paris": {}}     # src txn id -> target id
-        self.type_names = {}                             # article_types id -> nom
-        self.article_id_map = {}                         # src article id -> cible
-        self.keg_id_map = {}                             # src keg id -> (cible, obj)
-        self.tap_candidates = {}                         # tap n° -> (clé_tri, obj)
+        self.target_names = {}  # id cible -> libellé affiché (opérateurs)
+        self.txn_id_map = {"brest": {}, "paris": {}}  # src txn id -> target id
+        self.type_names = {}  # article_types id -> nom
+        self.article_id_map = {}  # src article id -> cible
+        self.keg_id_map = {}  # src keg id -> (cible, obj)
+        self.tap_candidates = {}  # tap n° -> (clé_tri, obj)
         self.usernames_taken = set()
         self.counts = defaultdict(int)
         self.initial_totals = audit.capture_target(conn)
@@ -332,8 +353,7 @@ class Migrator:
                 # référencent l'id source et doivent rester traçables
                 self.id_map[campus].setdefault(str(user["src_id"]), key)
             self.key_occurrences[campus][key].append(
-                {"src_id": user["src_id"], "name": user["name"],
-                 "balance": user["balance_cents"]}
+                {"src_id": user["src_id"], "name": user["name"], "balance": user["balance_cents"]}
             )
             if key in self.accounts[campus]:
                 self.counts[f"duplicates_{campus}"] += 1
@@ -365,9 +385,7 @@ class Migrator:
 
     def insert_users_and_wallets(self):
         # pré-charger les identifiants déjà en base (cible non vierge)
-        rows = self.conn.execute(
-            sa.text("SELECT username FROM users")
-        ).fetchall()
+        rows = self.conn.execute(sa.text("SELECT username FROM users")).fetchall()
         self.usernames_taken = {r[0] for r in rows if r[0]}
         if self.initial_totals.users:
             self.counts["users_preexistants"] = self.initial_totals.users
@@ -387,8 +405,12 @@ class Migrator:
             # Surnom d'usage : Brest prioritaire (considéré identique sur les
             # deux campus ; en cas de divergence le pseudo Brest gagne).
             nickname = primary["nickname"] or (secondary["nickname"] if secondary else None)
-            team_status = primary["team_status"] or (secondary["team_status"] if secondary else None)
-            team_campus = primary["team_campus"] or (secondary["team_campus"] if secondary else None)
+            team_status = primary["team_status"] or (
+                secondary["team_status"] if secondary else None
+            )
+            team_campus = primary["team_campus"] or (
+                secondary["team_campus"] if secondary else None
+            )
             if team_status and not team_campus:
                 team_campus = campus
             # désactivé seulement si TOUS les comptes fusionnés le sont : un
@@ -396,8 +418,12 @@ class Migrator:
             disabled = primary["disabled"] and (secondary["disabled"] if secondary else True)
             created_at = primary["created_at"] or (secondary["created_at"] if secondary else None)
             promotion = primary["promotion"] or (secondary["promotion"] if secondary else None)
-            password_hash = primary["password_hash"] or (secondary["password_hash"] if secondary else None)
-            legacy_password = primary["legacy_password"] or (secondary["legacy_password"] if secondary else None)
+            password_hash = primary["password_hash"] or (
+                secondary["password_hash"] if secondary else None
+            )
+            legacy_password = primary["legacy_password"] or (
+                secondary["legacy_password"] if secondary else None
+            )
             if password_hash:
                 self.counts["passwords_importes"] += 1
             elif legacy_password:
@@ -423,8 +449,9 @@ class Migrator:
                 "team_status": team_status,
                 "team_campus": team_campus,
                 "blacklist": bool(primary["blacklist"] or (secondary and secondary["blacklist"])),
-                "blacklist_alcohol": bool(primary["blacklist_alcohol"]
-                                          or (secondary and secondary["blacklist_alcohol"])),
+                "blacklist_alcohol": bool(
+                    primary["blacklist_alcohol"] or (secondary and secondary["blacklist_alcohol"])
+                ),
                 "blacklist_reason": primary["blacklist_reason"]
                 or (secondary["blacklist_reason"] if secondary else None),
                 "disabled": bool(disabled),
@@ -444,12 +471,15 @@ class Migrator:
 
             for c in campuses:
                 source_user, _ = self.accounts[c][key]
-                self.conn.execute(sa.text(_WALLET_SQL), {
-                    "user_id": user_id,
-                    "campus": c,
-                    "balance": source_user["balance_cents"],
-                    "glasses_outstanding": source_user["glasses_outstanding"],
-                })
+                self.conn.execute(
+                    sa.text(_WALLET_SQL),
+                    {
+                        "user_id": user_id,
+                        "campus": c,
+                        "balance": source_user["balance_cents"],
+                        "glasses_outstanding": source_user["glasses_outstanding"],
+                    },
+                )
                 self.counts["wallets_created"] += 1
             self.counts["users_created"] += 1
         self.counts["wallets_preexistants"] = self.initial_totals.wallets
@@ -506,16 +536,19 @@ class Migrator:
             "created_at": now_utc(),
         }
         keg_id = self.conn.execute(sa.text(_KEG_SQL), params).scalar_one()
-        self.conn.execute(sa.text(_KEG_PRICE_SQL), {
-            "keg_id": keg_id,
-            "campus": "brest",
-            "price_half_std": obj["price_half_std"],
-            "price_pint_std": obj["price_pint_std"],
-            "price_pot_std": obj["price_pot_std"],
-            "price_half_team": obj["price_half_team"],
-            "price_pint_team": obj["price_pint_team"],
-            "price_pot_team": obj["price_pot_team"],
-        })
+        self.conn.execute(
+            sa.text(_KEG_PRICE_SQL),
+            {
+                "keg_id": keg_id,
+                "campus": "brest",
+                "price_half_std": obj["price_half_std"],
+                "price_pint_std": obj["price_pint_std"],
+                "price_pot_std": obj["price_pot_std"],
+                "price_half_team": obj["price_half_team"],
+                "price_pint_team": obj["price_pint_team"],
+                "price_pot_team": obj["price_pot_team"],
+            },
+        )
         self.counts["keg_prix_crees"] += 1
         if obj["src_id"] is not None:
             self.keg_id_map.setdefault(str(obj["src_id"]), (keg_id, obj))
@@ -561,9 +594,14 @@ class Migrator:
                 self.counts["taps_keg_inconnu"] += 1
                 continue
             keg_id, keg_obj = keg
-            self.conn.execute(sa.text(_TAP_SQL), {
-                "number": number, "campus": "brest", "keg_id": keg_id,
-            })
+            self.conn.execute(
+                sa.text(_TAP_SQL),
+                {
+                    "number": number,
+                    "campus": "brest",
+                    "keg_id": keg_id,
+                },
+            )
             self.counts["taps_creees"] += 1
             active = keg_obj["remaining_l"] > 0.01
             prices = {
@@ -573,21 +611,24 @@ class Migrator:
             }
             for key, (label, vol) in TAP_SIZES.items():
                 std, team = prices[key]
-                self.conn.execute(sa.text(_ARTICLE_SQL), {
-                    "name": f'{label} de tireuse {number} "{keg_obj["name"]}"'[:255],
-                    "article_type": "biere",
-                    "volume_cl": vol,
-                    "price_std_brest": std,
-                    "price_std_paris": std,
-                    "price_team_brest": team,
-                    "price_team_paris": team,
-                    "is_alcohol": True,
-                    "is_tap": True,
-                    "tap_number": number,
-                    "keg_id": keg_id,
-                    "active": active,
-                    "created_at": now_utc(),
-                })
+                self.conn.execute(
+                    sa.text(_ARTICLE_SQL),
+                    {
+                        "name": f'{label} de tireuse {number} "{keg_obj["name"]}"'[:255],
+                        "article_type": "biere",
+                        "volume_cl": vol,
+                        "price_std_brest": std,
+                        "price_std_paris": std,
+                        "price_team_brest": team,
+                        "price_team_paris": team,
+                        "is_alcohol": True,
+                        "is_tap": True,
+                        "tap_number": number,
+                        "keg_id": keg_id,
+                        "active": active,
+                        "created_at": now_utc(),
+                    },
+                )
                 self.counts["articles_tireuse_generes"] += 1
 
     # ------------------------------------------------------- comptabilité
@@ -652,7 +693,7 @@ class Migrator:
             self._insert_transaction(campus, obj, track_id=(entity == "transactions"))
         for campus, by_key in pending_transfers.items():
             self._flush_transfers(campus, by_key)
-        for campus, filename, obj in self.reader.iter_lines(type_names=self.type_names):
+        for campus, _filename, obj in self.reader.iter_lines(type_names=self.type_names):
             self._insert_line(campus, obj)
 
     def _buffer_transfer(self, by_key, obj):
@@ -682,8 +723,9 @@ class Migrator:
                 negs.sort(key=rank)
                 poss.sort(key=rank)
             while negs and poss:
-                self._insert_transaction(campus, negs.pop(0), transfer_to=poss.pop(0)["src_user_id"],
-                                         track_id=False)
+                self._insert_transaction(
+                    campus, negs.pop(0), transfer_to=poss.pop(0)["src_user_id"], track_id=False
+                )
             for obj in negs + poss:
                 # demi-ligne sans pendant : conservée avec son seul côté connu
                 self.counts["transferts_non_apparies"] += 1
@@ -717,7 +759,7 @@ class Migrator:
             params["to_user_id"] = self._resolve_user_id(campus, transfer_to)
         if txn["type"] is None:
             self.counts["txn_type_inconnu"] += 1
-            base_note = (params["note"] or "")
+            base_note = params["note"] or ""
             params["note"] = (f"[type source inconnu] {base_note}".strip())[:255] or None
         new_id = self.conn.execute(sa.text(_TXN_SQL), params).scalar_one()
         # seules les ventes sont référencées par des lignes de détail :
@@ -748,15 +790,19 @@ class Migrator:
         elif params["type"] == "direct":
             return
         else:
-            user_id = (params["from_user_id"] or params["to_user_id"]
-                       or params["deposit_user_id"])
+            user_id = params["from_user_id"] or params["to_user_id"] or params["deposit_user_id"]
             if user_id:
                 entries.append((user_id, -total if params["from_user_id"] else total))
         for contrib_user_id, amount in entries:
-            self.conn.execute(sa.text(_CONTRIB_SQL), {
-                "transaction_id": txn_id, "user_id": contrib_user_id,
-                "campus": campus, "amount": amount,
-            })
+            self.conn.execute(
+                sa.text(_CONTRIB_SQL),
+                {
+                    "transaction_id": txn_id,
+                    "user_id": contrib_user_id,
+                    "campus": campus,
+                    "amount": amount,
+                },
+            )
             self.counts["contributions_importees"] += 1
 
     def _insert_line(self, campus, line_obj):
@@ -768,15 +814,18 @@ class Migrator:
         article_id = self.article_id_map.get(str(src_article)) if src_article is not None else None
         if article_id is not None:
             self.counts["lignes_article_resolues"] += 1
-        self.conn.execute(sa.text(_LINE_SQL), {
-            "transaction_id": txn_id,
-            "article_id": article_id,
-            "article_name": line_obj["article_name"],
-            "article_type": line_obj["article_type"],
-            "quantity": line_obj["quantity"],
-            "unit_price": line_obj["unit_price"],
-            "line_total": line_obj["line_total"],
-        })
+        self.conn.execute(
+            sa.text(_LINE_SQL),
+            {
+                "transaction_id": txn_id,
+                "article_id": article_id,
+                "article_name": line_obj["article_name"],
+                "article_type": line_obj["article_type"],
+                "quantity": line_obj["quantity"],
+                "unit_price": line_obj["unit_price"],
+                "line_total": line_obj["line_total"],
+            },
+        )
         self.counts[f"lignes_{campus}"] += 1
         self.counts["lignes_importees"] += 1
 
@@ -814,8 +863,12 @@ class Migrator:
     def report_lines(self):
         """(label, valeur) pour le rapport final."""
         c = self.counts
-        paris_projected = (c.get("rows_users_paris", 0) + c.get("txns_paris", 0)
-                           + c.get("lignes_paris", 0) + c.get("articles_paris", 0))
+        paris_projected = (
+            c.get("rows_users_paris", 0)
+            + c.get("txns_paris", 0)
+            + c.get("lignes_paris", 0)
+            + c.get("articles_paris", 0)
+        )
         pairs = [
             ("Comptes créés", c.get("users_created")),
             ("Comptes fusionnés (2 campus)", c.get("users_merged")),
@@ -824,8 +877,10 @@ class Migrator:
             ("Soldes bruts non projetés (comptes ignorés)", c.get("soldes_non_mappes")),
             ("Portefeuilles créés", c.get("wallets_created")),
             ("Mots de passe importés (hash compatible)", c.get("passwords_importes")),
-            ("Mots de passe legacy importés (bcrypt/md5, vérifiés à la connexion)",
-             c.get("passwords_legacy_importes")),
+            (
+                "Mots de passe legacy importés (bcrypt/md5, vérifiés à la connexion)",
+                c.get("passwords_legacy_importes"),
+            ),
             ("Mots de passe à réinitialiser", c.get("passwords_a_reinitialiser")),
             ("Motifs de blacklist importés", c.get("motifs_blacklist")),
             ("Comptes désactivés importés (connexion refusée)", c.get("comptes_desactives")),
@@ -856,19 +911,25 @@ class Migrator:
             ("Transferts non appariés (côté seul conservé)", c.get("transferts_non_apparies")),
             ("Groupes de transferts ambigus (appariés par id source)", c.get("transferts_ambigus")),
             ("Transferts à montant nul ignorés", c.get("transferts_montant_nul")),
-            ("Rechargements/retraits à montant non positif ignorés",
-             c.get("operations_montant_non_positif")),
+            (
+                "Rechargements/retraits à montant non positif ignorés",
+                c.get("operations_montant_non_positif"),
+            ),
             ("Lignes de vente importées", c.get("lignes_importees")),
             ("Lignes rattachées à un article", c.get("lignes_article_resolues")),
             ("dont Brest", c.get("lignes_brest")),
             ("dont Paris", c.get("lignes_paris")),
             ("Lignes orphelines ignorées", c.get("lignes_orphelines")),
-            ("Transactions avec user introuvable", c.get("txn_user_inconnu_brest", 0)
-             + c.get("txn_user_inconnu_paris", 0)),
+            (
+                "Transactions avec user introuvable",
+                c.get("txn_user_inconnu_brest", 0) + c.get("txn_user_inconnu_paris", 0),
+            ),
             ("Types de transaction inconnus (-> direct)", c.get("txn_type_inconnu")),
             ("Lignes staging Paris", c.get("staging_rows")),
-            ("Records Paris non projetés (hors entités)", c.get("staging_rows", 0)
-             - paris_projected),
+            (
+                "Records Paris non projetés (hors entités)",
+                c.get("staging_rows", 0) - paris_projected,
+            ),
             ("Comptes préexistants en cible", c.get("users_preexistants")),
         ]
         return [(k, v) for k, v in pairs if v]

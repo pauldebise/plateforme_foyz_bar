@@ -6,10 +6,18 @@ from app.models.note import Note
 from app.models.system import Setting, LoginLog, UsefulLink
 
 __all__ = [
-    "User", "Wallet",
-    "Article", "Keg", "KegPrice", "Tap",
+    "Article",
+    "Contribution",
     "Event",
-    "Transaction", "TransactionLine", "Contribution",
+    "Keg",
+    "KegPrice",
+    "LoginLog",
     "Note",
-    "Setting", "LoginLog", "UsefulLink",
+    "Setting",
+    "Tap",
+    "Transaction",
+    "TransactionLine",
+    "UsefulLink",
+    "User",
+    "Wallet",
 ]
