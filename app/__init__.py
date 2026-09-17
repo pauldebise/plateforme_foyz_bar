@@ -94,6 +94,16 @@ def ensure_schema_upgrades():
                 conn.execute(text("ALTER TABLE users ADD COLUMN trombinoscope_role VARCHAR(80)"))
             if "photo" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN photo VARCHAR(255)"))
+            if "totp_secret" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN totp_secret VARCHAR(64)"))
+            if "totp_enabled" not in cols:
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT FALSE")
+                )
+            if "totp_recovery" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN totp_recovery TEXT"))
+            if "totp_last_counter" not in cols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN totp_last_counter INTEGER"))
         # Backfill des identifiants manquants (nouvelle colonne, ou comptes
         # créés hors app) : slug du nom, dédoublonné par suffixe numérique.
         with db.engine.begin() as conn:
@@ -274,7 +284,11 @@ def create_app():
                 abort(400, description="Jeton CSRF invalide, rechargez la page.")
 
     def _session_timeout():
-        if not session.get("user_id") and not session.get("gateway_event_id"):
+        if (
+            not session.get("user_id")
+            and not session.get("gateway_event_id")
+            and not session.get("mfa_user_id")
+        ):
             return
         from app.services.settings import int_setting
 

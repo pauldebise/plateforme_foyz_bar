@@ -28,13 +28,17 @@ Foyz_plateforme/
 │   │   ├── event.py           #   Event (soirée + passerelle)
 │   │   ├── transaction.py     #   Transaction, TransactionLine, Contribution
 │   │   ├── note.py            #   Note (post-it privé/public)
-│   │   └── system.py          #   Setting, LoginLog, UsefulLink
+│   │   └── system.py          #   Setting, LoginLog, AuditLog, UsefulLink
 │   ├── services/               # Logique métier (indépendante des routes)
 │   │   ├── settings.py        #   Paramètres globaux + mot de passe administrateur
 │   │   ├── transactions.py    #   Moteur de caisse : achats, consignes, annulations…
 │   │   ├── stats.py           #   Statistiques de consommation
 │   │   ├── treasury.py        #   Trésorerie mensuelle (12 mois glissants)
-│   │   └── catalog.py         #   Gestion fûts/tireuses, génération des articles
+│   │   ├── catalog.py         #   Gestion fûts/tireuses, génération des articles
+│   │   ├── audit.py           #   Journal d'audit des actions d'administration
+│   │   ├── totp.py            #   MFA (TOTP RFC 6238) et codes de secours
+│   │   ├── passwords.py       #   Politique de mot de passe
+│   │   └── health.py          #   Contrôles /health + tableau de bord santé
 │   ├── routes/                # Blueprints
 │   │   ├── public.py          #   / (accueil), /catalogue, /reglement, /liens
 │   │   ├── auth.py            #   /connexion, /deconnexion
@@ -241,6 +245,15 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
   `CF-Connecting-IP` si `TRUSTED_PROXY=cloudflare`, sinon `remote_addr` —
   `X-Forwarded-For` brut n'est jamais utilisé ; compteurs purgés et bornés).
 - Sessions signées, `HttpOnly`, expiration automatique configurable (module développement).
+- **MFA (TOTP)** facultatif par compte, activable depuis *Sécurité* dans la barre
+  latérale : code à 6 chiffres après le mot de passe, 8 codes de secours à usage
+  unique (affichés une seule fois), anti-rejeu du même code, désactivation
+  protégée par mot de passe + code. Fonctionne avec Google Authenticator, Aegis,
+  FreeOTP… (enrôlement manuel : le secret est affiché, pas de QR code).
+- **Politique de mot de passe** (12 caractères minimum, trois familles de
+  caractères, refus des mots de passe courants et de ceux contenant l'identifiant
+  ou le nom) appliquée aux formulaires d'administration et au changement de mot
+  de passe ; historique et codes de secours jamais stockés en clair.
 - Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
   annulations de transactions, retrait du statut « blacklist alcool ».
 - Registre des connexions (compte, campus, IP, succès/échec) avec purge automatique.

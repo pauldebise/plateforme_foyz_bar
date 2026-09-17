@@ -330,11 +330,14 @@ def membre(user_id):
         u.team_campus = own if u.team_status else None
         password = request.form.get("password") or ""
         if password:
-            if len(password) < 6:
-                flash("Mot de passe trop court (6 caractères minimum).", "danger")
-                return redirect(url_for("admin.membre", user_id=u.id))
             from werkzeug.security import generate_password_hash
 
+            from app.services import passwords
+
+            problem = passwords.validate(password, username=u.username or "", name=u.name or "")
+            if problem:
+                flash(problem, "danger")
+                return redirect(url_for("admin.membre", user_id=u.id))
             u.password_hash = generate_password_hash(password)
         A.record(
             "equipe.modification",
@@ -1012,10 +1015,13 @@ def module_dev():
         elif action == "password":
             current = request.form.get("current_password", "")
             new = request.form.get("new_password", "")
+            from app.services import passwords
+
+            problem = passwords.validate(new, username="admin", name="administrateur")
             if not S.check_admin_password(current):
                 flash("Mot de passe administrateur actuel incorrect.", "danger")
-            elif len(new) < 6:
-                flash("Nouveau mot de passe trop court.", "danger")
+            elif problem:
+                flash(problem, "danger")
             else:
                 S.set_admin_password(new)
                 A.record("reglages.mot_de_passe")

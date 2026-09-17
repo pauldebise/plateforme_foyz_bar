@@ -49,6 +49,19 @@ class User(db.Model):
         db.String(80), nullable=True, default=None
     )
     photo: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
+    # MFA (TOTP) : secret base32 tant que l'enrôlement est en cours, activation
+    # explicite par un premier code valide ; codes de secours hachés (JSON) et
+    # dernier compteur consommé (anti-rejeu du même code).
+    totp_secret: db.Mapped[str | None] = db.mapped_column(
+        db.String(64), nullable=True, default=None
+    )
+    totp_enabled: db.Mapped[bool] = db.mapped_column(
+        db.Boolean, default=False, server_default=db.false()
+    )
+    totp_recovery: db.Mapped[str | None] = db.mapped_column(db.Text, nullable=True, default=None)
+    totp_last_counter: db.Mapped[int | None] = db.mapped_column(
+        db.Integer, nullable=True, default=None
+    )
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)
 
     wallets: db.Mapped[list["Wallet"]] = db.relationship(

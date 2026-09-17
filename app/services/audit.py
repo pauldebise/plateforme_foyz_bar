@@ -47,6 +47,10 @@ ACTION_LABELS = {
     "lien.ajout": "Ajout d'un lien utile",
     "lien.suppression": "Suppression d'un lien utile",
     "trombinoscope.modification": "Modification du trombinoscope",
+    "compte.mfa_activation": "Activation du MFA",
+    "compte.mfa_desactivation": "Désactivation du MFA",
+    "compte.mfa_codes": "Régénération des codes de secours",
+    "compte.mot_de_passe": "Changement de mot de passe",
 }
 
 
