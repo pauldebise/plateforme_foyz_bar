@@ -42,7 +42,7 @@ class TransactionLine(db.Model):
 
     id: db.Mapped[int] = db.mapped_column(db.Integer, primary_key=True)
     transaction_id: db.Mapped[int] = db.mapped_column(db.ForeignKey("transactions.id", ondelete="CASCADE"), index=True)
-    article_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("articles.id", ondelete="SET NULL"), nullable=True)
+    article_id: db.Mapped[int | None] = db.mapped_column(db.ForeignKey("articles.id", ondelete="SET NULL"), nullable=True, index=True)
     article_name: db.Mapped[str] = db.mapped_column(db.String(255))
     article_type: db.Mapped[str] = db.mapped_column(db.String(20), default="biere")
     quantity: db.Mapped[int] = db.mapped_column(db.Integer, default=1)

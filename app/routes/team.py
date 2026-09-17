@@ -217,12 +217,24 @@ def historique():
             query = query.filter(Transaction.contributions.any(Contribution.user_id.in_(ids)))
         else:
             query = query.filter(db.false())
-    rows = query.limit(300).all()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
+    total = query.order_by(None).count()
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    rows = query.offset((page - 1) * per_page).limit(per_page).all()
     return render_template(
         "team/historique.html",
         rows=rows,
         filters=request.args,
         describe=T.describe_transaction,
+        page=page,
+        pages=pages,
+        total=total,
+        link_args={k: v for k, v in request.args.items() if k != "page"},
     )
 
 

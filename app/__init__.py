@@ -100,6 +100,14 @@ def ensure_schema_upgrades():
                 conn.execute(text("CREATE INDEX ix_users_name ON users (name)"))
             if "ix_users_username" not in indexes:
                 conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)"))
+    if "transaction_lines" in table_columns:
+        indexes = {ix["name"] for ix in inspector.get_indexes("transaction_lines")}
+        if "ix_transaction_lines_article_id" not in indexes:
+            with db.engine.begin() as conn:
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_transaction_lines_article_id "
+                    "ON transaction_lines (article_id)"
+                ))
 
 
 def _restrict_instance_permissions(app):
@@ -143,6 +151,14 @@ def create_app():
     Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
+
+    # Compression des réponses (Brotli puis gzip) : allège CSS/JS/HTML/JSON,
+    # y compris en déploiement Docker sans Nginx devant l'application.
+    from flask_compress import Compress
+
+    Compress(app)
+    app.config.setdefault("COMPRESS_ALGORITHM", ["br", "gzip"])
+    app.config.setdefault("COMPRESS_MIN_SIZE", 500)
 
     from app.models import Setting, User  # noqa: F401
 
@@ -279,10 +295,18 @@ def create_app():
         # setdefault : la route /uploads pose sa propre CSP plus restrictive
         # (default-src 'none') et ne doit pas être écrasée ici.
         response.headers.setdefault("Content-Security-Policy", CSP)
-        # Les pages authentifiées (équipe ou passerelle) ne doivent jamais
-        # rester dans le cache du navigateur (navigation arrière après
-        # déconnexion, poste partagé).
-        if session.get("user_id") or session.get("gateway_event_id"):
+        path = request.path
+        if path.startswith("/static/"):
+            # Assets locaux (Bootstrap, Chart.js…) : cache navigateur explicite,
+            # revalidation par ETag à l'expiration.
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        elif path.startswith("/uploads/"):
+            # Noms de fichiers horodatés (immuables en pratique).
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        elif session.get("user_id") or session.get("gateway_event_id"):
+            # Les pages authentifiées (équipe ou passerelle) ne doivent jamais
+            # rester dans le cache du navigateur (navigation arrière après
+            # déconnexion, poste partagé).
             response.headers["Cache-Control"] = "no-store, private"
         # HSTS uniquement quand l'application est déclarée servie en HTTPS
         # (HTTPS_ONLY=1) ; Cloudflare peut aussi le poser côté périphérie.

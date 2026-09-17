@@ -5,6 +5,10 @@ alembic==1.20.0
 python-dotenv==1.2.3
 gunicorn==26.2.0
 
+# Compression des réponses (gzip + Brotli si la bibliothèque est présente)
+Flask-Compress==1.17
+brotli==1.2.0
+
 # Vérification des mots de passe legacy (bcrypt) importés par la migration
 bcrypt==5.0.0
 

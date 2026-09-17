@@ -78,7 +78,7 @@ def view_campus():
 @login_required
 def comptes():
     q = request.args.get("q", "").strip()
-    stmt = select(User).order_by(User.name).limit(200)
+    stmt = select(User).order_by(User.name)
     if q:
         like = f"%{q}%"
         stmt = stmt.where(or_(
@@ -86,8 +86,26 @@ def comptes():
             User.nickname.ilike(like),
             User.username.ilike(like),
         ))
-    users = db.session.scalars(stmt).unique().all()
-    return render_template("admin/comptes.html", users=users, q=q)
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    per_page = 50
+    total = db.session.scalar(select(func.count()).select_from(stmt.subquery()))
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    users = db.session.scalars(
+        stmt.offset((page - 1) * per_page).limit(per_page)
+    ).unique().all()
+    return render_template(
+        "admin/comptes.html",
+        users=users,
+        q=q,
+        page=page,
+        pages=pages,
+        total=total,
+        link_args={k: v for k, v in request.args.items() if k != "page"},
+    )
 
 
 @bp.route("/comptes/nouveau", methods=["POST"])
