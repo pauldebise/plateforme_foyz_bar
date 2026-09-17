@@ -94,6 +94,29 @@ body { background: #f4f6f8; }
 
 .main-area { flex: 1 1 auto; min-width: 0; }
 
+/* Accessibilité : anneau de focus visible au clavier (U5), y compris sur les
+   listes de résultats et les éléments de catalogue. */
+:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+.side-link:focus-visible { outline-color: #fff; }
+.form-control:focus-visible,
+.form-select:focus-visible,
+.form-check-input:focus-visible,
+.btn:focus-visible { box-shadow: none; }
+
+/* Écrans tactiles (caisse sur tablette) : cibles ≥ 44 px. */
+@media (pointer: coarse) {
+  .btn-sm { min-height: 44px; }
+  .qty-btn { width: 44px; min-height: 44px; }
+  .cat-item { min-height: 48px; }
+  .search-result { min-height: 44px; }
+  .side-link { min-height: 44px; }
+  .page-link { min-width: 44px; min-height: 44px; }
+  .form-check-input { width: 1.5rem; height: 1.5rem; }
+}
+
 a, .btn-link { color: var(--primary); }
 .btn-primary {
   --bs-btn-bg: var(--primary);
