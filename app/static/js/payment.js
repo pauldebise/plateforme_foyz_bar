@@ -1,5 +1,6 @@
 let contributors = [];
 let cart = new Map();
+let successTimer = null;
 const CATALOG = JSON.parse(document.getElementById('catalog-data').textContent);
 const CONFIG = document.getElementById('payment-config');
 const DEPOSIT_VALUE = parseInt(CONFIG.dataset.depositValue, 10);
@@ -511,6 +512,8 @@ function showSuccess(total) {
   // remis à zéro, la page reste en place (U4).
   resetCartState();
   els.successModal.show();
+  clearTimeout(successTimer);
+  successTimer = setTimeout(() => els.successModal.hide(), 2000);
 }
 
 if ($('admin-validate')) {
