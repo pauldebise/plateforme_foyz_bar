@@ -196,8 +196,7 @@ function tapRow(group) {
   group.sizes.forEach((s) => {
     const btn = makeEl('button', 'btn btn-sm btn-primary tap-btn');
     btn.appendChild(makeEl('span', 'tap-size', s.size));
-    const price = makeEl('span', 'tap-price', `${(unitPrice(s.article) / 100).toFixed(2)} € `);
-    price.appendChild(makeEl('i', 'bi bi-plus-lg'));
+    const price = makeEl('span', 'tap-price', `${(unitPrice(s.article) / 100).toFixed(2)} €`);
     btn.appendChild(price);
     btn.addEventListener('click', () => addToCart(s.article));
     sizes.appendChild(btn);
@@ -316,6 +315,8 @@ function catalogRow(a) {
   const row = document.createElement('div');
   row.className = 'cat-item';
   row.dataset.id = a.id;
+  row.setAttribute('role', 'button');
+  row.tabIndex = 0;
   const info = makeEl('div');
   info.appendChild(makeEl('span', '', a.name));
   if (a.alcohol) {
@@ -328,16 +329,18 @@ function catalogRow(a) {
     info.appendChild(document.createTextNode(' '));
     info.appendChild(makeEl('span', 'text-muted small', `${a.volume} cl`));
   }
-  const actions = makeEl('div', 'd-flex align-items-center gap-2');
   const price = makeEl('span', 'badge bg-light text-dark', `${(unitPrice(a) / 100).toFixed(2)} €`);
   price.dataset.price = '';
-  const button = makeEl('button', 'btn btn-sm btn-primary qty-btn');
-  button.appendChild(makeEl('i', 'bi bi-plus-lg'));
-  button.addEventListener('click', () => addToCart(a));
-  actions.appendChild(price);
-  actions.appendChild(button);
   row.appendChild(info);
-  row.appendChild(actions);
+  row.appendChild(price);
+  // Toute la ligne est cliquable (le curseur pointeur est déjà défini en CSS).
+  row.addEventListener('click', () => addToCart(a));
+  row.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      addToCart(a);
+    }
+  });
   row.addEventListener('mouseenter', () => {
     const idx = catalogItems().indexOf(row);
     if (idx >= 0) setCatalogActive(idx);
