@@ -114,6 +114,7 @@ body { background: #f4f6f8; }
 /* Écrans tactiles (caisse sur tablette) : cibles ≥ 44 px. */
 @media (pointer: coarse) {
   .btn-sm { min-height: 44px; }
+  a.btn-sm { display: inline-flex; align-items: center; justify-content: center; gap: .25rem; }
   .qty-btn { width: 44px; min-height: 44px; }
   .cat-item { min-height: 48px; }
   .search-result { min-height: 44px; }
