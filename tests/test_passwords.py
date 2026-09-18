@@ -90,6 +90,23 @@ def test_a_password_policy():
     _expect(passwords.validate("abcdefghijklm") is not None, "pas assez de diversité")
 
 
+def test_a2_politique_equipe():
+    kwargs = {"min_length": passwords.TEAM_MIN_LENGTH, "require_diversity": False}
+    _expect(passwords.validate("court", **kwargs) is not None, "équipe : longueur minimale")
+    _expect(
+        passwords.validate("motdepasse1234", **kwargs) is not None,
+        "équipe : mot de passe courant refusé",
+    )
+    _expect(
+        passwords.validate("Phrase-Paul-2026!", name="Paul Debise", **kwargs) is not None,
+        "équipe : nom du compte refusé",
+    )
+    _expect(
+        passwords.validate("huitlettres", **kwargs) is None,
+        "équipe : 8 caractères sans diversité acceptés",
+    )
+
+
 def test_b_politique_dans_administration():
     app = create_app()
     with app.app_context():
@@ -129,6 +146,15 @@ def test_b_politique_dans_administration():
     with app.app_context():
         stored = db.session.get(User, target_id).password_hash
         _expect(stored != before and check_password_hash(stored, "Phrase-Solide-2026!"), "accepté")
+
+    # Politique équipe : 8 caractères suffisent, sans diversité imposée.
+    client.post(
+        f"/admin/equipe/{target_id}",
+        data={"team_status": "mandat", "password": "huitlettres", "_csrf": token},
+    )
+    with app.app_context():
+        stored = db.session.get(User, target_id).password_hash
+        _expect(check_password_hash(stored, "huitlettres"), "équipe : accepté")
 
     # Mot de passe administrateur : min 12 caractères exigés, actuel inchangé sinon.
     from app.services.settings import check_admin_password

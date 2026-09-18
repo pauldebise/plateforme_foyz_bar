@@ -360,7 +360,13 @@ def membre(user_id):
 
             from app.services import passwords
 
-            problem = passwords.validate(password, username=u.username or "", name=u.name or "")
+            problem = passwords.validate(
+                password,
+                username=u.username or "",
+                name=u.name or "",
+                min_length=passwords.TEAM_MIN_LENGTH,
+                require_diversity=False,
+            )
             if problem:
                 flash(problem, "danger")
                 return redirect(url_for("admin.membre", user_id=u.id))

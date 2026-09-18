@@ -2,14 +2,16 @@
 
 Longueur minimale, diversité des caractères, refus des mots de passe les plus
 courants et des mots de passe contenant l'identifiant ou le nom du compte.
-Utilisée par la gestion d'équipe et le mot de passe administrateur ; la
-connexion reste inchangée (les mots de passe existants continuent de
-fonctionner).
+Utilisée par la gestion d'équipe (politique allégée : 8 caractères, sans
+diversité imposée) et par le mot de passe administrateur (politique complète
+par défaut) ; la connexion reste inchangée (les mots de passe existants
+continuent de fonctionner).
 """
 
 import re
 
 MIN_LENGTH = 12
+TEAM_MIN_LENGTH = 8
 
 # Les plus courants (fuites publiques) en français et en anglais. Liste
 # volontairement courte : elle bloque l'évident sans imposer de dépendance.
@@ -61,14 +63,14 @@ def _classes(password):
     )
 
 
-def validate(password, username="", name=""):
+def validate(password, username="", name="", min_length=MIN_LENGTH, require_diversity=True):
     """Retourne un message d'erreur en français, ou None si acceptable."""
     password = password or ""
-    if len(password) < MIN_LENGTH:
-        return f"Mot de passe trop court ({MIN_LENGTH} caractères minimum)."
+    if len(password) < min_length:
+        return f"Mot de passe trop court ({min_length} caractères minimum)."
     if password.lower() in COMMON_PASSWORDS:
         return "Mot de passe trop courant : choisissez une phrase difficile à deviner."
-    if _classes(password) < 3:
+    if require_diversity and _classes(password) < 3:
         return (
             "Mot de passe trop simple : mélangez majuscules, minuscules, chiffres "
             "et caractères spéciaux."
