@@ -76,6 +76,19 @@
       done();
     }
   });
+  // Bascule l'affichage d'un champ mot de passe (oeil). Le champ ciblé est
+  // désigné par data-toggle-password (sélecteur CSS).
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-toggle-password]');
+    if (!button) return;
+    const input = document.querySelector(button.getAttribute('data-toggle-password'));
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    button.setAttribute('aria-pressed', String(show));
+    const icon = button.querySelector('i');
+    if (icon) icon.className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+  });
   // Lignes de tableau entièrement cliquables : l'URL de destination est portée
   // par data-href sur le <tr>. Les clics sur un élément interactif de la ligne
   // (lien, bouton, champ) restent gérés par cet élément.
