@@ -4,108 +4,157 @@
 <h1 class="h3 mb-4"><i class="bi bi-sliders"></i> Module développement</h1>
 
 <div class="row g-4">
-  <div class="col-lg-7">
-    <div class="card mb-4">
+  <div class="col-12">
+    <div class="card">
       <div class="card-header">Paramètres globaux</div>
       <div class="card-body">
         <form method="post" enctype="multipart/form-data">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="settings">
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label">Nom du site</label>
-              <input class="form-control" name="site_name" value="{{ values['site_name'] }}">
+
+          <section class="settings-section">
+            <h2 class="settings-title">Général</h2>
+            <div class="row g-3">
+              <div class="col-md-6 col-xl-3">
+                <label class="form-label" for="set-site-name">Nom du site</label>
+                <input class="form-control" id="set-site-name" name="site_name" value="{{ values['site_name'] }}">
+              </div>
+              <div class="col-md-6 col-xl-3">
+                <label class="form-label" for="set-overdraft">Découvert autorisé (€)</label>
+                <input class="form-control" id="set-overdraft" name="overdraft_limit_cents" value="{{ '%.2f'|format(values['overdraft_limit_cents']|int / 100) }}">
+              </div>
+              <div class="col-md-6 col-xl-3">
+                <label class="form-label" for="set-deposit-value">Valeur consigne (€)</label>
+                <input class="form-control" id="set-deposit-value" name="deposit_value_cents" value="{{ '%.2f'|format(values['deposit_value_cents']|int / 100) }}">
+              </div>
+              <div class="col-md-6 col-xl-3">
+                <label class="form-label" for="set-deposit-enabled">Mécanisme de consigne</label>
+                <select class="form-select" id="set-deposit-enabled" name="deposit_enabled">
+                  <option value="1" {% if values['deposit_enabled'] == '1' %}selected{% endif %}>Activé</option>
+                  <option value="0" {% if values['deposit_enabled'] != '1' %}selected{% endif %}>Désactivé</option>
+                </select>
+              </div>
             </div>
-            <div class="col-md-3">
-              <label class="form-label">Découvert autorisé (€)</label>
-              <input class="form-control" name="overdraft_limit_cents" value="{{ '%.2f'|format(values['overdraft_limit_cents']|int / 100) }}">
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-title">Durées et conservation</h2>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="set-max-history">Durée d'accès aux transactions (jours)</label>
+                <input class="form-control" id="set-max-history" type="number" name="max_history_days" value="{{ values['max_history_days'] }}">
+                <div class="form-text">Les données restent en base mais ne sont plus visibles sur le site après ce délai.</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="set-login-retention">Conservation des journaux de connexion (jours)</label>
+                <input class="form-control" id="set-login-retention" type="number" name="login_logs_retention_days" value="{{ values['login_logs_retention_days'] }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="set-audit-retention">Conservation du journal d'audit (jours)</label>
+                <input class="form-control" id="set-audit-retention" type="number" name="audit_logs_retention_days" value="{{ values['audit_logs_retention_days'] }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="set-session-timeout">Déconnexion pour inactivité (minutes)</label>
+                <input class="form-control" id="set-session-timeout" type="number" name="session_timeout_minutes" value="{{ values['session_timeout_minutes'] }}">
+              </div>
             </div>
-            <div class="col-md-3">
-              <label class="form-label">Valeur consigne (€)</label>
-              <input class="form-control" name="deposit_value_cents" value="{{ '%.2f'|format(values['deposit_value_cents']|int / 100) }}">
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-title">Post-it</h2>
+            <div class="row g-3">
+              <div class="col-md-6 col-xl-3">
+                <label class="form-label" for="set-postits-private">Post-it privés (maximum)</label>
+                <input class="form-control" id="set-postits-private" type="number" name="max_postits_private" value="{{ values['max_postits_private'] }}">
+              </div>
+              <div class="col-md-6 col-xl-3">
+                <label class="form-label" for="set-postits-public">Post-it publics (maximum)</label>
+                <input class="form-control" id="set-postits-public" type="number" name="max_postits_public" value="{{ values['max_postits_public'] }}">
+              </div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label">Mécanisme de consigne</label>
-              <select class="form-select" name="deposit_enabled">
-                <option value="1" {% if values['deposit_enabled'] == '1' %}selected{% endif %}>Activé</option>
-                <option value="0" {% if values['deposit_enabled'] != '1' %}selected{% endif %}>Désactivé</option>
-              </select>
+          </section>
+
+          <section class="settings-section">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+              <h2 class="settings-title mb-0">Apparence</h2>
+              <button class="btn btn-sm btn-outline-secondary" form="reset-colors-form"><i class="bi bi-arrow-counterclockwise"></i> Couleurs par défaut</button>
             </div>
-            <div class="col-md-6">
-              <label class="form-label">Durée d'accès aux transactions (jours)</label>
-              <input class="form-control" type="number" name="max_history_days" value="{{ values['max_history_days'] }}">
-              <div class="form-text">Les données restent en base mais ne sont plus visibles sur le site après ce délai.</div>
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label" for="set-theme-public">Thème de couleur — Page publique</label>
+                <input class="form-control form-control-color w-100" id="set-theme-public" type="color" name="theme_color_public" value="{{ values['theme_color_public'] }}">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="set-theme-brest">Thème de couleur — Brest</label>
+                <input class="form-control form-control-color w-100" id="set-theme-brest" type="color" name="theme_color_brest" value="{{ values['theme_color_brest'] }}" {% if own_campus != 'brest' %}disabled{% endif %}>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="set-theme-paris">Thème de couleur — Paris</label>
+                <input class="form-control form-control-color w-100" id="set-theme-paris" type="color" name="theme_color_paris" value="{{ values['theme_color_paris'] }}" {% if own_campus != 'paris' %}disabled{% endif %}>
+              </div>
             </div>
-            <div class="col-md-4">
-              <label class="form-label">Conservation des journaux de connexion (jours)</label>
-              <input class="form-control" type="number" name="login_logs_retention_days" value="{{ values['login_logs_retention_days'] }}">
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-title">Images et documents par campus</h2>
+            <p class="small text-muted mb-3">Ces fichiers ne sont modifiables que depuis le campus concerné.</p>
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="campus-panel h-100">
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                    <span class="fw-semibold"><i class="bi bi-geo-alt"></i> Campus de Brest</span>
+                    {% if own_campus != 'brest' %}<span class="badge text-bg-light border">lecture seule</span>{% endif %}
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="set-logo-brest">Logo</label>
+                    {% if values['logo_brest'] %}<img src="/uploads/{{ values['logo_brest'] }}" class="brand-logo d-block mb-1" alt="">{% endif %}
+                    <input class="form-control" id="set-logo-brest" type="file" name="logo_brest" accept=".jpg,.jpeg,.png,.webp,.svg" {% if own_campus != 'brest' %}disabled{% endif %}>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="set-regulation-brest">Règlement intérieur (PDF)</label>
+                    {% if values['regulation_pdf_brest'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
+                    <input class="form-control" id="set-regulation-brest" type="file" name="regulation_pdf_brest" accept=".pdf" {% if own_campus != 'brest' %}disabled{% endif %}>
+                  </div>
+                  <div>
+                    <label class="form-label" for="set-photo-brest">Photo déco — Encaissement</label>
+                    {% if values['payment_photo_brest'] %}<img src="/uploads/{{ values['payment_photo_brest'] }}" class="d-block mb-1 rounded img-fluid" style="max-height: 80px;" alt="">{% endif %}
+                    <input class="form-control" id="set-photo-brest" type="file" name="payment_photo_brest" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'brest' %}disabled{% endif %}>
+                  </div>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="campus-panel h-100">
+                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+                    <span class="fw-semibold"><i class="bi bi-geo-alt"></i> Campus de Paris</span>
+                    {% if own_campus != 'paris' %}<span class="badge text-bg-light border">lecture seule</span>{% endif %}
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="set-logo-paris">Logo</label>
+                    {% if values['logo_paris'] %}<img src="/uploads/{{ values['logo_paris'] }}" class="brand-logo d-block mb-1" alt="">{% endif %}
+                    <input class="form-control" id="set-logo-paris" type="file" name="logo_paris" accept=".jpg,.jpeg,.png,.webp,.svg" {% if own_campus != 'paris' %}disabled{% endif %}>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="set-regulation-paris">Règlement intérieur (PDF)</label>
+                    {% if values['regulation_pdf_paris'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
+                    <input class="form-control" id="set-regulation-paris" type="file" name="regulation_pdf_paris" accept=".pdf" {% if own_campus != 'paris' %}disabled{% endif %}>
+                  </div>
+                  <div>
+                    <label class="form-label" for="set-photo-paris">Photo déco — Encaissement</label>
+                    {% if values['payment_photo_paris'] %}<img src="/uploads/{{ values['payment_photo_paris'] }}" class="d-block mb-1 rounded img-fluid" style="max-height: 80px;" alt="">{% endif %}
+                    <input class="form-control" id="set-photo-paris" type="file" name="payment_photo_paris" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'paris' %}disabled{% endif %}>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="col-md-4">
-              <label class="form-label">Conservation du journal d'audit (jours)</label>
-              <input class="form-control" type="number" name="audit_logs_retention_days" value="{{ values['audit_logs_retention_days'] }}">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Déconnexion pour inactivité (minutes)</label>
-              <input class="form-control" type="number" name="session_timeout_minutes" value="{{ values['session_timeout_minutes'] }}">
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Post-it privés max</label>
-              <input class="form-control" type="number" name="max_postits_private" value="{{ values['max_postits_private'] }}">
-            </div>
-            <div class="col-md-2">
-              <label class="form-label">Post-it publics max</label>
-              <input class="form-control" type="number" name="max_postits_public" value="{{ values['max_postits_public'] }}">
-            </div>
-            <div class="col-md-4 color-swatch">
-              <label class="form-label">Thème de couleur — Page publique</label>
-              <input class="form-control form-control-color w-100" type="color" name="theme_color_public" value="{{ values['theme_color_public'] }}">
-            </div>
-            <div class="col-md-4 color-swatch">
-              <label class="form-label">Thème de couleur — Brest</label>
-              <input class="form-control form-control-color w-100" type="color" name="theme_color_brest" value="{{ values['theme_color_brest'] }}" {% if own_campus != 'brest' %}disabled{% endif %}>
-            </div>
-            <div class="col-md-4 color-swatch">
-              <label class="form-label">Thème de couleur — Paris</label>
-              <input class="form-control form-control-color w-100" type="color" name="theme_color_paris" value="{{ values['theme_color_paris'] }}" {% if own_campus != 'paris' %}disabled{% endif %}>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Logo — Brest</label>
-              {% if values['logo_brest'] %}<img src="/uploads/{{ values['logo_brest'] }}" class="brand-logo d-block mb-1">{% endif %}
-              <input class="form-control" type="file" name="logo_brest" accept=".jpg,.jpeg,.png,.webp,.svg" {% if own_campus != 'brest' %}disabled{% endif %}>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Logo — Paris</label>
-              {% if values['logo_paris'] %}<img src="/uploads/{{ values['logo_paris'] }}" class="brand-logo d-block mb-1">{% endif %}
-              <input class="form-control" type="file" name="logo_paris" accept=".jpg,.jpeg,.png,.webp,.svg" {% if own_campus != 'paris' %}disabled{% endif %}>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Règlement intérieur — Brest (PDF)</label>
-              {% if values['regulation_pdf_brest'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
-              <input class="form-control" type="file" name="regulation_pdf_brest" accept=".pdf" {% if own_campus != 'brest' %}disabled{% endif %}>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Règlement intérieur — Paris (PDF)</label>
-              {% if values['regulation_pdf_paris'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
-              <input class="form-control" type="file" name="regulation_pdf_paris" accept=".pdf" {% if own_campus != 'paris' %}disabled{% endif %}>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Photo déco — Encaissement Brest</label>
-              {% if values['payment_photo_brest'] %}<img src="/uploads/{{ values['payment_photo_brest'] }}" class="d-block mb-1 rounded" style="max-height: 80px;">{% endif %}
-              <input class="form-control" type="file" name="payment_photo_brest" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'brest' %}disabled{% endif %}>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Photo déco — Encaissement Paris</label>
-              {% if values['payment_photo_paris'] %}<img src="/uploads/{{ values['payment_photo_paris'] }}" class="d-block mb-1 rounded" style="max-height: 80px;">{% endif %}
-              <input class="form-control" type="file" name="payment_photo_paris" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'paris' %}disabled{% endif %}>
-            </div>
-            <div class="col-12">
-              <label class="form-label">Édition de la page d'accueil (interface publique)</label>
-              <textarea class="form-control" name="homepage_text" rows="4">{{ values['homepage_text'] }}</textarea>
-            </div>
-            <div class="col-12 d-flex gap-2 flex-wrap">
-              <button class="btn btn-primary"><i class="bi bi-save"></i> Enregistrer les paramètres</button>
-              <button class="btn btn-outline-secondary" form="reset-colors-form"><i class="bi bi-arrow-counterclockwise"></i> Couleurs par défaut</button>
-            </div>
+          </section>
+
+          <section class="settings-section">
+            <h2 class="settings-title">Page d'accueil (interface publique)</h2>
+            <textarea class="form-control" name="homepage_text" rows="4" aria-label="Texte de la page d'accueil">{{ values['homepage_text'] }}</textarea>
+          </section>
+
+          <div class="d-flex flex-wrap gap-2 border-top pt-3 mt-4">
+            <button class="btn btn-primary"><i class="bi bi-save"></i> Enregistrer les paramètres</button>
           </div>
         </form>
         <form id="reset-colors-form" class="d-none" method="post">
@@ -114,7 +163,9 @@
         </form>
       </div>
     </div>
+  </div>
 
+  <div class="col-lg-7">
     <div class="card mb-4">
       <div class="card-header">Liens utiles (interface publique)</div>
       <div class="card-body">

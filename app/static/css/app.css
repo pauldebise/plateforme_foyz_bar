@@ -5,8 +5,22 @@
 
 body { background: #f4f6f8; }
 
-.color-swatch .form-label {
-  min-height: 3rem;
+.settings-section + .settings-section { margin-top: 1.75rem; }
+
+.settings-title {
+  font-size: .8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #6c757d;
+  margin-bottom: .75rem;
+}
+
+.campus-panel {
+  border: 1px solid #eef0f2;
+  border-radius: .5rem;
+  background: #fbfcfd;
+  padding: 1rem;
 }
 
 .app-shell { min-height: 100vh; }
