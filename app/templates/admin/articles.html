@@ -19,7 +19,7 @@
       </thead>
       <tbody>
         {% for a in articles %}
-        <tr class="{{ 'table-secondary' if not a.active }}">
+        <tr class="{{ 'table-secondary' if not a.active }}" {% if not a.is_tap %}data-href="{{ url_for('admin.article', article_id=a.id) }}"{% endif %}>
           <td>{{ a.name }}{% if a.is_tap %} <span class="badge bg-dark">tireuse</span>{% endif %}</td>
           <td>{{ ARTICLE_TYPES.get(a.article_type, a.article_type) }}</td>
           <td>{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
@@ -31,15 +31,12 @@
           <td class="text-end text-nowrap">
             {% if a.is_tap %}
               <span class="small text-muted">géré dans Tireuses</span>
-            {% else %}
-              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.article', article_id=a.id) }}">Modifier</a>
-              {% if a.active %}
+            {% elif a.active %}
               <form class="d-inline" method="post" action="{{ url_for('admin.article_supprimer', article_id=a.id) }}"
                     data-confirm="Désactiver cet article ?">
                 <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-                <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                <button class="btn btn-sm btn-outline-danger" title="Désactiver"><i class="bi bi-trash"></i></button>
               </form>
-              {% endif %}
             {% endif %}
           </td>
         </tr>
