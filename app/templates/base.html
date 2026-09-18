@@ -67,7 +67,7 @@
         {% endif %}
       </nav>
       <div class="sidebar-footer mt-auto">
-        <div class="small text-white-50 mb-2"><i class="bi bi-person-circle"></i> {{ current_user.display_name }}</div>
+        <div class="small text-white-50 mb-2 d-none d-lg-block"><i class="bi bi-person-circle"></i> {{ current_user.display_name }}</div>
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <button class="btn btn-outline-light btn-sm w-100"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
@@ -107,6 +107,11 @@
         {% block content %}{% endblock %}
       </div>
     </main>
+    {% if g.scope == 'team' %}
+      <footer class="d-lg-none text-center small text-muted py-3 px-3">
+        <i class="bi bi-person-circle"></i> {{ current_user.display_name }}
+      </footer>
+    {% endif %}
   </div>
 </div>
 
