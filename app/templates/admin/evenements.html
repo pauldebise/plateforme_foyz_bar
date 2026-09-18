@@ -9,10 +9,10 @@
 <div class="card">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
-      <thead class="table-light"><tr><th>Événement</th><th>Campus</th><th>Dates</th><th>Articles</th><th>Statut</th><th></th></tr></thead>
+      <thead class="table-light"><tr><th>Événement</th><th>Campus</th><th>Dates</th><th>Articles</th><th>Statut</th></tr></thead>
       <tbody>
         {% for ev in events %}
-        <tr>
+        <tr data-href="{{ url_for('admin.evenement', event_id=ev.id) }}">
           <td><strong>{{ ev.name }}</strong></td>
           <td>{{ CAMPUSSES[ev.campus] }}</td>
           <td class="small">{{ ev.starts_at|dt }} → {{ ev.ends_at|dt }}</td>
@@ -23,10 +23,9 @@
             {% elif ev.is_upcoming_or_running %}<span class="badge bg-info text-dark">à venir</span>
             {% else %}<span class="badge bg-secondary">terminé</span>{% endif %}
           </td>
-          <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.evenement', event_id=ev.id) }}">Gérer</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">Aucun événement.</td></tr>
+        <tr><td colspan="5" class="text-center text-muted py-4">Aucun événement.</td></tr>
         {% endfor %}
       </tbody>
     </table>

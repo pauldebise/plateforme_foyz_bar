@@ -21,11 +21,11 @@
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead class="table-light">
-        <tr><th>Étudiant</th><th>Promo</th><th>Solde Brest</th><th>Solde Paris</th><th>Restrictions</th><th>Équipe</th><th></th></tr>
+        <tr><th>Étudiant</th><th>Promo</th><th>Solde Brest</th><th>Solde Paris</th><th>Restrictions</th><th>Équipe</th></tr>
       </thead>
       <tbody>
         {% for u in users %}
-        <tr>
+        <tr data-href="{{ url_for('admin.compte', user_id=u.id) }}">
           <td><strong>{{ u.display_name }}</strong><br><span class="text-muted small">{{ u.username }}</span></td>
           <td>{{ u.promotion if u.promotion else '—' }}</td>
           <td>{{ u.wallet('brest').balance|eur }}</td>
@@ -40,10 +40,9 @@
             {% elif u.team_status == 'ancien' %}<span class="badge bg-secondary">ancien</span>
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
-          <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.compte', user_id=u.id) }}">Modifier</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">Aucun compte trouvé.</td></tr>
+        <tr><td colspan="6" class="text-center text-muted py-4">Aucun compte trouvé.</td></tr>
         {% endfor %}
       </tbody>
     </table>

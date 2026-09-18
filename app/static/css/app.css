@@ -182,6 +182,10 @@ body.has-mobile-pay-bar .main-area { padding-bottom: 7.5rem; }
 .search-result { cursor: pointer; }
 .search-result:hover, .search-result.active { background: #eef3f8; }
 
+/* Lignes de tableau entièrement cliquables (comptes, équipe, événements). */
+tr[data-href] { cursor: pointer; }
+tr[data-href]:hover td, tr[data-href]:focus-visible td { background: #eef3f8; }
+
 .qty-btn { width: 32px; }
 
 .cat-item { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .45rem .75rem; border-bottom: 1px dashed #e3e7eb; cursor: pointer; }

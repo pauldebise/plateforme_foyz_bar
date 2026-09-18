@@ -1,6 +1,7 @@
 // Comportements génériques, sans script inline (compatibles CSP).
 // - data-confirm : confirmation avant soumission d'un formulaire.
 // - data-copy : copie d'une URL relative dans le presse-papiers.
+// - tr[data-href] : ligne de tableau entièrement cliquable.
 // - toast(message, type) : notification éphémère (remplace alert()).
 (() => {
   window.toast = function toast(message, type = 'danger') {
@@ -75,4 +76,24 @@
       done();
     }
   });
+  // Lignes de tableau entièrement cliquables : l'URL de destination est portée
+  // par data-href sur le <tr>. Les clics sur un élément interactif de la ligne
+  // (lien, bouton, champ) restent gérés par cet élément.
+  function activateRow(row) {
+    row.setAttribute('role', 'link');
+    row.tabIndex = 0;
+    const go = () => { window.location.href = row.getAttribute('data-href'); };
+    row.addEventListener('click', (event) => {
+      if (event.target.closest('a, button, input, select, textarea, label, [data-bs-toggle]')) return;
+      go();
+    });
+    row.addEventListener('keydown', (event) => {
+      if (event.target !== row) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        go();
+      }
+    });
+  }
+  document.querySelectorAll('tr[data-href]').forEach(activateRow);
 })();
