@@ -48,8 +48,11 @@ def read_campus():
 
 def write_campus():
     """Campus d'encaissement : celui de la session, à condition qu'il soit le
-    campus d'appartenance du membre (l'autre campus est en lecture seule)."""
+    campus d'appartenance du membre (l'autre campus est en lecture seule).
+    Le compte admin global encaisse sur les deux campus."""
     campus = session.get("campus") or "brest"
+    if g.current_user.is_super_admin:
+        return campus
     own = g.current_user.team_campus
     if own in CAMPUSSES and campus != own:
         return None

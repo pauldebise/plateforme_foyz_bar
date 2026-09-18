@@ -60,6 +60,12 @@ class User(db.Model):
         return self.team_status in ("mandat", "ancien")
 
     @property
+    def is_super_admin(self):
+        """Compte d'administration global : ses droits d'écriture couvrent
+        les deux campus, le campus de travail devient celui qu'il consulte."""
+        return (self.username or "") == "admin"
+
+    @property
     def display_name(self):
         """Nom long complet affiché partout (comptes, caisse, stats, historique) :
         le nom réel, enrichi du surnom s'il existe (« Paul Debise (chips) »)."""

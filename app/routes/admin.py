@@ -72,8 +72,11 @@ def session_campus():
 
 def own_campus():
     """Campus d'appartenance du membre : seul campus où il peut écrire,
-    même s'il est connecté sur l'autre campus (lecture seule)."""
+    même s'il est connecté sur l'autre campus (lecture seule). Le compte
+    admin global fait exception : il écrit sur le campus qu'il consulte."""
     u = g.current_user
+    if u is not None and u.is_super_admin:
+        return view_campus()
     if u is not None and u.team_campus in CAMPUSSES:
         return u.team_campus
     return session_campus()
@@ -82,9 +85,26 @@ def own_campus():
 def view_campus():
     """Campus affiché sur les pages de gestion : le campus de la connexion
     sauf consultation explicite de l'autre campus via ?campus=… — la page
-    est en lecture seule dès qu'il diffère du campus d'appartenance."""
+    est en lecture seule dès qu'il diffère du campus d'appartenance. Pour
+    l'admin global, consulter un campus en fait le campus de travail."""
     campus = request.args.get("campus")
-    return campus if campus in CAMPUSSES else session_campus()
+    if campus in CAMPUSSES:
+        u = g.current_user
+        if u is not None and u.is_super_admin:
+            session["campus"] = campus
+        return campus
+    return session_campus()
+
+
+@bp.route("/campus/<campus>")
+@login_required
+def changer_campus(campus):
+    """Bascule du campus de travail de l'admin global, seul à disposer de
+    droits sur les deux campus (les autres membres suivent leur équipe)."""
+    u = g.current_user
+    if u is not None and u.is_super_admin and campus in CAMPUSSES:
+        session["campus"] = campus
+    return redirect(url_for("team.payment"))
 
 
 @bp.route("/comptes")
@@ -256,7 +276,10 @@ def _deletion_campus_ok(u):
     Rattaché signifie : membre d'équipe de l'autre campus, ou portefeuille
     (solde ou verres consignés) encore engagé sur l'autre campus. Un compte
     sans aucun engagement peut être supprimé par l'une ou l'autre équipe.
+    L'admin global, qui couvre les deux campus, n'est pas concerné.
     """
+    if g.current_user is not None and g.current_user.is_super_admin:
+        return True
     own = own_campus()
     if u.team_campus and u.team_campus != own:
         return False
@@ -317,8 +340,9 @@ def membre(user_id):
         abort(404)
     own = own_campus()
     # chaque équipe gère les membres de son campus ; un membre sans campus
-    # attribué peut être rattaché par n'importe quelle équipe
-    editable = u.team_campus in (None, own)
+    # attribué peut être rattaché par n'importe quelle équipe ; l'admin
+    # global couvre les deux campus
+    editable = u.team_campus in (None, own) or u.is_super_admin
     if request.method == "POST":
         if not editable:
             abort(403)
@@ -326,8 +350,10 @@ def membre(user_id):
         if status not in ("mandat", "ancien", ""):
             status = ""
         u.team_status = status or None
-        # le membre est rattaché au campus de l'équipe qui le gère
-        u.team_campus = own if u.team_status else None
+        # le membre est rattaché au campus de l'équipe qui le gère ; un
+        # rattachement existant est conservé (l'admin global gère les deux
+        # campus sans déplacer les membres)
+        u.team_campus = (u.team_campus or own) if u.team_status else None
         password = request.form.get("password") or ""
         if password:
             from werkzeug.security import generate_password_hash
@@ -729,14 +755,13 @@ def evenement(event_id):
     ev = db.session.get(Event, event_id)
     if ev is None:
         abort(404)
-    writable = ev.campus == own_campus()
+    writable = ev.campus == own_campus() or g.current_user.is_super_admin
     if request.method == "POST":
         if not writable:
             abort(403)
         action = request.form.get("action", "edit")
         if action == "edit":
             ev.name = clamp_text((request.form.get("name") or ev.name).strip(), 160)
-            ev.campus = own_campus()
             try:
                 ev.starts_at = paris_to_utc(
                     datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M")

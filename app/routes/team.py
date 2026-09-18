@@ -47,8 +47,11 @@ def campus():
 
 
 def own_campus():
-    """Campus d'appartenance du membre : seul campus où il peut écrire."""
+    """Campus d'appartenance du membre : seul campus où il peut écrire.
+    Le compte admin global écrit sur le campus de sa connexion."""
     u = g.current_user
+    if u.is_super_admin:
+        return campus()
     if u.team_campus in CAMPUSSES:
         return u.team_campus
     return campus()

@@ -405,10 +405,14 @@ def create_app():
 
         campus = session.get("campus") or ""
         current = getattr(g, "current_user", None)
-        # campus d'appartenance du membre : seul campus où il peut écrire
+        # campus d'appartenance du membre : seul campus où il peut écrire ;
+        # l'admin global écrit sur tout campus, il ne porte jamais
+        # l'avertissement « lecture seule »
         own = (
             current.team_campus
-            if current is not None and current.team_campus in CAMPUSSES
+            if current is not None
+            and current.team_campus in CAMPUSSES
+            and not current.is_super_admin
             else campus
         )
         return {

@@ -674,6 +674,62 @@ def test_api_lecture_seule_autre_campus():
         _expect(_balance(user_id, "paris") == 700, "solde paris débité une seule fois")
 
 
+def test_admin_droits_sur_les_deux_campus():
+    app = create_app()
+    with app.app_context():
+        parisien = _user(campus="paris", team=True, balance=1000)
+        parisien.wallet("brest").balance = 1000
+        db.session.commit()
+        article = _article(std=300)
+        user_id, article_id = parisien.id, article.id
+    client = app.test_client()
+    _login(client, "admin", ADMIN_PASSWORD, campus="brest")
+
+    # l'admin encaisse sur le campus de sa connexion, même pour un étudiant rattaché à Paris
+    csrf = _csrf(client.get("/equipe/paiement").get_data(as_text=True), "csrf-token")
+    payload = {"items": [{"article_id": article_id, "quantity": 1}], "contributors": [user_id]}
+    res = client.post("/api/purchase", json=payload, headers={"X-CSRFToken": csrf})
+    _expect(
+        res.status_code == 200 and res.get_json()["ok"],
+        "admin : encaissement autorisé quel que soit le campus d'équipe",
+    )
+    with app.app_context():
+        _expect(_balance(user_id, "brest") == 700, "portefeuille brest débité (campus connecté)")
+
+    # bascule de campus : les opérations suivent le nouveau campus de travail
+    res = client.get("/admin/campus/paris")
+    _expect(res.status_code == 302, "bascule de campus admin acceptée")
+    csrf = _csrf(client.get("/equipe/paiement").get_data(as_text=True), "csrf-token")
+    res = client.post("/api/purchase", json=payload, headers={"X-CSRFToken": csrf})
+    _expect(res.status_code == 200 and res.get_json()["ok"], "admin : encaissement sur Paris")
+    with app.app_context():
+        _expect(_balance(user_id, "paris") == 700, "portefeuille paris débité une seule fois")
+
+    # gestion d'un membre de l'autre campus sans déplacer son rattachement
+    with app.app_context():
+        membre = _user(campus="paris", team=True)
+        membre_id = membre.id
+    res = client.post(f"/admin/equipe/{membre_id}", data={"team_status": "ancien", "_csrf": csrf})
+    _expect(res.status_code == 302, "admin : édition d'un membre de l'autre campus autorisée")
+    with app.app_context():
+        m = db.session.get(User, membre_id)
+        _expect(m.team_status == "ancien", "statut équipe mis à jour par l'admin")
+        _expect(m.team_campus == "paris", "rattachement campus du membre conservé")
+
+    # un mandat ordinaire reste cantonné à son campus
+    with app.app_context():
+        brestois = _user(campus="brest", team=True, balance=1000)
+        brest_name = brestois.username
+    client = app.test_client()
+    _login(client, brest_name, "secret123", campus="paris")
+    csrf = _csrf(client.get("/equipe/paiement").get_data(as_text=True), "csrf-token")
+    res = client.post("/api/purchase", json=payload, headers={"X-CSRFToken": csrf})
+    _expect(
+        res.status_code == 403,
+        f"écriture sur l'autre campus toujours refusée (obtenu {res.status_code})",
+    )
+
+
 def test_pages_parametres_invalides():
     app = create_app()
     client = app.test_client()

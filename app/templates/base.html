@@ -35,7 +35,11 @@
         {% if logo %}<img src="/uploads/{{ logo }}" alt="" class="brand-logo">{% endif %}
         <a class="brand-name fw-bold text-white text-decoration-none" href="{{ url_for('team.payment') }}">{{ site_name }}</a>
         <span class="badge bg-light text-dark flex-shrink-0">{{ CAMPUSSES[current_campus] }}</span>
-        {% if own_campus and current_campus != own_campus %}
+        {% if current_user.is_super_admin %}
+          {% for key, label in CAMPUSSES.items() %}{% if key != current_campus %}
+          <a class="badge bg-secondary text-white flex-shrink-0 text-decoration-none" href="{{ url_for('admin.changer_campus', campus=key) }}" title="Basculer sur ce campus">{{ label }} →</a>
+          {% endif %}{% endfor %}
+        {% elif own_campus and current_campus != own_campus %}
         <span class="badge bg-warning text-dark flex-shrink-0" title="Consultation en lecture seule">lecture seule</span>
         {% endif %}
       </div>
