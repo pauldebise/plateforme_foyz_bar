@@ -168,7 +168,9 @@ def test_security_headers_and_offline_assets():
     res = authed.get("/equipe/paiement")
     _expect(res.status_code == 200, f"page équipe servie ({res.status_code})")
     _expect(res.headers.get("Cache-Control") == "no-store, private", "no-store en session équipe")
-    _expect("Cache-Control" not in page.headers, "pas de no-store sur le public")
+    public_cache = page.headers.get("Cache-Control") or ""
+    _expect("no-store" not in public_cache, "pas de no-store sur le public")
+    _expect("no-cache" in public_cache, "le HTML public est revalidé à chaque visite")
 
     # HSTS seulement quand l'application est servie en HTTPS
     app.config["SESSION_COOKIE_SECURE"] = True

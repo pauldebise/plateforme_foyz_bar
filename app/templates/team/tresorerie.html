@@ -69,6 +69,6 @@
 {% endblock %}
 {% block scripts %}
 <script type="application/json" id="treasury-data">{{ report|tojson }}</script>
-<script src="{{ url_for('static', filename='vendor/chart/chart.umd.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tresorerie.js') }}"></script>
+<script src="{{ static_url('vendor/chart/chart.umd.min.js') }}"></script>
+<script src="{{ static_url('js/tresorerie.js') }}"></script>
 {% endblock %}

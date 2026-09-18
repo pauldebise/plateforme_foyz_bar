@@ -363,17 +363,21 @@ def create_app():
         response.headers.setdefault("Content-Security-Policy", CSP)
         path = request.path
         if path.startswith("/static/"):
-            # Assets locaux (Bootstrap, Chart.js…) : cache navigateur explicite,
-            # revalidation par ETag à l'expiration.
-            response.headers["Cache-Control"] = "public, max-age=86400"
+            # Assets versionnés par leur date de modification (cf. static_url) :
+            # cache navigateur maximal, mise à jour immédiate au déploiement.
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         elif path.startswith("/uploads/"):
-            # Noms de fichiers horodatés (immuables en pratique).
-            response.headers["Cache-Control"] = "public, max-age=86400"
+            # Noms de fichiers horodatés : jamais réutilisés, cache maximal.
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         elif session.get("user_id") or session.get("gateway_event_id"):
             # Les pages authentifiées (équipe ou passerelle) ne doivent jamais
             # rester dans le cache du navigateur (navigation arrière après
             # déconnexion, poste partagé).
             response.headers["Cache-Control"] = "no-store, private"
+        else:
+            # Pages publiques : revalidation systématique pour que le HTML
+            # pointe toujours vers les assets à jour, sans délai de cache.
+            response.headers["Cache-Control"] = "no-cache"
         # HSTS uniquement quand l'application est déclarée servie en HTTPS
         # (HTTPS_ONLY=1) ; Cloudflare peut aussi le poser côté périphérie.
         if current_app.config.get("SESSION_COOKIE_SECURE"):
@@ -383,6 +387,20 @@ def create_app():
     @app.template_filter("eur")
     def eur_filter(value):
         return euros(value)
+
+    @app.template_global()
+    def static_url(filename):
+        """URL d'asset versionnée par la date de modification du fichier.
+
+        Le cache navigateur peut rester très long (immuable) : toute
+        modification change l'URL et est donc visible immédiatement au
+        déploiement, sans attendre l'expiration du cache.
+        """
+        try:
+            version = int(os.path.getmtime(os.path.join(app.static_folder, filename)))
+        except OSError:
+            version = 0
+        return url_for("static", filename=filename, v=version)
 
     @app.template_filter("dt")
     def dt_filter(value, fmt="%d/%m/%Y %H:%M"):
@@ -461,17 +479,17 @@ def create_app():
                 theme_color=theme,
                 icons=[
                     {
-                        "src": url_for("static", filename="icons/icon-192.png"),
+                        "src": static_url("icons/icon-192.png"),
                         "sizes": "192x192",
                         "type": "image/png",
                     },
                     {
-                        "src": url_for("static", filename="icons/icon-512.png"),
+                        "src": static_url("icons/icon-512.png"),
                         "sizes": "512x512",
                         "type": "image/png",
                     },
                     {
-                        "src": url_for("static", filename="favicon.svg"),
+                        "src": static_url("favicon.svg"),
                         "sizes": "any",
                         "type": "image/svg+xml",
                     },

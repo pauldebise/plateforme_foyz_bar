@@ -339,14 +339,18 @@ def test_c_cache_and_compression():
     css = client.get("/static/vendor/bootstrap/bootstrap.min.css")
     _expect(css.status_code == 200, "asset statique servi")
     _expect(
-        "max-age=86400" in (css.headers.get("Cache-Control") or ""), "cache navigateur sur /static"
+        "max-age=31536000" in (css.headers.get("Cache-Control") or "")
+        and "immutable" in (css.headers.get("Cache-Control") or ""),
+        "cache navigateur long sur /static (assets versionnés)",
     )
 
     upload = Path(os.environ["UPLOAD_DIR"]) / "logo.png"
     upload.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 100)
     res = client.get("/uploads/logo.png")
     _expect(
-        "max-age=86400" in (res.headers.get("Cache-Control") or ""), "cache navigateur sur /uploads"
+        "max-age=31536000" in (res.headers.get("Cache-Control") or "")
+        and "immutable" in (res.headers.get("Cache-Control") or ""),
+        "cache navigateur long sur /uploads (noms horodatés)",
     )
 
     compressed = client.get(

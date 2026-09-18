@@ -217,6 +217,6 @@
 {% endblock %}
 {% block scripts %}
 <script type="application/json" id="stats-data">{{ {'stats': stats, 'labels': ARTICLE_TYPES, 'students': students.top}|tojson }}</script>
-<script src="{{ url_for('static', filename='vendor/chart/chart.umd.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/statistiques.js') }}"></script>
+<script src="{{ static_url('vendor/chart/chart.umd.min.js') }}"></script>
+<script src="{{ static_url('js/statistiques.js') }}"></script>
 {% endblock %}

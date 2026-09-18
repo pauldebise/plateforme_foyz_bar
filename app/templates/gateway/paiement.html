@@ -123,7 +123,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
-<script src="{{ url_for('static', filename='js/offline.js') }}"></script>
-<script src="{{ url_for('static', filename='js/payment.js') }}"></script>
+<script src="{{ static_url('js/app.js') }}"></script>
+<script src="{{ static_url('js/offline.js') }}"></script>
+<script src="{{ static_url('js/payment.js') }}"></script>
 {% endblock %}
