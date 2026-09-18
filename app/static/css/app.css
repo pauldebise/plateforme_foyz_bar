@@ -54,15 +54,19 @@ body { background: #f4f6f8; }
   .side-link { padding: .6rem .7rem; }
   .sidebar-footer {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: .5rem;
     align-items: center;
     padding-top: .5rem;
+    order: 1;
   }
-  .sidebar-footer .w-100 { width: auto !important; margin-bottom: 0 !important; }
-  .sidebar-footer .sidebar-login { width: 100% !important; flex: 1 1 100%; }
-  .sidebar-footer .btn-group { flex: 1 1 auto; }
-  .sidebar-footer form { flex: 1 1 100%; display: flex; }
+  #sideNav { order: 2; }
+  .sidebar-footer .sidebar-menu-btn,
+  .sidebar-footer .sidebar-login,
+  .sidebar-footer form { flex: 1 1 0; min-width: 0; margin: 0; }
+  .sidebar-footer form { display: flex; }
+  .sidebar-footer .sidebar-menu-btn,
+  .sidebar-footer .sidebar-login,
   .sidebar-footer form .btn { width: 100% !important; }
 }
 

@@ -43,7 +43,6 @@
         <span class="badge bg-warning text-dark flex-shrink-0" title="Consultation en lecture seule">lecture seule</span>
         {% endif %}
       </div>
-      <button class="btn btn-outline-light btn-sm d-lg-none w-100 my-2" data-bs-toggle="collapse" data-bs-target="#sideNav"><i class="bi bi-list"></i> Menu</button>
       <nav id="sideNav" class="collapse d-lg-block mt-2">
         <a class="side-link {{ 'active' if request.endpoint == 'team.payment' }}" href="{{ url_for('team.payment') }}"><i class="bi bi-cash-coin"></i> Paiement</a>
         <a class="side-link {{ 'active' if request.endpoint == 'team.rechargement' }}" href="{{ url_for('team.rechargement') }}"><i class="bi bi-plus-circle"></i> Rechargement</a>
@@ -68,6 +67,7 @@
       </nav>
       <div class="sidebar-footer mt-auto">
         <div class="small text-white-50 mb-2 d-none d-lg-block"><i class="bi bi-person-circle"></i> {{ current_user.display_name }}</div>
+        <button class="btn btn-outline-light btn-sm d-lg-none sidebar-menu-btn" data-bs-toggle="collapse" data-bs-target="#sideNav"><i class="bi bi-list"></i> Menu</button>
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <button class="btn btn-outline-light btn-sm w-100"><i class="bi bi-box-arrow-right"></i> Déconnexion</button>
@@ -79,7 +79,6 @@
         {% if logo %}<img src="/uploads/{{ logo }}" alt="" class="brand-logo">{% endif %}
         <a class="brand-name fw-bold text-white text-decoration-none" href="{{ url_for('public.home') }}">{{ site_name }}</a>
       </div>
-      <button class="btn btn-outline-light btn-sm d-lg-none w-100 my-2" data-bs-toggle="collapse" data-bs-target="#sideNav"><i class="bi bi-list"></i> Menu</button>
       <nav id="sideNav" class="collapse d-lg-block mt-2">
         <a class="side-link {{ 'active' if request.endpoint == 'public.home' }}" href="{{ url_for('public.home') }}"><i class="bi bi-house-door"></i> {{ _("Accueil") }}</a>
         <a class="side-link {{ 'active' if request.endpoint == 'public.catalogue' }}" href="{{ url_for('public.catalogue') }}"><i class="bi bi-tags"></i> {{ _("Prix") }}</a>
@@ -88,6 +87,7 @@
         <a class="side-link {{ 'active' if request.endpoint == 'public.trombinoscopes' }}" href="{{ url_for('public.trombinoscopes') }}"><i class="bi bi-people"></i> {{ _("Trombinoscopes") }}</a>
       </nav>
       <div class="sidebar-footer mt-auto">
+        <button class="btn btn-outline-light btn-sm d-lg-none sidebar-menu-btn" data-bs-toggle="collapse" data-bs-target="#sideNav"><i class="bi bi-list"></i> Menu</button>
         <a class="btn btn-outline-light btn-sm w-100 sidebar-login" href="{{ url_for('auth.login') }}"><i class="bi bi-person-lock"></i> {{ _("Interface équipe") }}</a>
       </div>
     {% endif %}
