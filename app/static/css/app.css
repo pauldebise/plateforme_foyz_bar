@@ -60,6 +60,7 @@ body { background: #f4f6f8; }
     padding-top: .5rem;
   }
   .sidebar-footer .w-100 { width: auto !important; margin-bottom: 0 !important; }
+  .sidebar-footer .sidebar-login { width: 100% !important; flex: 1 1 100%; }
   .sidebar-footer .btn-group { flex: 1 1 auto; }
   .sidebar-footer form { flex: 1 1 auto; display: flex; }
   .sidebar-footer form .btn { width: 100%; }

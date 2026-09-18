@@ -88,7 +88,7 @@
         <a class="side-link {{ 'active' if request.endpoint == 'public.trombinoscopes' }}" href="{{ url_for('public.trombinoscopes') }}"><i class="bi bi-people"></i> {{ _("Trombinoscopes") }}</a>
       </nav>
       <div class="sidebar-footer mt-auto">
-        <a class="btn btn-outline-light btn-sm w-100" href="{{ url_for('auth.login') }}"><i class="bi bi-person-lock"></i> {{ _("Interface équipe") }}</a>
+        <a class="btn btn-outline-light btn-sm w-100 sidebar-login" href="{{ url_for('auth.login') }}"><i class="bi bi-person-lock"></i> {{ _("Interface équipe") }}</a>
       </div>
     {% endif %}
   </aside>
