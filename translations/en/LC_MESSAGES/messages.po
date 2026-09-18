@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-17 15:26+0200\n"
+"POT-Creation-Date: 2026-09-18 14:33+0200\n"
 "PO-Revision-Date: 2026-09-17 15:27+0200\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language: en\n"
@@ -16,36 +16,31 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 
-#: app/templates/base.html:81
+#: app/templates/base.html:83
 msgid "Accueil"
 msgstr "Home"
 
-#: app/templates/base.html:82 app/templates/public/catalogue.html:2
+#: app/templates/base.html:84 app/templates/public/catalogue.html:2
 msgid "Prix"
 msgstr "Prices"
 
-#: app/templates/base.html:83 app/templates/public/reglement.html:2
+#: app/templates/base.html:85 app/templates/public/reglement.html:2
 msgid "Règlement intérieur"
 msgstr "Rules"
 
-#: app/templates/base.html:84 app/templates/public/liens.html:3
+#: app/templates/base.html:86 app/templates/public/liens.html:3
 msgid "Liens utiles"
 msgstr "Useful links"
 
-#: app/templates/base.html:85 app/templates/public/trombinoscopes.html:2
-#: app/templates/public/trombinoscopes.html:4
-msgid "Trombinoscopes"
-msgstr "Teams"
-
-#: app/templates/auth/login.html:7 app/templates/base.html:93
-msgid "Interface équipe"
-msgstr "Staff area"
-
-#: app/templates/auth/login.html:2
+#: app/templates/auth/login.html:2 app/templates/base.html:90
 msgid "Connexion"
 msgstr "Log in"
+
+#: app/templates/auth/login.html:7
+msgid "Interface équipe"
+msgstr "Staff area"
 
 #: app/templates/auth/login.html:8
 msgid "Réservé aux membres actifs et anciens membres des équipes Foy'z / Bar"
@@ -205,19 +200,8 @@ msgstr "Rules"
 msgid "Le règlement n'a pas encore été publié."
 msgstr "The rules have not been published yet."
 
-#: app/templates/public/trombinoscopes.html:5
-msgid "Les équipes de mandat du Foy'z & Bar."
-msgstr "The current Foy'z & Bar teams."
 
-#: app/templates/public/trombinoscopes.html:9
-msgid "Équipe"
-msgstr "Team"
 
-#: app/templates/public/trombinoscopes.html:16
-msgid "Photo de"
-msgstr "Photo of"
 
-#: app/templates/public/trombinoscopes.html:25
-msgid "Aucun membre présenté pour le moment."
-msgstr "No member on display at the moment."
+
 

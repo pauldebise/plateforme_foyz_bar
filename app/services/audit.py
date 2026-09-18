@@ -46,7 +46,6 @@ ACTION_LABELS = {
     "reglages.mot_de_passe": "Changement du mot de passe administrateur",
     "lien.ajout": "Ajout d'un lien utile",
     "lien.suppression": "Suppression d'un lien utile",
-    "trombinoscope.modification": "Modification du trombinoscope",
 }
 
 

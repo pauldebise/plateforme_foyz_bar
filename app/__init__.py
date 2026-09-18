@@ -86,14 +86,11 @@ def ensure_schema_upgrades():
                 conn.execute(text("ALTER TABLE users ADD COLUMN nickname VARCHAR(255)"))
             if "disabled" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT FALSE"))
-            if "trombinoscope_visible" not in cols:
-                conn.execute(
-                    text("ALTER TABLE users ADD COLUMN trombinoscope_visible BOOLEAN DEFAULT TRUE")
-                )
-            if "trombinoscope_role" not in cols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN trombinoscope_role VARCHAR(80)"))
-            if "photo" not in cols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN photo VARCHAR(255)"))
+            # Retrait du trombinoscope : purge des colonnes dédiées d'une base
+            # de dev antérieure (idempotent ; SQLite ≥ 3.35 requis pour DROP COLUMN).
+            for col in ("trombinoscope_visible", "trombinoscope_role", "photo"):
+                if col in cols:
+                    conn.execute(text(f"ALTER TABLE users DROP COLUMN {col}"))
             # Retrait du MFA (TOTP) : purge des colonnes d'une base de dev
             # antérieure (idempotent ; SQLite ≥ 3.35 requis pour DROP COLUMN).
             for col in ("totp_secret", "totp_enabled", "totp_recovery", "totp_last_counter"):

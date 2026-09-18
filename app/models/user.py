@@ -40,15 +40,6 @@ class User(db.Model):
     disabled: db.Mapped[bool] = db.mapped_column(
         db.Boolean, default=False, server_default=db.false()
     )
-    # Trombinoscope public : membre affiché (mandat) ou masqué, rôle affiché
-    # sous le nom, et photo (nom de fichier dans uploads/, facultative).
-    trombinoscope_visible: db.Mapped[bool] = db.mapped_column(
-        db.Boolean, default=True, server_default=db.true()
-    )
-    trombinoscope_role: db.Mapped[str | None] = db.mapped_column(
-        db.String(80), nullable=True, default=None
-    )
-    photo: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True, default=None)
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)
 
     wallets: db.Mapped[list["Wallet"]] = db.relationship(

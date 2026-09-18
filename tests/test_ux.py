@@ -5,11 +5,9 @@ Exécutable sans pytest : python -m tests.test_ux
 Couvre :
 - T-8.1 : recalcul caisse, barre d'action mobile, toasts (garde-fous) ;
 - T-8.2 : listes de résultats ARIA, focus visible, cibles tactiles ;
-- T-8.3 : trombinoscopes (page publique + édition), notes conservées (R16),
-  annulation multiple de transactions (U8).
+- T-8.3 : notes conservées (R16), annulation multiple de transactions (U8).
 """
 
-import io
 import os
 import re
 import sys
@@ -93,93 +91,7 @@ def test_a_ux_garde_fous():
     _expect("pointer: coarse" in css and "min-height: 44px" in css, "cibles tactiles de 44 px")
 
 
-def test_b_trombinoscopes():
-    app = create_app()
-    with app.app_context():
-        alice = User(
-            name="Alice Martin",
-            username="ux.alice",
-            team_status="mandat",
-            team_campus="brest",
-            trombinoscope_role="Présidente",
-            photo="alice.png",
-        )
-        bruno = User(
-            name="Bruno Petit",
-            username="ux.bruno",
-            team_status="mandat",
-            team_campus="brest",
-            trombinoscope_visible=False,
-        )
-        chloe = User(
-            name="Chloe Paris",
-            username="ux.chloe",
-            team_status="mandat",
-            team_campus="paris",
-            trombinoscope_role="Trésorière",
-        )
-        ancien = User(
-            name="Ancien Membre", username="ux.ancien", team_status="ancien", team_campus="brest"
-        )
-        db.session.add_all([alice, bruno, chloe, ancien])
-        db.session.commit()
-        alice_id, bruno_id, chloe_id = alice.id, bruno.id, chloe.id
-
-    client = app.test_client()
-    page = client.get("/trombinoscopes").get_data(as_text=True)
-    _expect("Alice Martin" in page and "Présidente" in page, "membre présenté avec rôle")
-    _expect("/uploads/alice.png" in page, "photo affichée")
-    _expect("Chloe Paris" in page and "Trésorière" in page, "second campus présenté")
-    _expect("Bruno Petit" not in page, "membre masqué absent")
-    _expect("Ancien Membre" not in page, "ancien membre absent du trombinoscope")
-
-    token = _login(client)
-    dev = client.get("/admin/module-dev").get_data(as_text=True)
-    _expect("Trombinoscope" in dev and "Alice Martin" in dev, "édition dans le module dev")
-    _expect("Chloe Paris" not in dev, "chaque équipe n'édite que son campus")
-
-    # Retrait de la photo + masquage d'Alice
-    client.post(
-        "/admin/module-dev",
-        data={
-            "action": "trombinoscope",
-            "user_id": str(alice_id),
-            "trombinoscope_role": "",
-            "remove_photo": "on",
-            "_csrf": token,
-        },
-    )
-    client.get("/admin/module-dev")  # consomme le message flash (contient le nom)
-    page = client.get("/trombinoscopes").get_data(as_text=True)
-    _expect("Alice Martin" not in page, "membre masqué après édition")
-
-    # Réaffichage de Bruno avec rôle et photo téléversée
-    res = client.post(
-        "/admin/module-dev",
-        data={
-            "action": "trombinoscope",
-            "user_id": str(bruno_id),
-            "trombinoscope_role": "Secrétaire",
-            "trombinoscope_visible": "on",
-            "photo": (io.BytesIO(b"\x89PNG\r\n\x1a\n" + b"0" * 32), "bruno.png"),
-            "_csrf": token,
-        },
-        content_type="multipart/form-data",
-    )
-    _expect(res.status_code == 302, "édition trombinoscope enregistrée")
-    page = client.get("/trombinoscopes").get_data(as_text=True)
-    _expect("Bruno Petit" in page and "Secrétaire" in page, "membre réaffiché avec rôle")
-    with app.app_context():
-        bruno = db.session.get(User, bruno_id)
-        _expect(bruno.photo and bruno.photo.endswith("bruno.png"), "photo enregistrée")
-        _expect(
-            (Path(os.environ["UPLOAD_DIR"]) / bruno.photo).exists(), "fichier téléversé présent"
-        )
-        chloe = db.session.get(User, chloe_id)
-        _expect(chloe.trombinoscope_role == "Trésorière", "autre campus préservé")
-
-
-def test_c_notes_conservees():
+def test_b_notes_conservees():
     app = create_app()
     with app.app_context():
         set_setting("max_postits_private", "2")
@@ -241,7 +153,7 @@ def test_c_notes_conservees():
         )
 
 
-def test_d_annulation_multiple():
+def test_c_annulation_multiple():
     app = create_app()
     with app.app_context():
         membre = User(name="Delta Test", username="ux.delta")

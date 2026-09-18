@@ -1080,46 +1080,8 @@ def module_dev():
                 db.session.delete(link)
                 db.session.commit()
                 flash("Lien supprimé.", "success")
-        elif action == "trombinoscope":
-            try:
-                member_id = int(request.form.get("user_id", ""))
-            except (TypeError, ValueError):
-                member_id = None
-            member = db.session.get(User, member_id) if member_id is not None else None
-            if member is not None and member.team_status == "mandat" and member.team_campus == own:
-                member.trombinoscope_role = (
-                    clamp_text((request.form.get("trombinoscope_role") or "").strip(), 80) or None
-                )
-                member.trombinoscope_visible = request.form.get("trombinoscope_visible") == "on"
-                if request.form.get("remove_photo"):
-                    member.photo = None
-                photo = save_upload(
-                    request.files.get("photo"), allowed=(".jpg", ".jpeg", ".png", ".webp")
-                )
-                if photo:
-                    member.photo = photo
-                A.record(
-                    "trombinoscope.modification",
-                    target=member.display_name,
-                    details=f"Visible : {'oui' if member.trombinoscope_visible else 'non'}",
-                )
-                db.session.commit()
-                flash(f"Trombinoscope de {member.display_name} mis à jour.", "success")
-            else:
-                flash("Membre introuvable ou hors de votre campus.", "danger")
         db.session.commit()
         return redirect(url_for("admin.module_dev"))
     links = db.session.scalars(select(UsefulLink).order_by(UsefulLink.position)).all()
-    members = (
-        db.session.scalars(
-            select(User)
-            .where(User.team_status == "mandat", User.team_campus == own)
-            .order_by(User.name)
-        )
-        .unique()
-        .all()
-    )
     values = {k: S.get_setting(k) for k in S.DEFAULTS}
-    return render_template(
-        "admin/module_dev.html", values=values, links=links, own_campus=own, members=members
-    )
+    return render_template("admin/module_dev.html", values=values, links=links, own_campus=own)

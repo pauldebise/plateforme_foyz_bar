@@ -4,7 +4,7 @@ Exécutable sans pytest : python -m tests.test_audit
 
 Couvre :
 - enregistrement des actions sensibles (comptes, équipe, articles, réglages,
-  liens, trombinoscope) avec acteur, cible, IP ;
+  liens) avec acteur, cible, IP ;
 - aucune fuite de secret (un mot de passe redéfini n'apparaît jamais) ;
 - consultation /admin/audit (filtres action et acteur/cible, pagination) ;
 - accès réservé aux mandats (un ancien membre reçoit 403) ;

@@ -8,42 +8,37 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PROJECT VERSION\n"
 "Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
-"POT-Creation-Date: 2026-09-17 15:26+0200\n"
+"POT-Creation-Date: 2026-09-18 14:33+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.18.0\n"
+"Generated-By: Babel 2.17.0\n"
 
-#: app/templates/base.html:81
+#: app/templates/base.html:83
 msgid "Accueil"
 msgstr ""
 
-#: app/templates/base.html:82 app/templates/public/catalogue.html:2
+#: app/templates/base.html:84 app/templates/public/catalogue.html:2
 msgid "Prix"
 msgstr ""
 
-#: app/templates/base.html:83 app/templates/public/reglement.html:2
+#: app/templates/base.html:85 app/templates/public/reglement.html:2
 msgid "Règlement intérieur"
 msgstr ""
 
-#: app/templates/base.html:84 app/templates/public/liens.html:3
+#: app/templates/base.html:86 app/templates/public/liens.html:3
 msgid "Liens utiles"
 msgstr ""
 
-#: app/templates/base.html:85 app/templates/public/trombinoscopes.html:2
-#: app/templates/public/trombinoscopes.html:4
-msgid "Trombinoscopes"
-msgstr ""
-
-#: app/templates/auth/login.html:7 app/templates/base.html:93
-msgid "Interface équipe"
-msgstr ""
-
-#: app/templates/auth/login.html:2
+#: app/templates/auth/login.html:2 app/templates/base.html:90
 msgid "Connexion"
+msgstr ""
+
+#: app/templates/auth/login.html:7
+msgid "Interface équipe"
 msgstr ""
 
 #: app/templates/auth/login.html:8
@@ -196,21 +191,5 @@ msgstr ""
 
 #: app/templates/public/reglement.html:17
 msgid "Le règlement n'a pas encore été publié."
-msgstr ""
-
-#: app/templates/public/trombinoscopes.html:5
-msgid "Les équipes de mandat du Foy'z & Bar."
-msgstr ""
-
-#: app/templates/public/trombinoscopes.html:9
-msgid "Équipe"
-msgstr ""
-
-#: app/templates/public/trombinoscopes.html:16
-msgid "Photo de"
-msgstr ""
-
-#: app/templates/public/trombinoscopes.html:25
-msgid "Aucun membre présenté pour le moment."
 msgstr ""
 
