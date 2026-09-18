@@ -35,7 +35,7 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = os.environ.get("HTTPS_ONLY", "0") == "1"
-    LANGUAGES: ClassVar[list[str]] = ["fr", "en"]
+    LANGUAGES: ClassVar[list[str]] = ["fr"]
     BABEL_DEFAULT_LOCALE = "fr"
     BABEL_SUPPORTED_LOCALES: ClassVar[list[str]] = LANGUAGES
     BABEL_TRANSLATION_DIRECTORIES = str(BASE_DIR / "translations")

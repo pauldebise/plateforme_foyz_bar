@@ -30,7 +30,6 @@ from app.utils import (
     PAYMENT_METHODS,
     TRANSACTION_TYPES,
     euros,
-    is_safe_target,
     safe_color,
     to_paris,
 )
@@ -211,16 +210,13 @@ def create_app():
 
     db.init_app(app)
 
-    # Internationalisation : le français est la langue de référence (msgid) ;
-    # les traductions publiées vivent dans translations/. Le choix de langue
-    # est mémorisé en session, sinon négocié via Accept-Language.
+    # Internationalisation : le français est l'unique langue (msgid) ; les
+    # traductions publiées restent dans translations/ mais ne sont plus
+    # sélectionnables depuis l'interface.
     from flask_babel import Babel
 
     def _locale_selector():
-        chosen = session.get("lang")
-        if chosen in app.config["LANGUAGES"]:
-            return chosen
-        return request.accept_languages.best_match(app.config["LANGUAGES"]) or "fr"
+        return "fr"
 
     babel = Babel()
     babel.init_app(app, locale_selector=_locale_selector)
@@ -500,21 +496,6 @@ def create_app():
     @app.get("/hors-ligne")
     def offline_page():
         return render_template("public/hors_ligne.html")
-
-    @app.get("/langue/<lang>")
-    def set_language(lang):
-        """Mémorise la langue choisie (FR/EN) et revient à la page courante."""
-        from urllib.parse import urlsplit
-
-        if lang not in app.config["LANGUAGES"]:
-            abort(404)
-        session["lang"] = lang
-        target = url_for("public.home")
-        referrer = urlsplit(request.referrer or "")
-        # Retour uniquement vers une page du même site (le Referer est forgéable).
-        if referrer.netloc in ("", request.host) and is_safe_target(referrer.path):
-            target = referrer.path
-        return redirect(target)
 
     @app.route("/uploads/<path:filename>")
     def uploaded_file(filename):
