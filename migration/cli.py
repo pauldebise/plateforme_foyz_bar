@@ -378,10 +378,15 @@ def _run_audit_only(args, engine, files):
                     unmapped.append((campus, filename, raw_cents))
                 continue
             key = user["key"]
-            occurrences[campus].setdefault(key, []).append(
+            seen = occurrences[campus].setdefault(key, [])
+            seen.append(
                 {"src_id": user["src_id"], "name": user["name"], "balance": user["balance_cents"]}
             )
-            if len(occurrences[campus][key]) == 1:
+            if len(seen) == 1 or (
+                # même règle que load_accounts : doublons d'une source sans
+                # identifiant -> soldes cumulés (sinon écart fictif au rapport)
+                user["src_id"] is None and seen[0].get("src_id") is None
+            ):
                 source[campus] += user["balance_cents"]
                 users_count += 1
         collisions = [

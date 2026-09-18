@@ -286,7 +286,11 @@ audit comptable systématique.
 2. Copier les dumps dans `bdd_a_migrer/` (créé automatiquement) :
    - Brest : dump MySQL `brest_*.sql` **uniquement** (~500 Mo, majoritairement
      des logs — traités en streaming par batchs, sans chargement en RAM) ;
-   - Paris : export léger `paris_*.json` / `*.jsonl` / `*.csv` / `*.sql`.
+   - Paris : export léger `paris_*.json` / `*.jsonl` / `*.csv` / `*.sql`. Lot
+     réel du 18/09 : deux CSV de caisse, `paris_clients_*.csv` (Nom/Solde
+     exploités ; champs postaux ignorés) et `paris_articles_*.csv`
+     (Référence/Libellé/Famille/Tarif de base), encodage détecté
+     automatiquement (UTF-8 ou CP1252), décimales à la virgule acceptées.
    Toute autre extension (`brest_*.json`, `.zip`, …) est refusée avant
    démarrage : rien n'est lu ni supprimé par surprise.
 3. `make migrate-dry` — cycle complet (parsing, conversions, injection, audit) puis
@@ -312,7 +316,11 @@ donc une reprise après échec reste possible.
   identité ou une clé de réconciliation portée par plusieurs lignes (homonymes,
   doublons de carte) **bloque la bascule** avec le détail des clés en collision
   et leurs montants. Sur le dump Brest réel (16/09), cela détecte 214 collisions
-  et 3 849,08 € non projetés par l'ancien mapping.
+  et 3 849,08 € non projetés par l'ancien mapping. Exception : dans une source
+  sans identifiant (CSV clients Paris : Nom/Solde uniquement), les lignes de
+  même clé sont le même compte exporté plusieurs fois — leurs soldes sont
+  **cumulés** (comptés au rapport) pour préserver l'invariant ; avec des
+  identifiants distincts (Brest), la collision reste bloquante.
 - **Invariable comptable** : `Σ soldes projetés = Σ soldes cibles après − avant`
   (écart global ET par campus strictement nul), vérifié dans la transaction
   avant `COMMIT`.
@@ -320,7 +328,13 @@ donc une reprise après échec reste possible.
   sont importés avec leur type (table `article_types` ; « Boisson Chaude/Froide »
   rattachées aux consommables `snack`, seul vocabulaire cible non alcoolisé —
   ajustable dans `migration/sources/__init__.py`). Les lignes de vente
-  historiques sont rattachées aux articles importés quand c'est possible.
+  historiques sont rattachées aux articles importés quand c'est possible. Les
+  articles de la caisse Paris (CSV `Famille`) sont typés (« Bières
+  Bouteilles/Pression » -> `biere`, « Vins/alcools » -> `vin`, « Nourriture »,
+  « Boissons chaudes/sans alcool » -> `snack`, « Z Treso BDE » -> `evenement`)
+  pour que le contrôle blacklist alcool reste effectif ; sans tarif membre
+  source, le prix équipe vaut le prix public ; les entrées hors vente
+  (« A ne pas ouvrir », « Ne pas utiliser », …) sont importées **inactives**.
 - **Tireuses** : les fûts (`draft_beers`) deviennent des kegs avec leurs tarifs
   par format (`keg_prices`), et l'état courant des tireuses
   (`draft_beer_current`, lignes non closes, ouverture la plus récente) configure
@@ -365,7 +379,7 @@ make migrate-keep    # bascule réelle avec archivage des sources
 make tests                                 # toutes les suites (SQLite)
 make tests-postgres                        # suites applicatives sur PostgreSQL jetable
 make lint                                  # ruff check + ruff format --check
-python -m tests.migration.test_migration   # suite de tests du module (27 tests)
+python -m tests.migration.test_migration   # suite de tests du module (29 tests)
 python -m tests.test_identifiers           # login/identifiants + évolution du schéma
 ```
 

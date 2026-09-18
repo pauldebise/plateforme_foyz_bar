@@ -316,9 +316,22 @@ LINE_FIELDS = {
 }
 
 # Catalogue : le prix `std` est le prix public, `team` le prix membre (Brest :
-# `price` / `price_foyz`). Le volume source Brest est exprimé en litres.
+# `price` / `price_foyz`). Le volume source Brest est exprimé en litres. La
+# caisse Paris (CSV du 18/09) n'a ni volume ni tarif membre : volume absent ->
+# None, prix équipe absent -> prix public (pas de remise membre sur l'ancienne
+# caisse ; ajustable en cible si besoin).
 ARTICLE_FIELDS = {
-    "src_id": ("id", "article_id", "id_article", "code", "code_barre", "barcode", "ref"),
+    "src_id": (
+        "id",
+        "article_id",
+        "id_article",
+        "code",
+        "code_barre",
+        "barcode",
+        "ref",
+        "référence",
+        "reference",
+    ),
     "name": (
         "name",
         "nom",
@@ -332,7 +345,7 @@ ARTICLE_FIELDS = {
     "type": ("type", "type_article", "article_type", "categorie", "catégorie", "famille"),
     "volume_l": ("volume", "volume_l"),
     "volume_cl": ("volume_cl", "contenance", "contenance_cl"),
-    "price_std": ("price", "prix", "price_std", "prix_std", "prix_vente"),
+    "price_std": ("price", "prix", "price_std", "prix_std", "prix_vente", "tarif de base"),
     "price_team": (
         "price_foyz",
         "prix_foyz",
@@ -390,6 +403,17 @@ ARTICLE_TYPE_MAP = {
     "saucisson": "saucisson",
     "boisson chaude": "snack",
     "boisson froide": "snack",
+    # Familles de la caisse Paris (CSV `Famille`) : les bières doivent être
+    # reconnues pour que le contrôle blacklist alcool reste effectif.
+    "bières bouteilles": "biere",
+    "bieres bouteilles": "biere",
+    "bières pression": "biere",
+    "bieres pression": "biere",
+    "vins/alcools": "vin",
+    "nourriture": "snack",
+    "boissons chaudes": "snack",
+    "boissons sans alcool": "snack",
+    "z treso bde": "evenement",
     "cocktails/barbecue/soirées": "evenement",
     "cocktails/barbecue/soirees": "evenement",
     "cocktail": "evenement",
@@ -403,6 +427,12 @@ ARTICLE_TYPE_MAP = {
 # Type par défaut d'un article de type source inconnu : consommable NON
 # alcoolisé (jamais « biere » : le type pilote le contrôle blacklist alcool).
 DEFAULT_ARTICLE_TYPE = "snack"
+
+# Entrées de la caisse Paris qui ne doivent PAS être vendues en cible
+# (famille « A ne pas ouvrir » = bouteilles de réserve, libellés d'essai ou
+# de trésorerie interne) : importées avec `active = False`. Comparaison sans
+# accents ni casse. Ajustable la veille de la bascule.
+ARTICLE_INACTIVE_LABELS = frozenset({"a ne pas ouvrir", "ne pas utiliser", "rien", "0000", "pb"})
 
 ARTICLE_TYPES_KNOWN = {"biere", "vin", "cidre", "snack", "saucisson", "evenement"}
 ALCOHOLIC_ARTICLE_TYPES = {"biere", "vin", "cidre"}
@@ -671,7 +701,13 @@ def map_line_row(row, money_unit, type_names=None):
 
 
 def map_article_row(row, money_unit, type_names=None):
-    """Convertit une ligne de catalogue source en article canonique (centimes)."""
+    """Convertit une ligne de catalogue source en article canonique (centimes).
+
+    Prix équipe : repris de la source quand la colonne existe ; sinon (caisse
+    Paris, pas de tarif membre) il vaut le prix public. Articles hors vente
+    (famille/libellé dans ARTICLE_INACTIVE_LABELS, à défaut de colonne active)
+    importés inactifs.
+    """
     name = pick(row, ARTICLE_FIELDS["name"])
     if name is None or not str(name).strip():
         return None
@@ -681,11 +717,22 @@ def map_article_row(row, money_unit, type_names=None):
     price_std = to_cents(
         pick(row, ARTICLE_FIELDS["price_std"]), money_unit, context="article (prix public)"
     )
-    price_team = to_cents(
-        pick(row, ARTICLE_FIELDS["price_team"]), money_unit, context="article (prix équipe)"
-    )
-    article_type = resolve_article_type(pick(row, ARTICLE_FIELDS["type"]), type_names)
+    team_raw = pick(row, ARTICLE_FIELDS["price_team"])
+    if team_raw is None:
+        price_team = price_std
+    else:
+        price_team = to_cents(team_raw, money_unit, context="article (prix équipe)")
+    raw_type = pick(row, ARTICLE_FIELDS["type"])
+    article_type = resolve_article_type(raw_type, type_names)
     active = as_bool(pick(row, ARTICLE_FIELDS["active"]))
+    if active is None:
+        labels = {
+            unnormalize(str(value))
+            for value in (raw_type, name)
+            if value is not None and str(value).strip()
+        }
+        if labels & ARTICLE_INACTIVE_LABELS:
+            active = False
     return {
         "src_id": pick(row, ARTICLE_FIELDS["src_id"]),
         "name": str(unescape_html(name)).strip()[:255],

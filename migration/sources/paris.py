@@ -1,11 +1,17 @@
 """Contrat de la base Paris : export hétérogène (JSON / JSONL / CSV / SQL).
 
-Les lignes sont chargées brutes dans staging_paris_raw (colonne JSONB) puis
-projetées vers le schéma cible. La nature de chaque enregistrement est
-déterminée par :
-1. le nom de la table/section source (ex: "etudiants", "transactions") ;
+Lot réel du 18/09 : deux CSV de caisse (CP1252, décimales à la virgule) —
+`paris_clients_*.csv` (Nom / Adresse / Code postal / Ville / Solde : seuls
+`Nom` et `Solde` sont exploités, les champs postaux sont ignorés) et
+`paris_articles_*.csv` (Référence / Libellé / Famille / Tarif de base ; pas de
+volume ni de tarif membre). Les lignes sont chargées brutes dans
+staging_paris_raw (colonne JSONB) puis projetées vers le schéma cible. La
+nature de chaque enregistrement est déterminée par :
+1. le nom de la table/section source — déduit du nom de fichier pour les CSV
+   (paris_clients_1809.csv -> "clients"), ou clé de section JSON ;
 2. à défaut, un champ discriminant du record (type / entite / kind) ;
-3. à défaut, la forme des clés présentes (solde+nom -> user, montant+date -> transaction).
+3. à défaut, la forme des clés présentes (solde+nom -> user, libellé+famille
+   ou tarif de base -> article, montant+date -> transaction).
 """
 
 from . import map_article_row, map_line_row, map_transaction_row, map_user_row
@@ -20,6 +26,8 @@ USER_TABLES = {
     "students",
     "comptes",
     "soldes",
+    "clients",
+    "client",
 }
 TXN_TABLES = {
     "transactions",
@@ -76,6 +84,10 @@ def entity_for(source_table, record):
     has_amount = keys & {"montant", "montant_total", "total", "prix_total"}
     has_date = keys & {"date", "created_at", "date_heure", "horodatage", "date_transaction"}
     has_product = keys & {"produit", "article", "article_name", "quantite", "quantité"}
+    has_label = keys & {"libelle", "libellé"}
+    if (has_label and keys & {"famille"}) or keys & {"tarif de base"}:
+        # export caisse Paris (CSV articles) : libellé+famille ou tarif de base
+        return "articles"
     if has_balance and has_identity:
         return "users"
     if has_amount and (has_date or has_product):

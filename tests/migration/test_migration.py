@@ -1049,6 +1049,134 @@ def test_p5_merge_without_email():
     shutil.rmtree(src)
 
 
+def test_paris_csv_clients_and_articles():
+    # Export caisse Paris réel (18/09) : CP1252, décimales à la virgule,
+    # table source déduite du nom de fichier, doublons de nom (soldes cumulés),
+    # familles -> types cibles, articles hors vente inactifs.
+    from migration.etl import SourceReader
+    from migration.parsing.files import table_from_filename
+
+    _expect(table_from_filename("paris_clients_1809.csv") == "clients", "table déduite clients")
+    _expect(table_from_filename("paris_articles_1809.csv") == "articles", "table déduite articles")
+
+    clients = (
+        "Nom;Adresse;Code postal;Ville;Solde\r\n"
+        '"MARTIN Léo";1 rue Vavy;29200;Brest;"12,40"\r\n'
+        '"MARTIN Léo";;;;3,00\r\n'
+        '"BERNARD Sarah";;;;0\r\n'
+        ";;;;0,00\r\n"
+        '"PRINTEMPS Élodie";;;;-2,05\r\n'
+    )
+    articles = (
+        "Référence;Libellé;Famille;Imprimante;Taux TVA;Taux TVA à emporter;"
+        "Tarif de base;Clavier;Poids ouvert;Prix ouvert;Code barre\r\n"
+        '1;TsingTao;"Bières Bouteilles";;0,200;;1,50;;Non;Non;\r\n'
+        '2;Merlot;"Vins/alcools";;0,200;;1,00;;Non;Non;\r\n'
+        '3;Café;"Boissons chaudes";;0,200;;0,50;;Non;Non;\r\n'
+        '4;Duvel;"A ne pas ouvrir";;0,200;;2,00;;Non;Non;\r\n'
+        '5;ne pas utiliser;"Bières Bouteilles";;0,200;;;;Non;Non;\r\n'
+    )
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / "sources"
+        src.mkdir()
+        (src / "paris_clients_1809.csv").write_bytes(clients.encode("cp1252"))
+        (src / "paris_articles_1809.csv").write_bytes(articles.encode("cp1252"))
+        files = detect.scan(src, create=False)
+        _expect(
+            sorted(f.path.name for f in files)
+            == ["paris_articles_1809.csv", "paris_clients_1809.csv"],
+            "CSV Paris détectés",
+        )
+        reader = SourceReader(files, "euros", 100, conn=None)
+        users, seen, warnings, raw_total = {}, {}, 0, 0
+        for campus, _filename, user, warning, raw in reader.iter_users():
+            _expect(campus == "paris", "campus paris")
+            raw_total += raw
+            if warning:
+                warnings += 1
+            if user is not None:
+                seen[user["name"]] = seen.get(user["name"], 0) + 1
+                users.setdefault(user["name"], user)
+        _expect(len(users) == 3 and warnings == 1, f"3 comptes + 1 ligne sans nom ({users})")
+        _expect(seen["MARTIN Léo"] == 2, "les deux lignes du doublon sont mappées")
+        leo = users["MARTIN Léo"]
+        _expect(
+            leo["balance_cents"] == 1240 and leo["key"] == "martin leo",
+            f"clé de réconciliation = nom normalisé ({leo['key']})",
+        )
+        _expect(users["PRINTEMPS Élodie"]["balance_cents"] == -205, "CP1252 + virgule + négatif")
+        _expect(raw_total == 1335, f"somme brute toutes lignes ({raw_total})")
+
+        catalog = {}
+        for entity, campus, obj in reader.iter_catalog():
+            _expect(entity == "articles" and campus == "paris", "catalogue paris")
+            catalog[obj["name"]] = obj
+        tsingtao = catalog["TsingTao"]
+        _expect(tsingtao["src_id"] == "1", "Référence -> src_id")
+        _expect(
+            tsingtao["article_type"] == "biere" and tsingtao["is_alcohol"],
+            "famille Bières Bouteilles -> biere (contrôle alcool)",
+        )
+        _expect(
+            tsingtao["price_std_cents"] == 150 and tsingtao["price_team_cents"] == 150,
+            "Tarif de base -> prix public, prix équipe = prix public",
+        )
+        _expect(catalog["Merlot"]["article_type"] == "vin", "Vins/alcools -> vin")
+        _expect(catalog["Café"]["article_type"] == "snack", "Boissons chaudes -> snack")
+        _expect(catalog["Duvel"]["active"] is False, "famille « A ne pas ouvrir » -> inactif")
+        _expect(catalog["ne pas utiliser"]["active"] is False, "libellé hors vente -> inactif")
+
+
+def test_e2e_paris_csv_run():
+    src = Path(tempfile.mkdtemp(prefix="mig_csv_"))
+    db_path = src / "cible.db"
+    sdir = src / "sources"
+    sdir.mkdir()
+    _write_brest(sdir / "brest_lot.sql", [_user("0041", "Léo Martin", "10.00")])
+    clients = (
+        "Nom;Adresse;Code postal;Ville;Solde\r\n"
+        '"Léo Martin";;;;12,40\r\n'
+        '"LEO MARTIN";;;;3,00\r\n'
+        '"BERNARD Sarah";;;;0\r\n'
+        ";;;;0,00\r\n"
+    )
+    articles = (
+        "Référence;Libellé;Famille;Imprimante;Taux TVA;Taux TVA à emporter;"
+        "Tarif de base;Clavier;Poids ouvert;Prix ouvert;Code barre\r\n"
+        '1;TsingTao;"Bières Bouteilles";;0,200;;1,50;;Non;Non;\r\n'
+        '4;Duvel;"A ne pas ouvrir";;0,200;;2,00;;Non;Non;\r\n'
+    )
+    (sdir / "paris_clients_1809.csv").write_bytes(clients.encode("cp1252"))
+    (sdir / "paris_articles_1809.csv").write_bytes(articles.encode("cp1252"))
+    _fresh_db(db_path)
+    code = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
+    _expect(code == 0, "run avec CSV Paris OK")
+    c = sqlite3.connect(db_path)
+    # fusion inter-campus sur le nom normalisé : Léo Martin (Brest) +
+    # MARTIN Léo (Paris, doublon CSV cumulé) -> un compte, deux portefeuilles
+    leo_id = c.execute("SELECT id FROM users WHERE username='leo.martin'").fetchone()[0]
+    wallets = dict(
+        c.execute("SELECT campus, balance FROM wallets WHERE user_id=?", (leo_id,)).fetchall()
+    )
+    _expect(wallets == {"brest": 1000, "paris": 1540}, f"fusion + doublon cumulé ({wallets})")
+    sarah = c.execute(
+        "SELECT COUNT(*) FROM wallets w JOIN users u ON u.id = w.user_id "
+        "WHERE u.name='BERNARD Sarah' AND w.balance=0 AND w.campus='paris'"
+    ).fetchone()[0]
+    _expect(sarah == 1, "compte Paris à solde nul créé")
+    tsingtao = c.execute(
+        "SELECT price_std_paris, price_team_paris, article_type, is_alcohol, active "
+        "FROM articles WHERE name='TsingTao'"
+    ).fetchone()
+    _expect(tsingtao == (150, 150, "biere", 1, 1), f"article CSV projeté ({tsingtao})")
+    duvel = c.execute("SELECT active, price_std_paris FROM articles WHERE name='Duvel'").fetchone()
+    _expect(duvel == (0, 200), f"article hors vente importé inactif ({duvel})")
+    c.close()
+    remaining = [p.name for p in sdir.iterdir()]
+    _expect(remaining == [], f"sources supprimées après run ({remaining})")
+    shutil.rmtree(src)
+
+
 def test_p5_transfer_ambiguity_still_pairs():
     src = Path(tempfile.mkdtemp(prefix="p5_tr_"))
     sdir = src / "sources"

@@ -4,7 +4,12 @@ Convention de nommage attendue (documentée dans le README §bascule) :
     brest_*.sql                 -> dump MySQL Brest
     paris_*.sql                 -> dump SQL Paris
     paris_*.json / *.jsonl      -> export JSON / JSONL Paris
-    paris_*.csv                 -> export CSV Paris
+    paris_*.csv                 -> export CSV Paris (caisse) : les tables
+                                   sources sont déduites du nom de fichier
+                                   (paris_clients_* -> "clients",
+                                   paris_articles_* -> "articles") ; pour un
+                                   autre nom, l'inférence par la forme des
+                                   clés prend le relais (cf. sources/paris.py)
 
 Matrice campus × extension STRICTE (R7) : le moteur ne lit Brest que sous
 forme de dump SQL et Paris sous n'importe lequel des formats gérés. Un

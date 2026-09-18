@@ -5,8 +5,9 @@ Déroulé (le tout DANS la transaction ouverte par la CLI) :
   2. staging Paris (JSONB) ;
   3. passe « référence » : types d'articles Brest (id -> nom), préchargés pour
      résoudre le type des articles et des lignes de vente ;
-  4. passe « comptes » : Brest (streaming dump) + Paris (staging) -> index par
-     clé de réconciliation (email, sinon nom réel) ;
+   4. passe « comptes » : Brest (streaming dump) + Paris (staging) -> index par
+      clé de réconciliation (email, sinon nom réel) ; les doublons de clé d'une
+      source sans identifiant (clients Paris) sont cumulés, sinon collision ;
    5. fusion des comptes présents sur les deux campus, insertion des users +
       wallets (un par campus, solde = solde source du campus ; identifiant de
       connexion prenom.nom dédoublonné, surnom d'usage conservé pour
@@ -356,6 +357,17 @@ class Migrator:
                 {"src_id": user["src_id"], "name": user["name"], "balance": user["balance_cents"]}
             )
             if key in self.accounts[campus]:
+                previous_user, _ = self.accounts[campus][key]
+                if user["src_id"] is None and previous_user["src_id"] is None:
+                    # Source sans identifiant (clients Paris : Nom/Solde) :
+                    # même clé = même compte exporté plusieurs fois (exports
+                    # successifs) — les soldes sont cumulés, faute de pouvoir
+                    # discriminer les lignes ; l'invariant de mapping
+                    # (brut = projeté) reste ainsi vérifié. Avec identifiants
+                    # (Brest), la collision reste un cas à trancher (bloquant).
+                    previous_user["balance_cents"] += user["balance_cents"]
+                    self.source_sums[campus] += user["balance_cents"]
+                    self.counts["doublons_cumules"] += 1
                 self.counts[f"duplicates_{campus}"] += 1
                 continue
             self.accounts[campus][key] = (user, filename)
@@ -874,6 +886,7 @@ class Migrator:
             ("Comptes fusionnés (2 campus)", c.get("users_merged")),
             ("Comptes ignorés (identité absente)", c.get("users_skipped")),
             ("Clés de réconciliation en collision", len(self.collisions())),
+            ("Doublons sans identifiant (soldes cumulés)", c.get("doublons_cumules")),
             ("Soldes bruts non projetés (comptes ignorés)", c.get("soldes_non_mappes")),
             ("Portefeuilles créés", c.get("wallets_created")),
             ("Mots de passe importés (hash compatible)", c.get("passwords_importes")),
