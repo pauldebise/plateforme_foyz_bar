@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 from sqlalchemy import select
 
 from app.extensions import db
@@ -37,35 +37,44 @@ def home():
 
 @bp.route("/catalogue")
 def catalogue():
+    campus = request.args.get("campus")
+    if campus not in CAMPUSSES:
+        campus = next(iter(CAMPUSSES))
     articles = db.session.scalars(
         select(Article)
-        .where(Article.active.is_(True), Article.event_id.is_(None))
+        .where(
+            Article.active.is_(True),
+            Article.event_id.is_(None),
+            Article.campus == campus,
+        )
         .order_by(Article.name)
     ).all()
     taps = {t.number: t for t in db.session.scalars(select(Tap))}
     grouped = {}
     for a in articles:
-        grouped.setdefault(a.article_type, []).append((a, _campus_prices(a, taps)))
+        price = _public_price(a, taps)
+        if price is None:
+            continue
+        grouped.setdefault(a.article_type, []).append((a, price))
     ordered = sorted(grouped.items(), key=lambda kv: list(ARTICLE_TYPES).index(kv[0]))
-    return render_template("public/catalogue.html", grouped=ordered)
+    return render_template("public/catalogue.html", grouped=ordered, campus=campus)
 
 
-def _campus_prices(article, taps):
-    """Prix public par campus ; None quand l'article n'existe pas sur le campus.
+def _public_price(article, taps):
+    """Prix public d'un article pour son campus ; None s'il ne doit pas s'afficher.
 
     Chaque article appartient à un unique campus (catalogues Brest et Paris
-    distincts) : son prix n'apparaît que dans sa colonne, l'autre voit un
-    tiret. Un article de tireuse ne concerne que le campus de sa tireuse.
+    distincts) : seul le campus sélectionné est affiché. Un article de tireuse
+    ne concerne que le campus de sa tireuse.
     """
     if article.is_tap:
         tap = taps.get(article.tap_number)
         if tap is None or tap.campus != article.campus:
-            return {c: None for c in CAMPUSSES}
-        price = article.price_for(article.campus)
-        return {c: (price if c == article.campus else None) for c in CAMPUSSES}
+            return None
+        return article.price_for(article.campus)
     price = article.price_for(article.campus)
     has_price = price or article.price_for(article.campus, team=True)
-    return {c: (price if c == article.campus and has_price else None) for c in CAMPUSSES}
+    return price if has_price else None
 
 
 @bp.route("/reglement")
