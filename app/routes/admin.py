@@ -44,7 +44,7 @@ bp = Blueprint("admin", __name__)
 def require_mandat():
     if not g.get("current_user"):
         return redirect(url_for("auth.login", next=request.path))
-    if g.current_user.team_status != "mandat":
+    if g.current_user.team_status != "mandat" and not g.current_user.is_super_admin:
         endpoint = request.endpoint or ""
         tireuse_endpoints = ("admin.tireuse", "admin.keg", "admin.tap")
         if g.current_user.team_status == "ancien" and endpoint.startswith(tireuse_endpoints):

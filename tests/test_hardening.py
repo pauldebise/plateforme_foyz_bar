@@ -360,6 +360,31 @@ def test_disabled_account_cannot_log_in():
     _expect(res2.status_code == 302, f"compte réactivé accepté ({res2.status_code})")
 
 
+def test_admin_account_is_standalone():
+    app = create_app()
+    with app.app_context():
+        admin = db.session.scalars(db.select(User).where(User.username == "admin")).first()
+        _expect(admin is not None, "compte admin présent")
+        _expect(admin.team_status is None, "admin hors équipe")
+        _expect(admin.team_campus is None, "admin rattaché à aucun campus")
+        _expect(not admin.disabled, "admin actif")
+    client = app.test_client()
+    res = _login(client, "admin", ADMIN_PASSWORD)
+    _expect(res.status_code == 302, f"connexion admin réussie ({res.status_code})")
+    for path in ("/equipe/paiement", "/admin/comptes", "/admin/campus/paris"):
+        res = client.get(path)
+        _expect(
+            res.status_code in (200, 302),
+            f"{path} accessible à l'admin ({res.status_code})",
+        )
+    html = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect("/admin/comptes" in html, "menu administrateur visible pour l'admin")
+    # libère la fenêtre du limiteur de connexions (partagé par la suite de tests)
+    from app.routes import auth as auth_module
+
+    auth_module._attempts.clear()
+
+
 def main():
     tests = [
         (name, fn)

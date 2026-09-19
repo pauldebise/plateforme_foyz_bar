@@ -137,7 +137,7 @@ def login():
         if ok and user and user.disabled:
             ok = False
             reason = "Accès refusé : compte désactivé."
-        elif ok and user and (not user.is_team or user.blacklist):
+        elif ok and user and (not (user.is_team or user.is_super_admin) or user.blacklist):
             ok = False
             reason = (
                 "Accès refusé : compte blacklisté."

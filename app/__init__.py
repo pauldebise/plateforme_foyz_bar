@@ -42,8 +42,14 @@ def ensure_dev_admin():
     password = current_app.config.get("DEFAULT_ADMIN_PASSWORD", "admin")
     admin = db.session.scalars(select(User).where(User.username == "admin")).first()
     if admin is None:
-        admin = User(name="admin", username="admin", team_status="mandat", team_campus="brest")
+        admin = User(name="admin", username="admin")
         db.session.add(admin)
+    # Le compte d'administration est à part : hors équipe et rattaché à aucun
+    # campus. Ses droits couvrent les deux campus via `is_super_admin` ; il ne
+    # porte donc ni statut équipe ni campus d'appartenance.
+    admin.team_status = None
+    admin.team_campus = None
+    admin.disabled = False
     if not admin.password_hash:
         admin.password_hash = generate_password_hash(password)
     if not get_setting("admin_password_hash"):
@@ -352,7 +358,7 @@ def create_app():
             from app.models import User
 
             u = db.session.get(User, session["user_id"])
-            if u and u.is_team and not u.blacklist:
+            if u and (u.is_team or u.is_super_admin) and not u.blacklist:
                 g.current_user = u
             else:
                 session.clear()
