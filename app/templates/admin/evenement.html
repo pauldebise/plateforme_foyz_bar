@@ -77,7 +77,7 @@
         <div class="d-flex justify-content-between align-items-center border-bottom py-2">
           <div>
             {{ a.name }}
-            <span class="small text-muted">std {{ a.price_std_brest|eur }} / {{ a.price_std_paris|eur }} · équipe {{ a.price_team_brest|eur }} / {{ a.price_team_paris|eur }}</span>
+            <span class="small text-muted">std {{ a.price_std|eur }} · équipe {{ a.price_team|eur }}</span>
           </div>
           {% if writable %}
           <form method="post" data-confirm="Supprimer cet article ?">
@@ -96,10 +96,8 @@
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="add_article">
           <div class="col-12"><label class="form-label small">Nom</label><input class="form-control form-control-sm" name="name" required placeholder="ex : Coupe Spéciale Soirée"></div>
-          <div class="col-md-3"><label class="form-label small">Std Brest (€)</label><input class="form-control form-control-sm" name="price_std_brest" value="0.00"></div>
-          <div class="col-md-3"><label class="form-label small">Std Paris (€)</label><input class="form-control form-control-sm" name="price_std_paris" value="0.00"></div>
-          <div class="col-md-3"><label class="form-label small">Équipe Brest (€)</label><input class="form-control form-control-sm" name="price_team_brest" value="0.00"></div>
-          <div class="col-md-3"><label class="form-label small">Équipe Paris (€)</label><input class="form-control form-control-sm" name="price_team_paris" value="0.00"></div>
+          <div class="col-md-3"><label class="form-label small">Standard (€)</label><input class="form-control form-control-sm" name="price_std" value="0.00"></div>
+          <div class="col-md-3"><label class="form-label small">Équipe (€)</label><input class="form-control form-control-sm" name="price_team" value="0.00"></div>
           <div class="col-md-6"><label class="form-label small">Volume (cl)</label><input class="form-control form-control-sm" name="volume_cl" type="number"></div>
           <div class="col-md-6 d-flex align-items-center">
             <div class="form-check">

@@ -177,8 +177,9 @@ def test_sqlite_foreign_keys_and_history_after_deletion():
             name="Pinte test",
             article_type="biere",
             is_alcohol=True,
-            price_std_brest=250,
-            price_team_brest=250,
+            campus="brest",
+            price_std=250,
+            price_team=250,
             active=True,
         )
         db.session.add(article)

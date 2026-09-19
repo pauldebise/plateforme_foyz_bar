@@ -133,8 +133,8 @@ def test_actions_enregistrees():
         data={
             "name": "Pinte test audit",
             "article_type": "biere",
-            "price_std_brest": "4.50",
-            "price_team_brest": "3.50",
+            "price_std": "4.50",
+            "price_team": "3.50",
             "active": "on",
             "_csrf": token,
         },

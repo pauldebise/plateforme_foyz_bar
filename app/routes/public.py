@@ -51,26 +51,21 @@ def catalogue():
 
 
 def _campus_prices(article, taps):
-    """Prix standard par campus ; None quand l'article n'existe pas sur le campus.
+    """Prix public par campus ; None quand l'article n'existe pas sur le campus.
 
-    Un article issu de la migration n'existe que sur son campus d'origine
-    (tous ses prix y valent 0) et un article de tireuse ne concerne que le
-    campus de la tireuse : on affiche alors un tiret plutôt qu'un prix.
+    Chaque article appartient à un unique campus (catalogues Brest et Paris
+    distincts) : son prix n'apparaît que dans sa colonne, l'autre voit un
+    tiret. Un article de tireuse ne concerne que le campus de sa tireuse.
     """
     if article.is_tap:
         tap = taps.get(article.tap_number)
-        if tap is None:
+        if tap is None or tap.campus != article.campus:
             return {c: None for c in CAMPUSSES}
-        price = article.price_for(tap.campus)
-        return {c: (price if c == tap.campus else None) for c in CAMPUSSES}
-    return {
-        c: (
-            article.price_for(c)
-            if article.price_for(c) or article.price_for(c, team=True)
-            else None
-        )
-        for c in CAMPUSSES
-    }
+        price = article.price_for(article.campus)
+        return {c: (price if c == article.campus else None) for c in CAMPUSSES}
+    price = article.price_for(article.campus)
+    has_price = price or article.price_for(article.campus, team=True)
+    return {c: (price if c == article.campus and has_price else None) for c in CAMPUSSES}
 
 
 @bp.route("/reglement")

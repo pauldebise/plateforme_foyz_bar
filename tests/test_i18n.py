@@ -56,8 +56,8 @@ def _seed_article():
                     name="Article i18n",
                     article_type="biere",
                     is_alcohol=True,
-                    price_std_brest=250,
-                    price_std_paris=250,
+                    campus="brest",
+                    price_std=250,
                     active=True,
                 )
             )

@@ -238,8 +238,8 @@ def test_admin_rejects_invalid_numbers_without_500():
         data={
             "name": "Article piégé",
             "article_type": "biere",
-            "price_std_brest": "inf",
-            "price_team_brest": "0",
+            "price_std": "inf",
+            "price_team": "0",
             "_csrf": token,
         },
     )
@@ -271,8 +271,8 @@ def test_long_names_are_truncated():
         data={
             "name": long_name,
             "article_type": "biere",
-            "price_std_brest": "2,50",
-            "price_team_brest": "2,00",
+            "price_std": "2,50",
+            "price_team": "2,00",
             "_csrf": token,
         },
     )

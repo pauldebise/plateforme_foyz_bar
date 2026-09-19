@@ -186,7 +186,9 @@ def _resolve_items(items, event_id=None, campus=None):
     lines = []
     for aid, qty in merged.items():
         a = articles.get(aid)
-        if a is None:
+        # Chaque campus n'encaisse que ses propres articles : un identifiant
+        # d'article d'un autre campus (ou inconnu/inactif) est refusé.
+        if a is None or a.campus != campus:
             raise OperationError("invalid", "Article indisponible.")
         if a.event_id != event_id:
             # hors d'un événement, seuls les articles standard sont vendables ;

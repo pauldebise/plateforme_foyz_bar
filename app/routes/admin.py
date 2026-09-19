@@ -390,10 +390,16 @@ def membre(user_id):
 @bp.route("/articles")
 @login_required
 def articles():
+    campus = view_campus()
     articles = db.session.scalars(
-        select(Article).where(Article.event_id.is_(None)).order_by(Article.is_tap, Article.name)
+        select(Article).where(Article.campus == campus).order_by(Article.is_tap, Article.name)
     ).all()
-    return render_template("admin/articles.html", articles=articles)
+    return render_template(
+        "admin/articles.html",
+        articles=articles,
+        campus=campus,
+        writable=campus == own_campus(),
+    )
 
 
 @bp.route("/articles/nouveau", methods=["GET", "POST"])
@@ -414,7 +420,7 @@ def article_nouveau():
         db.session.commit()
         flash("Article créé.", "success")
         return redirect(url_for("admin.articles"))
-    return render_template("admin/article_form.html", a=None, own=own_campus())
+    return render_template("admin/article_form.html", a=None, own=own_campus(), writable=True)
 
 
 @bp.route("/articles/<int:article_id>", methods=["GET", "POST"])
@@ -426,7 +432,12 @@ def article(article_id):
     if a.is_tap or a.event_id:
         flash("Les articles tireuse et évènement se gèrent dans leurs onglets dédiés.", "warning")
         return redirect(url_for("admin.articles"))
+    # chaque campus gère ses propres articles ; l'autre campus est consultable
+    # en lecture seule (l'admin global écrit sur le campus consulté)
+    writable = a.campus == own_campus()
     if request.method == "POST":
+        if not writable:
+            abort(403)
         try:
             _article_from_form(a, own_campus())
         except ValueError:
@@ -441,7 +452,7 @@ def article(article_id):
         db.session.commit()
         flash("Article mis à jour.", "success")
         return redirect(url_for("admin.articles"))
-    return render_template("admin/article_form.html", a=a, own=own_campus())
+    return render_template("admin/article_form.html", a=a, own=a.campus, writable=writable)
 
 
 @bp.route("/articles/<int:article_id>/supprimer", methods=["POST"])
@@ -449,6 +460,8 @@ def article(article_id):
 def article_supprimer(article_id):
     a = db.session.get(Article, article_id)
     if a and not a.is_tap and not a.event_id:
+        if a.campus != own_campus():
+            abort(403)
         a.active = False
         A.record("article.desactivation", target=a.name)
         db.session.commit()
@@ -465,15 +478,9 @@ def _article_from_form(a, writable_campus):
     a.volume_cl = int(volume) if volume.isdigit() else None
     a.is_alcohol = request.form.get("is_alcohol") == "on"
     a.active = request.form.get("active", "on") == "on"
-    # les prix de l'autre campus ne sont pas modifiables : sur un article
-    # existant ils sont conservés, à la création ils restent à 0 (l'article
-    # n'y sera vendable qu'une fois les prix saisis par l'équipe concernée)
-    if writable_campus == "brest":
-        a.price_std_brest = cents(request.form.get("price_std_brest", "0"))
-        a.price_team_brest = cents(request.form.get("price_team_brest", "0"))
-    if writable_campus == "paris":
-        a.price_std_paris = cents(request.form.get("price_std_paris", "0"))
-        a.price_team_paris = cents(request.form.get("price_team_paris", "0"))
+    a.campus = writable_campus
+    a.price_std = cents(request.form.get("price_std", "0"))
+    a.price_team = cents(request.form.get("price_team", "0"))
     return a
 
 
@@ -791,10 +798,9 @@ def evenement(event_id):
                     article_type="evenement",
                     is_alcohol=request.form.get("is_alcohol") == "on",
                     event_id=ev.id,
-                    price_std_brest=cents(request.form.get("price_std_brest", "0")),
-                    price_std_paris=cents(request.form.get("price_std_paris", "0")),
-                    price_team_brest=cents(request.form.get("price_team_brest", "0")),
-                    price_team_paris=cents(request.form.get("price_team_paris", "0")),
+                    campus=ev.campus,
+                    price_std=cents(request.form.get("price_std", "0")),
+                    price_team=cents(request.form.get("price_team", "0")),
                     active=True,
                 )
             except ValueError:

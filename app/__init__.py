@@ -128,6 +128,49 @@ def ensure_schema_upgrades():
                 conn.execute(
                     text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users (username)")
                 )
+    if "articles" in table_columns:
+        cols = table_columns["articles"]
+        if "price_std_brest" in cols:
+            # Catalogues par campus (révision 0008) : ajout des colonnes
+            # campus/prix, scission des articles partagés puis retrait des
+            # colonnes de prix par campus (idempotent ; SQLite ≥ 3.35 requis
+            # pour RETURNING et DROP COLUMN).
+            with db.engine.begin() as conn:
+                if "campus" not in cols:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE articles ADD COLUMN campus VARCHAR(10) "
+                            "NOT NULL DEFAULT 'brest'"
+                        )
+                    )
+                if "price_std" not in cols:
+                    conn.execute(
+                        text("ALTER TABLE articles ADD COLUMN price_std INTEGER NOT NULL DEFAULT 0")
+                    )
+                if "price_team" not in cols:
+                    conn.execute(
+                        text(
+                            "ALTER TABLE articles ADD COLUMN price_team INTEGER NOT NULL DEFAULT 0"
+                        )
+                    )
+                from app.schema import migrate_articles_to_campus
+
+                migrate_articles_to_campus(conn)
+                for col in (
+                    "price_std_brest",
+                    "price_std_paris",
+                    "price_team_brest",
+                    "price_team_paris",
+                ):
+                    conn.execute(text(f"ALTER TABLE articles DROP COLUMN {col}"))
+                conn.execute(
+                    text("CREATE INDEX IF NOT EXISTS ix_articles_campus ON articles (campus)")
+                )
+        elif "campus" in cols:
+            with db.engine.begin() as conn:
+                conn.execute(
+                    text("CREATE INDEX IF NOT EXISTS ix_articles_campus ON articles (campus)")
+                )
     if "transaction_lines" in table_columns:
         indexes = {ix["name"] for ix in inspector.get_indexes("transaction_lines")}
         if "ix_transaction_lines_article_id" not in indexes:

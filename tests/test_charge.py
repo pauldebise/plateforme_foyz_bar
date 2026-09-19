@@ -68,8 +68,9 @@ def _seed(app):
                 name=f"Charge {i}",
                 article_type="biere",
                 is_alcohol=True,
-                price_std_brest=100 + 50 * i,
-                price_team_brest=80 + 40 * i,
+                campus="brest",
+                price_std=100 + 50 * i,
+                price_team=80 + 40 * i,
                 active=True,
             )
             for i in range(ARTICLES)

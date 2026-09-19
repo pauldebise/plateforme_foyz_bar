@@ -5,16 +5,21 @@
 
 <div class="card" style="max-width: 760px;">
   <div class="card-body">
+    {% if not writable %}<p class="alert alert-warning py-2">Cet article appartient au campus {{ CAMPUSSES[a.campus] }} : consultation en lecture seule.</p>{% endif %}
     <form method="post">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <div class="row g-3">
         <div class="col-md-8">
           <label class="form-label">Nom</label>
-          <input class="form-control" name="name" value="{{ a.name if a else '' }}" required>
+          <input class="form-control" name="name" value="{{ a.name if a else '' }}" {% if not writable %}disabled{% endif %} required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Campus</label>
+          <input class="form-control" value="{{ CAMPUSSES[a.campus if a else own] }}" disabled>
         </div>
         <div class="col-md-4">
           <label class="form-label">Type d'article</label>
-          <select class="form-select" name="article_type">
+          <select class="form-select" name="article_type" {% if not writable %}disabled{% endif %}>
             {% for key, label in ARTICLE_TYPES.items() %}
             <option value="{{ key }}" {% if a and a.article_type == key %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
@@ -22,38 +27,32 @@
         </div>
         <div class="col-md-4">
           <label class="form-label">Volume (cl, boissons)</label>
-          <input class="form-control" name="volume_cl" type="number" min="0" value="{{ a.volume_cl if a and a.volume_cl else '' }}">
+          <input class="form-control" name="volume_cl" type="number" min="0" value="{{ a.volume_cl if a and a.volume_cl else '' }}" {% if not writable %}disabled{% endif %}>
         </div>
         <div class="col-md-8 d-flex align-items-end">
           <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="is_alcohol" id="alcohol" {% if not a or a.is_alcohol %}checked{% endif %}>
+            <input class="form-check-input" type="checkbox" name="is_alcohol" id="alcohol" {% if not writable %}disabled{% endif %} {% if not a or a.is_alcohol %}checked{% endif %}>
             <label class="form-check-label" for="alcohol">Article alcoolisé (contrôle « blacklist alcool »)</label>
           </div>
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Prix standard Brest (€)</label>
-          <input class="form-control" name="price_std_brest" value="{{ '%.2f'|format(a.price_std_brest / 100) if a else '0.00' }}" {% if own != 'brest' %}disabled{% endif %} required>
+        <div class="col-md-6">
+          <label class="form-label">Prix standard (€)</label>
+          <input class="form-control" name="price_std" value="{{ '%.2f'|format(a.price_std / 100) if a else '0.00' }}" {% if not writable %}disabled{% endif %} required>
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Prix standard Paris (€)</label>
-          <input class="form-control" name="price_std_paris" value="{{ '%.2f'|format(a.price_std_paris / 100) if a else '0.00' }}" {% if own != 'paris' %}disabled{% endif %} required>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Prix équipe Brest (€)</label>
-          <input class="form-control" name="price_team_brest" value="{{ '%.2f'|format(a.price_team_brest / 100) if a else '0.00' }}" {% if own != 'brest' %}disabled{% endif %} required>
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Prix équipe Paris (€)</label>
-          <input class="form-control" name="price_team_paris" value="{{ '%.2f'|format(a.price_team_paris / 100) if a else '0.00' }}" {% if own != 'paris' %}disabled{% endif %} required>
+        <div class="col-md-6">
+          <label class="form-label">Prix équipe (€)</label>
+          <input class="form-control" name="price_team" value="{{ '%.2f'|format(a.price_team / 100) if a else '0.00' }}" {% if not writable %}disabled{% endif %} required>
         </div>
         <div class="col-12">
           <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="active" {% if not a or a.active %}checked{% endif %}>
+            <input class="form-check-input" type="checkbox" name="active" {% if not writable %}disabled{% endif %} {% if not a or a.active %}checked{% endif %}>
             <label class="form-check-label">Article actif (visible et vendable)</label>
           </div>
         </div>
       </div>
+      {% if writable %}
       <button class="btn btn-primary mt-4">Enregistrer</button>
+      {% endif %}
       <a class="btn btn-outline-secondary mt-4" href="{{ url_for('admin.articles') }}">Retour</a>
     </form>
   </div>

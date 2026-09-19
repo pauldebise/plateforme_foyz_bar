@@ -47,7 +47,8 @@ def _seed(app, name, price, balance):
             name=name,
             article_type="biere",
             is_alcohol=True,
-            price_std_brest=price,
+            campus="brest",
+            price_std=price,
             active=True,
         )
         user = User(

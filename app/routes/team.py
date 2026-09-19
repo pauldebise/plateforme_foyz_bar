@@ -17,7 +17,7 @@ from flask import (
 from sqlalchemy import func, or_, select
 
 from app.extensions import db
-from app.models import Article, Contribution, Note, Tap, Transaction, User
+from app.models import Article, Contribution, Note, Transaction, User
 from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
 from app.services.settings import check_admin_password, int_setting
@@ -76,18 +76,17 @@ def require_write():
 @bp.route("/paiement")
 @login_required
 def payment():
-    campus_tap_numbers = select(Tap.number).where(Tap.campus == campus())
     articles = db.session.scalars(
         select(Article)
         .where(
             Article.active.is_(True),
             Article.event_id.is_(None),
-            or_(Article.is_tap.is_(False), Article.tap_number.in_(campus_tap_numbers)),
+            Article.campus == campus(),
         )
         .order_by(Article.is_tap.desc(), Article.name)
     ).all()
-    # un article absent du campus courant (tous ses prix y valent 0) est exclu
-    # de l'encaissement ; il reste listé dans l'onglet admin Articles
+    # un article sans prix sur ce campus (ni standard ni équipe) est exclu de
+    # l'encaissement ; il reste listé dans l'onglet admin Articles
     articles = [
         a for a in articles if a.is_tap or a.price_for(campus()) or a.price_for(campus(), team=True)
     ]

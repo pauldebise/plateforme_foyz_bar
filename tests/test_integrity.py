@@ -58,7 +58,8 @@ def _seed(app):
             name="Pinte standard",
             article_type="biere",
             is_alcohol=True,
-            price_std_brest=300,
+            campus="brest",
+            price_std=300,
             active=True,
         )
         user = User(
@@ -133,7 +134,8 @@ def test_cancel_restores_keg_and_tap_catalog():
             is_tap=True,
             tap_number=501,
             keg_id=keg.id,
-            price_std_brest=200,
+            campus="brest",
+            price_std=200,
             active=True,
         )
         user = User(
@@ -194,6 +196,116 @@ def test_schema_upgrade_adds_idempotency_key():
             "ix_transactions_idempotency_key" in indexes,
             "index unique d'idempotence rétabli",
         )
+
+
+def test_schema_upgrade_campus_catalog():
+    """Bascule « catalogues par campus » sur une base héritée : campus déduit
+    du porteur, scission des articles standards partagés, rattachement des
+    ventes parisiennes à la copie, retrait des colonnes historiques."""
+    if not IS_SQLITE:
+        print("  (ignoré : évolution de schéma SQLite)")
+        return
+    from app import ensure_schema_upgrades
+
+    app = create_app()
+    with app.app_context():
+        shared = Article(name="Coca partagé", article_type="snack", campus="brest", active=True)
+        paris_only = Article(
+            name="Spéculoos paris", article_type="snack", campus="brest", active=True
+        )
+        db.session.add_all([shared, paris_only])
+        db.session.commit()
+        article_id, paris_only_id = shared.id, paris_only.id
+        with db.engine.begin() as conn:
+            # reconstitue une base héritée : prix par campus + article partagé
+            for col in (
+                "price_std_brest",
+                "price_std_paris",
+                "price_team_brest",
+                "price_team_paris",
+            ):
+                conn.execute(
+                    text(f"ALTER TABLE articles ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0")
+                )
+            conn.execute(
+                text(
+                    "UPDATE articles SET price_std = 0, price_team = 0, "
+                    "price_std_brest = 100, price_team_brest = 80, "
+                    "price_std_paris = 120, price_team_paris = 90 "
+                    "WHERE id = :i"
+                ),
+                {"i": article_id},
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO transactions (created_at, type, campus, total, operator_label, "
+                    "deposit_glasses, cancelled) "
+                    "VALUES (CURRENT_TIMESTAMP, 'achat', 'paris', 120, 'test', 0, 0)"
+                )
+            )
+            txn_id = conn.execute(text("SELECT MAX(id) FROM transactions")).scalar_one()
+            conn.execute(
+                text(
+                    "INSERT INTO transaction_lines (transaction_id, article_id, article_name, "
+                    "article_type, quantity, unit_price, line_total) "
+                    "VALUES (:t, :a, 'Coca partagé', 'snack', 1, 120, 120)"
+                ),
+                {"t": txn_id, "a": article_id},
+            )
+            conn.execute(
+                text(
+                    "UPDATE articles SET price_std = 0, price_team = 0, "
+                    "price_std_paris = 150 WHERE id = :i"
+                ),
+                {"i": paris_only_id},
+            )
+        ensure_schema_upgrades()
+        db.session.expire_all()
+
+        cols = {c["name"] for c in sqla_inspect(db.engine).get_columns("articles")}
+        _expect(
+            {
+                "price_std_brest",
+                "price_std_paris",
+                "price_team_brest",
+                "price_team_paris",
+            }.isdisjoint(cols),
+            "colonnes de prix par campus retirées",
+        )
+        _expect(
+            "campus" in cols and "price_std" in cols and "price_team" in cols,
+            "colonnes campus présentes",
+        )
+        shared = db.session.get(Article, article_id)
+        _expect(
+            shared.campus == "brest" and shared.price_std == 100 and shared.price_team == 80,
+            "article partagé conservé côté brestois",
+        )
+        copies = (
+            db.session.query(Article)
+            .filter(Article.name == "Coca partagé", Article.campus == "paris")
+            .all()
+        )
+        _expect(
+            len(copies) == 1 and copies[0].price_std == 120 and copies[0].price_team == 90,
+            "copie parisienne créée avec les prix parisiens",
+        )
+        line_campus = db.session.scalar(select(Transaction.campus).where(Transaction.id == txn_id))
+        line_article_id = db.session.execute(
+            text("SELECT article_id FROM transaction_lines WHERE transaction_id = :t"),
+            {"t": txn_id},
+        ).scalar()
+        _expect(
+            line_campus == "paris" and line_article_id == copies[0].id,
+            "vente parisienne rattachée à la copie",
+        )
+        paris_only = db.session.get(Article, paris_only_id)
+        _expect(
+            paris_only.campus == "paris" and paris_only.price_std == 150,
+            "article uniquement parisien basculé sur paris",
+        )
+        # deuxième passage : aucun changement ni erreur
+        ensure_schema_upgrades()
 
 
 def main():

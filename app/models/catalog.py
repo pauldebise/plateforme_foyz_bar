@@ -15,10 +15,12 @@ class Article(db.Model):
     name: db.Mapped[str] = db.mapped_column(db.String(255))
     article_type: db.Mapped[str] = db.mapped_column(db.String(20), default="biere", index=True)
     volume_cl: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
-    price_std_brest: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
-    price_std_paris: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
-    price_team_brest: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
-    price_team_paris: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
+    # Chaque article appartient à un unique campus : les catalogues Brest et
+    # Paris sont distincts (un article commun aux deux bases historiques doit
+    # être enregistré deux fois, une par campus).
+    campus: db.Mapped[str] = db.mapped_column(db.String(10), default="brest", index=True)
+    price_std: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
+    price_team: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
     is_alcohol: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     is_tap: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False, index=True)
     tap_number: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
@@ -35,9 +37,11 @@ class Article(db.Model):
     keg: db.Mapped["Keg"] = db.relationship(backref="articles")
 
     def price_for(self, campus, team=False):
-        if team:
-            return self.price_team_brest if campus == "brest" else self.price_team_paris
-        return self.price_std_brest if campus == "brest" else self.price_std_paris
+        """Prix public/équipe : 0 dès que le campus demandé n'est pas celui de
+        l'article (un article brestois n'est ni visible ni vendable à Paris)."""
+        if campus != self.campus:
+            return 0
+        return self.price_team if team else self.price_std
 
 
 class Keg(db.Model):

@@ -118,9 +118,16 @@ def test_a_sql_aggregates_match_reference():
 
     with app.app_context():
         art_b = Article(
-            name="Pinte", article_type="biere", is_alcohol=True, price_std_brest=300, active=True
+            name="Pinte",
+            article_type="biere",
+            is_alcohol=True,
+            campus="brest",
+            price_std=300,
+            active=True,
         )
-        art_s = Article(name="Chips", article_type="snack", price_std_brest=200, active=True)
+        art_s = Article(
+            name="Chips", article_type="snack", campus="brest", price_std=200, active=True
+        )
         a = User(name="Alpha", username="perf.alpha", promotion=2025)
         b = User(
             name="Bravo",

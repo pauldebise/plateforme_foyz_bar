@@ -120,15 +120,15 @@ def _article(
     keg_id=None,
     event_id=None,
     tap_number=None,
+    campus="brest",
 ):
     article = Article(
         name=name or f"Article {next(_seq)}",
         article_type=kind,
         is_alcohol=alcohol,
-        price_std_brest=std,
-        price_std_paris=std,
-        price_team_brest=std if team is None else team,
-        price_team_paris=std if team is None else team,
+        campus=campus,
+        price_std=std,
+        price_team=std if team is None else team,
         active=active,
         is_tap=tap,
         volume_cl=volume_cl,
@@ -607,6 +607,62 @@ def test_validation_aucune_entree_ne_produit_un_500():
         )
 
 
+def test_encaissement_limite_au_campus_de_l_article():
+    """Chaque campus n'encaisse que ses propres articles (catalogues distincts)."""
+    app = create_app()
+    with app.app_context():
+        brest_article = _article(name="Frites Brest", std=300, campus="brest")
+        paris_article = _article(name="Frites Paris", std=250, campus="paris")
+        user = _user(balance=5000)
+        user.wallet("paris").balance = 5000
+        db.session.commit()
+        brest_id, paris_id, user_id = brest_article.id, paris_article.id, user.id
+
+        _refus(
+            "invalid",
+            T.create_purchase,
+            operator_label="test",
+            campus="paris",
+            items=[{"article_id": brest_id, "quantity": 1}],
+            contributor_ids=[user_id],
+        )
+        _refus(
+            "invalid",
+            T.create_purchase,
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": paris_id, "quantity": 1}],
+            contributor_ids=[user_id],
+        )
+        # achat mixte : toute la commande est refusée si un article est hors campus
+        _refus(
+            "invalid",
+            T.create_purchase,
+            operator_label="test",
+            campus="brest",
+            items=[
+                {"article_id": brest_id, "quantity": 1},
+                {"article_id": paris_id, "quantity": 1},
+            ],
+            contributor_ids=[user_id],
+        )
+        # chaque campus vend le sien
+        t1 = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": brest_id, "quantity": 1}],
+            contributor_ids=[user_id],
+        )
+        _expect(t1.total == 300, "article brestois vendu à Brest")
+        t2 = T.create_purchase(
+            operator_label="test",
+            campus="paris",
+            items=[{"article_id": paris_id, "quantity": 1}],
+            contributor_ids=[user_id],
+        )
+        _expect(t2.total == 250, "article parisien vendu à Paris")
+
+
 def test_api_authentification_et_csrf():
     app = create_app()
     client = app.test_client()
@@ -635,7 +691,7 @@ def test_api_lecture_seule_autre_campus():
     app = create_app()
     with app.app_context():
         parisien = _user(campus="paris", team=True, balance=1000)
-        article = _article(std=300)
+        article = _article(std=300, campus="paris")
         login_name, user_id, article_id = parisien.username, parisien.id, article.id
     client = app.test_client()
     _login(client, login_name, "secret123", campus="brest")
@@ -680,14 +736,16 @@ def test_admin_droits_sur_les_deux_campus():
         parisien = _user(campus="paris", team=True, balance=1000)
         parisien.wallet("brest").balance = 1000
         db.session.commit()
-        article = _article(std=300)
-        user_id, article_id = parisien.id, article.id
+        article_brest = _article(std=300, campus="brest")
+        article_paris = _article(std=300, campus="paris")
+        user_id = parisien.id
+        brest_id, paris_id = article_brest.id, article_paris.id
     client = app.test_client()
     _login(client, "admin", ADMIN_PASSWORD, campus="brest")
 
     # l'admin encaisse sur le campus de sa connexion, même pour un étudiant rattaché à Paris
     csrf = _csrf(client.get("/equipe/paiement").get_data(as_text=True), "csrf-token")
-    payload = {"items": [{"article_id": article_id, "quantity": 1}], "contributors": [user_id]}
+    payload = {"items": [{"article_id": brest_id, "quantity": 1}], "contributors": [user_id]}
     res = client.post("/api/purchase", json=payload, headers={"X-CSRFToken": csrf})
     _expect(
         res.status_code == 200 and res.get_json()["ok"],
@@ -696,10 +754,14 @@ def test_admin_droits_sur_les_deux_campus():
     with app.app_context():
         _expect(_balance(user_id, "brest") == 700, "portefeuille brest débité (campus connecté)")
 
-    # bascule de campus : les opérations suivent le nouveau campus de travail
+    # bascule de campus : les opérations suivent le nouveau campus de travail,
+    # et seul le catalogue parisien y est encaissable
     res = client.get("/admin/campus/paris")
     _expect(res.status_code == 302, "bascule de campus admin acceptée")
     csrf = _csrf(client.get("/equipe/paiement").get_data(as_text=True), "csrf-token")
+    res = client.post("/api/purchase", json=payload, headers={"X-CSRFToken": csrf})
+    _expect(res.status_code == 400, "article brestois refusé sur le campus paris")
+    payload = {"items": [{"article_id": paris_id, "quantity": 1}], "contributors": [user_id]}
     res = client.post("/api/purchase", json=payload, headers={"X-CSRFToken": csrf})
     _expect(res.status_code == 200 and res.get_json()["ok"], "admin : encaissement sur Paris")
     with app.app_context():

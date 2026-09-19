@@ -68,22 +68,23 @@ def _seed(app, suffix):
             article_type="evenement",
             is_alcohol=True,
             event_id=ev.id,
-            price_std_paris=300,
+            campus="paris",
+            price_std=300,
             active=True,
         )
         standard = Article(
             name="Pinte standard",
             article_type="biere",
             is_alcohol=True,
-            price_std_paris=200,
-            price_std_brest=250,
+            campus="paris",
+            price_std=200,
             active=True,
         )
         brest_only = Article(
             name="Snack Brest",
             article_type="snack",
-            price_std_brest=150,
-            price_std_paris=0,
+            campus="brest",
+            price_std=150,
             active=True,
         )
         user = User(
