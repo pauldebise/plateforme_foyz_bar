@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_pagination.html" as pg %}
 {% block title %}Statistiques de consommation{% endblock %}
 {% block content %}
 <h1 class="h3 mb-4"><i class="bi bi-bar-chart"></i> Statistiques de consommation</h1>
@@ -195,23 +196,7 @@
   </div>
   <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="small text-muted">{{ students.total }} étudiant{{ 's' if students.total > 1 }} · page {{ students.page }} / {{ students.pages }}</span>
-    {% if students.pages > 1 %}
-    <nav>
-      <ul class="pagination pagination-sm mb-0">
-        <li class="page-item {{ 'disabled' if students.page <= 1 }}">
-          <a class="page-link" href="{{ url_for('team.statistiques', page=students.page - 1, **students.link_args) }}"><i class="bi bi-chevron-left"></i></a>
-        </li>
-        {% for p in range(1, students.pages + 1) %}
-        <li class="page-item {{ 'active' if p == students.page }}">
-          <a class="page-link" href="{{ url_for('team.statistiques', page=p, **students.link_args) }}">{{ p }}</a>
-        </li>
-        {% endfor %}
-        <li class="page-item {{ 'disabled' if students.page >= students.pages }}">
-          <a class="page-link" href="{{ url_for('team.statistiques', page=students.page + 1, **students.link_args) }}"><i class="bi bi-chevron-right"></i></a>
-        </li>
-      </ul>
-    </nav>
-    {% endif %}
+    {{ pg.pagination(students.page, students.pages, 'team.statistiques', students.link_args) }}
   </div>
 </div>
 {% endblock %}

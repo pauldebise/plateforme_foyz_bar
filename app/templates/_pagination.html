@@ -1,0 +1,32 @@
+{# Pagination compacte et scalable : seules quelques pages autour de la page
+   courante sont affichées, avec des ellipses vers la première et la dernière.
+   À importer dans un template : {% import "_pagination.html" as pg %}. #}
+{% macro pagination(page, pages, endpoint, link_args={}) %}
+{% if pages > 1 %}
+{% set start = [1, page - 2]|max %}
+{% set end = [pages, page + 2]|min %}
+<nav aria-label="Pagination">
+  <ul class="pagination pagination-sm mb-0 flex-wrap justify-content-center">
+    <li class="page-item {{ 'disabled' if page <= 1 }}">
+      <a class="page-link" href="{{ url_for(endpoint, page=page - 1, **link_args) }}" aria-label="Page précédente"><i class="bi bi-chevron-left"></i></a>
+    </li>
+    {% if start > 1 %}
+    <li class="page-item"><a class="page-link" href="{{ url_for(endpoint, page=1, **link_args) }}">1</a></li>
+    {% if start > 2 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+    {% endif %}
+    {% for p in range(start, end + 1) %}
+    <li class="page-item {{ 'active' if p == page }}">
+      <a class="page-link" href="{{ url_for(endpoint, page=p, **link_args) }}">{{ p }}</a>
+    </li>
+    {% endfor %}
+    {% if end < pages %}
+    {% if end < pages - 1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+    <li class="page-item"><a class="page-link" href="{{ url_for(endpoint, page=pages, **link_args) }}">{{ pages }}</a></li>
+    {% endif %}
+    <li class="page-item {{ 'disabled' if page >= pages }}">
+      <a class="page-link" href="{{ url_for(endpoint, page=page + 1, **link_args) }}" aria-label="Page suivante"><i class="bi bi-chevron-right"></i></a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{% endmacro %}

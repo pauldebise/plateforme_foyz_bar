@@ -339,6 +339,20 @@ def test_b_index_and_pagination():
     _expect("Compte 00" not in comptes, "comptes : la page 1 n'est pas répétée")
 
 
+def test_b_pagination_window_is_bounded():
+    app = create_app()
+    with app.test_request_context("/admin/comptes?page=6"):
+        module = app.jinja_env.get_template("_pagination.html").make_module()
+        html = module.pagination(6, 40, "admin.comptes", {})
+    _expect(">1</a>" in html, "première page accessible")
+    _expect(">40</a>" in html, "dernière page accessible")
+    _expect(html.count(">…<") >= 2, "ellipses vers les pages omises")
+    _expect(">6</a>" in html, "page courante présente")
+    _expect(">20</a>" not in html, "pages lointaines omises")
+    links = html.count('class="page-link"')
+    _expect(links <= 11, f"nombre de liens borné ({links})")
+
+
 def test_c_cache_and_compression():
     app = create_app()
     client = app.test_client()
