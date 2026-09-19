@@ -118,6 +118,34 @@ def collision_payload(collisions):
     )
 
 
+_MERGE_RULES = {"solde_nul": "solde nul", "compte_ancien": "compte ancien"}
+
+
+def format_merged(merged, limit=20):
+    """Rend lisibles les fusions automatiques : clé, règle appliquée, occurrences."""
+    lines = []
+    for item in merged[:limit]:
+        detail = ", ".join(
+            f"id={o.get('src_id')} {o.get('name')!r} {fmt_euros(o.get('balance', 0))}"
+            for o in item["occurrences"]
+        )
+        rule = _MERGE_RULES.get(item["rule"], item["rule"])
+        lines.append(f"[{item['campus']}] {item['key']!r} : fusion ({rule}) -> {detail}")
+    if len(merged) > limit:
+        lines.append(f"… et {len(merged) - limit} autre(s) fusion(s) automatique(s).")
+    return lines
+
+
+def print_merged(merged):
+    """Avertit visiblement des fusions automatiques appliquées (traçabilité)."""
+    if not merged:
+        return
+    line()
+    kv("Collisions fusionnées automatiquement", len(merged))
+    for detail in format_merged(merged):
+        line(f"      {detail}")
+
+
 def capture_target(conn):
     """Somme des soldes cibles (global + par campus) et compteurs."""
     row = conn.execute(sa.text("SELECT COALESCE(SUM(balance), 0), COUNT(*) FROM wallets")).one()

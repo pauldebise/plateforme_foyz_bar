@@ -29,7 +29,7 @@ transaction : la CLI décide du COMMIT (run) ou du ROLLBACK (dry-run / erreur).
 """
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import sqlalchemy as sa
 
@@ -86,12 +86,10 @@ _CONTRIB_SQL = (
     "VALUES (:transaction_id, :user_id, :campus, :amount, 0)"
 )
 _ARTICLE_SQL = (
-    "INSERT INTO articles (name, article_type, volume_cl, price_std_brest, "
-    "price_std_paris, price_team_brest, price_team_paris, is_alcohol, is_tap, "
-    "tap_number, keg_id, active, created_at) "
-    "VALUES (:name, :article_type, :volume_cl, :price_std_brest, :price_std_paris, "
-    ":price_team_brest, :price_team_paris, :is_alcohol, :is_tap, :tap_number, "
-    ":keg_id, :active, :created_at) RETURNING id"
+    "INSERT INTO articles (name, article_type, volume_cl, campus, price_std, "
+    "price_team, is_alcohol, is_tap, tap_number, keg_id, active, created_at) "
+    "VALUES (:name, :article_type, :volume_cl, :campus, :price_std, :price_team, "
+    ":is_alcohol, :is_tap, :tap_number, :keg_id, :active, :created_at) RETURNING id"
 )
 _KEG_SQL = (
     "INSERT INTO kegs (name, alcohol_degree, volume_l, remaining_l, active, created_at) "
@@ -115,6 +113,36 @@ _USER_SIDE = {
     "direct": "to",
     "consigne": "deposit",
 }
+
+# Ancienneté au-delà de laquelle un compte source est considéré « ancien » :
+# une clé en collision dont au moins une occurrence date d'autant est fusionnée
+# automatiquement (l'ancien compte appartient à un étudiant parti ; voir
+# fusion_rule). Durée calendaire approchée (3 × 365 jours).
+FUSION_ANCIENNETE_ANNEES = 3
+
+
+def fusion_cutoff(now=None):
+    """Date limite : une création antérieure déclenche la règle « compte ancien »."""
+    return (now or now_utc()) - timedelta(days=365 * FUSION_ANCIENNETE_ANNEES)
+
+
+def fusion_rule(users, cutoff):
+    """Règle de fusion automatique d'un groupe d'occurrences de même clé.
+
+    Renvoie 'solde_nul', 'compte_ancien' ou None (collision à trancher) :
+    - 'solde_nul' : au plus une occurrence porte un solde non nul — les autres
+      cartes sont vides, fusionner ne peut attribuer le solde de personne à
+      tort, même s'il s'agit d'un homonyme ;
+    - 'compte_ancien' : au moins une occurrence a été créée avant le cutoff —
+      le compte appartient à un étudiant parti depuis plus de 3 ans ;
+    - sinon None : soldes réels des deux côtés sur des comptes récents, la
+      décision (même personne vs homonymes) reste humaine et bloque.
+    """
+    if sum(1 for u in users if u.get("balance_cents")) <= 1:
+        return "solde_nul"
+    if any(u.get("created_at") is not None and u["created_at"] < cutoff for u in users):
+        return "compte_ancien"
+    return None
 
 
 class SourceReader:
@@ -297,12 +325,16 @@ class Migrator:
         self.reader = SourceReader(source_files, money_unit, chunk_rows, conn=conn)
         self.chunk_rows = chunk_rows
         self.money_unit = money_unit
-        self.source_sums = {"brest": 0, "paris": 0}  # projeté (1re occurrence)
+        self.source_sums = {"brest": 0, "paris": 0}  # projeté (après résolution)
         self.raw_source_sums = {"brest": 0, "paris": 0}  # brut (toutes les lignes)
         self.key_occurrences = {"brest": defaultdict(list), "paris": defaultdict(list)}
+        self.key_users = {"brest": defaultdict(list), "paris": defaultdict(list)}
+        self.key_files = {"brest": {}, "paris": {}}  # clé -> fichier source (1re occurrence)
+        self.key_order = {"brest": [], "paris": []}
+        self.merged = []  # fusions automatiques appliquées (rapport)
+        self.resolved = set()  # (campus, clé) fusionnées : plus comptées en collision
         self.unmapped = []  # [(campus, fichier, cents)]
         self.accounts = {"brest": {}, "paris": {}}  # key -> canonical user
-        self.key_order = {"brest": [], "paris": []}
         self.id_map = {"brest": {}, "paris": {}}  # src_id -> key
         self.target_id_by_key = {}
         self.target_names = {}  # id cible -> libellé affiché (opérateurs)
@@ -337,6 +369,7 @@ class Migrator:
     # ------------------------------------------------------------ comptes
 
     def load_accounts(self):
+        """Collecte les occurrences de comptes (projection faite en _resolve_accounts)."""
         for campus, filename, user, warning, raw_cents in self.reader.iter_users():
             self.counts[f"rows_users_{campus}"] += 1
             self.raw_source_sums[campus] += raw_cents
@@ -356,30 +389,70 @@ class Migrator:
             self.key_occurrences[campus][key].append(
                 {"src_id": user["src_id"], "name": user["name"], "balance": user["balance_cents"]}
             )
-            if key in self.accounts[campus]:
-                previous_user, _ = self.accounts[campus][key]
-                if user["src_id"] is None and previous_user["src_id"] is None:
-                    # Source sans identifiant (clients Paris : Nom/Solde) :
-                    # même clé = même compte exporté plusieurs fois (exports
-                    # successifs) — les soldes sont cumulés, faute de pouvoir
-                    # discriminer les lignes ; l'invariant de mapping
-                    # (brut = projeté) reste ainsi vérifié. Avec identifiants
-                    # (Brest), la collision reste un cas à trancher (bloquant).
-                    previous_user["balance_cents"] += user["balance_cents"]
-                    self.source_sums[campus] += user["balance_cents"]
-                    self.counts["doublons_cumules"] += 1
-                self.counts[f"duplicates_{campus}"] += 1
-                continue
-            self.accounts[campus][key] = (user, filename)
-            self.key_order[campus].append(key)
-            self.source_sums[campus] += user["balance_cents"]
+            if key not in self.key_users[campus]:
+                self.key_order[campus].append(key)
+                self.key_files[campus][key] = filename
+            self.key_users[campus][key].append(user)
+
+    def _resolve_accounts(self):
+        """Projette les comptes en résolvant les collisions de clés.
+
+        Une clé portée par plusieurs lignes sources (même nom, plusieurs
+        identifiants) est fusionnée automatiquement selon `fusion_rule`
+        (occurrence à solde nul, ou compte créé depuis plus de 3 ans) :
+        le solde cible est la somme des occurrences, les identifiants de
+        toutes les cartes pointent vers le compte fusionné (les transactions
+        de chaque carte s'y rattachent). Sinon la collision reste bloquante :
+        seule la première occurrence est projetée, le reste alimente l'écart
+        de mapping tranché par l'équipe.
+        """
+        cutoff = fusion_cutoff()
+        for campus in ("brest", "paris"):
+            for key in self.key_order[campus]:
+                users = self.key_users[campus][key]
+                primary, primary_file = users[0], self.key_files[campus][key]
+                if len(users) > 1:
+                    self.counts[f"duplicates_{campus}"] += len(users) - 1
+                    if not any(u["src_id"] is not None for u in users):
+                        # source sans identifiant (clients Paris : Nom/Solde) :
+                        # même clé = même compte exporté plusieurs fois, soldes cumulés
+                        for extra in users[1:]:
+                            primary["balance_cents"] += extra["balance_cents"]
+                        self.counts["doublons_cumules"] += len(users) - 1
+                    else:
+                        rule = fusion_rule(users, cutoff)
+                        if rule is not None:
+                            for extra in users[1:]:
+                                primary["balance_cents"] += extra["balance_cents"]
+                            self.counts["collisions_fusionnees"] += 1
+                            self.counts[f"collisions_fusionnees_{rule}"] += 1
+                            self.resolved.add((campus, key))
+                            self.merged.append(
+                                {
+                                    "campus": campus,
+                                    "key": key,
+                                    "rule": rule,
+                                    "occurrences": self.key_occurrences[campus][key],
+                                }
+                            )
+                        # sinon : collision non résolue, seul le solde de la
+                        # première occurrence est projeté (écart de mapping)
+                self.accounts[campus][key] = (primary, primary_file)
+                self.source_sums[campus] += primary["balance_cents"]
 
     def collisions(self):
-        """Clés de réconciliation portées par plusieurs lignes sources."""
+        """Clés de réconciliation réellement ambiguës : plusieurs lignes avec
+        identifiants, non résolues par une fusion automatique. Les doublons
+        sans identifiant (ré-exports Paris) sont cumulés par conception et ne
+        sont pas des collisions."""
         found = []
         for campus in ("brest", "paris"):
             for key, occurrences in self.key_occurrences[campus].items():
-                if len(occurrences) > 1:
+                if (
+                    len(occurrences) > 1
+                    and (campus, key) not in self.resolved
+                    and any(o["src_id"] is not None for o in occurrences)
+                ):
                     found.append((campus, key, occurrences))
         return found
 
@@ -510,21 +583,15 @@ class Migrator:
         self._create_taps()
 
     def _insert_article(self, campus, obj):
-        # les prix source ne valent que pour leur campus ; l'autre reste à 0
-        if campus == "brest":
-            std_b, team_b = obj["price_std_cents"], obj["price_team_cents"]
-            std_p, team_p = 0, 0
-        else:
-            std_b, team_b = 0, 0
-            std_p, team_p = obj["price_std_cents"], obj["price_team_cents"]
+        # chaque campus ne reçoit que ses propres articles : les catalogues
+        # Brest et Paris sont distincts dès la migration
         params = {
             "name": obj["name"],
             "article_type": obj["article_type"],
             "volume_cl": obj["volume_cl"],
-            "price_std_brest": std_b,
-            "price_std_paris": std_p,
-            "price_team_brest": team_b,
-            "price_team_paris": team_p,
+            "campus": campus,
+            "price_std": obj["price_std_cents"],
+            "price_team": obj["price_team_cents"],
             "is_alcohol": obj["is_alcohol"],
             "is_tap": False,
             "tap_number": None,
@@ -629,10 +696,9 @@ class Migrator:
                         "name": f'{label} de tireuse {number} "{keg_obj["name"]}"'[:255],
                         "article_type": "biere",
                         "volume_cl": vol,
-                        "price_std_brest": std,
-                        "price_std_paris": std,
-                        "price_team_brest": team,
-                        "price_team_paris": team,
+                        "campus": "brest",
+                        "price_std": std,
+                        "price_team": team,
                         "is_alcohol": True,
                         "is_tap": True,
                         "tap_number": number,
@@ -854,6 +920,7 @@ class Migrator:
         )
         self.load_reference()
         self.load_accounts()
+        self._resolve_accounts()
         self.insert_users_and_wallets()
         self.insert_catalog()
         self.insert_transactions()
@@ -869,6 +936,7 @@ class Migrator:
             audit.check(result)
         except AccountingError:
             audit.print_audit(result, extra_counts=self.report_lines())
+            audit.print_merged(self.merged)
             raise
         return result
 
@@ -886,6 +954,14 @@ class Migrator:
             ("Comptes fusionnés (2 campus)", c.get("users_merged")),
             ("Comptes ignorés (identité absente)", c.get("users_skipped")),
             ("Clés de réconciliation en collision", len(self.collisions())),
+            (
+                "Collisions fusionnées (solde nul)",
+                c.get("collisions_fusionnees_solde_nul"),
+            ),
+            (
+                "Collisions fusionnées (compte ancien)",
+                c.get("collisions_fusionnees_compte_ancien"),
+            ),
             ("Doublons sans identifiant (soldes cumulés)", c.get("doublons_cumules")),
             ("Soldes bruts non projetés (comptes ignorés)", c.get("soldes_non_mappes")),
             ("Portefeuilles créés", c.get("wallets_created")),

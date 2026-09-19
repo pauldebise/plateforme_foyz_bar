@@ -510,7 +510,7 @@ def test_e2e_run_and_invariants():
         "SELECT COUNT(*) FROM transaction_lines WHERE article_id IS NOT NULL"
     ).fetchone()[0]
     kronenbourg = c.execute(
-        "SELECT volume_cl, price_std_brest, price_team_brest, is_alcohol, article_type "
+        "SELECT volume_cl, price_std, price_team, is_alcohol, article_type, campus "
         "FROM articles WHERE name='Kronenbourg 25cl'"
     ).fetchone()
     menu = c.execute(
@@ -518,7 +518,7 @@ def test_e2e_run_and_invariants():
     ).fetchone()
     diabolo = c.execute("SELECT article_type FROM articles WHERE name='Diabolo 33cl'").fetchone()
     paris_article = c.execute(
-        "SELECT price_std_paris, price_team_paris, volume_cl FROM articles "
+        "SELECT price_std, price_team, volume_cl, campus FROM articles "
         "WHERE name='Bière pression demi'"
     ).fetchone()
     barbar = c.execute(
@@ -626,13 +626,13 @@ def test_e2e_run_and_invariants():
     )
     _expect(n_taps == manifest["brest_taps"], "tireuses configurées")
     _expect(resolved == manifest["brest_lines"], f"lignes rattachées aux articles {resolved}")
-    _expect(kronenbourg == (25, 250, 220, 1, "biere"), f"article bière {kronenbourg}")
+    _expect(kronenbourg == (25, 250, 220, 1, "biere", "brest"), f"article bière {kronenbourg}")
     _expect(
         menu is not None and menu[0] == "Menu Foy'z" and menu[1] == "evenement",
         f"entités HTML + type 8 -> evenement ({menu})",
     )
     _expect(diabolo == ("snack",), "boisson froide -> snack")
-    _expect(paris_article == (200, 150, 25), f"article Paris projeté {paris_article}")
+    _expect(paris_article == (200, 150, 25, "paris"), f"article Paris projeté {paris_article}")
     _expect(
         barbar is not None and barbar[1] == 350 and barbar[2] == 350, f"tarif fût Barbar {barbar}"
     )
@@ -821,7 +821,7 @@ def _write_brest(path, users, transfert=None):
     Path(path).write_text(dump, encoding="utf-8")
 
 
-def _user(card, name, balance, disabled=0, real_name=None):
+def _user(card, name, balance, disabled=0, real_name=None, registration="2025-09-01 12:00:00"):
     return {
         "card_id": card,
         "name": name,
@@ -832,7 +832,7 @@ def _user(card, name, balance, disabled=0, real_name=None):
         "is_foyz": 0,
         "promo": "CI2028",
         "disabled": disabled,
-        "registration": "2025-09-01 12:00:00",
+        "registration": registration,
         "ecocups": 0,
         "blacklist_reason": "",
         "alcohol_blacklisted": "b'0'",
@@ -875,6 +875,84 @@ def test_p5_mapping_gap_blocks_and_control():
     _expect(code2 == 0, "absence de collision -> exit 0")
     shutil.rmtree(src)
     shutil.rmtree(src2)
+
+
+def test_p5_collision_auto_fusion():
+    """Fusions automatiques de collisions : solde nul ou compte de plus de 3 ans.
+
+    - au plus une occurrence avec solde non nul -> fusion (rien à attribuer à
+      tort, même s'il s'agit d'un homonyme) ;
+    - au moins une occurrence créée il y a plus de 3 ans -> fusion ;
+    - sinon (soldes réels des deux côtés, comptes récents) -> toujours bloquant.
+    """
+    # cas fusionnables : run OK, un compte par clé, solde = somme des occurrences
+    src = Path(tempfile.mkdtemp(prefix="p5_fusion_"))
+    sdir = src / "sources"
+    sdir.mkdir()
+    _write_brest(
+        sdir / "brest_lot.sql",
+        [
+            _user("0041", "Dupont Alice", "10.00"),  # + carte vide -> fusion (solde nul)
+            _user("9999", "Dupont Alice", "0.00"),
+            _user("0042", "Ancien Marcel", "4.00", registration="2019-05-01 08:00:00"),
+            _user("8888", "Ancien Marcel", "2.00"),  # compte ancien -> fusion
+        ],
+    )
+    db_path = src / "cible.db"
+    _fresh_db(db_path)
+    code = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
+    _expect(code == 0, "collisions fusionnables -> exit 0")
+    users, total, staging = _db_counts(db_path)
+    _expect((users, total, staging) == (2, 1600, 0), f"comptes fusionnés créés ({users},{total})")
+    c = sqlite3.connect(db_path)
+    balances = {
+        name: bal
+        for name, bal in c.execute(
+            "SELECT u.name, w.balance FROM users u JOIN wallets w ON w.user_id = u.id"
+        ).fetchall()
+    }
+    c.close()
+    _expect(balances.get("Dupont Alice") == 1000, f"fusion solde nul : 10 + 0 ({balances})")
+    _expect(balances.get("Ancien Marcel") == 600, f"fusion compte ancien : 4 + 2 ({balances})")
+    shutil.rmtree(src)
+
+    # cas toujours bloquant : soldes réels des deux côtés, comptes récents
+    src2 = Path(tempfile.mkdtemp(prefix="p5_bloq_"))
+    sdir2 = src2 / "sources"
+    sdir2.mkdir()
+    _write_brest(
+        sdir2 / "brest_lot.sql",
+        [
+            _user("0043", "Ambigu Recent", "3.00"),
+            _user("7777", "Ambigu Recent", "1.00"),
+        ],
+    )
+    db2 = src2 / "cible.db"
+    _fresh_db(db2)
+    code2 = _cli(["--run", "--source-dir", str(sdir2), "--database-url", f"sqlite:///{db2}"])
+    _expect(code2 == 1, "soldes réels des deux côtés sur comptes récents -> exit 1")
+    users2, total2, _ = _db_counts(db2)
+    _expect((users2, total2) == (0, 0), f"base intacte après blocage ({users2},{total2})")
+    shutil.rmtree(src2)
+
+    # trois occurrences dont une à 0 : les deux soldes non nuls et récents
+    # ne déclenchent aucune règle -> bloquant
+    src3 = Path(tempfile.mkdtemp(prefix="p5_triple_"))
+    sdir3 = src3 / "sources"
+    sdir3.mkdir()
+    _write_brest(
+        sdir3 / "brest_lot.sql",
+        [
+            _user("0044", "Triple Cas", "5.00"),
+            _user("6666", "Triple Cas", "0.00"),
+            _user("5555", "Triple Cas", "2.00"),
+        ],
+    )
+    db3 = src3 / "cible.db"
+    _fresh_db(db3)
+    code3 = _cli(["--run", "--source-dir", str(sdir3), "--database-url", f"sqlite:///{db3}"])
+    _expect(code3 == 1, "deux soldes non nuls récents -> toujours bloquant")
+    shutil.rmtree(src3)
 
 
 def test_p5_brest_rejects_non_sql():
@@ -1165,12 +1243,14 @@ def test_e2e_paris_csv_run():
     ).fetchone()[0]
     _expect(sarah == 1, "compte Paris à solde nul créé")
     tsingtao = c.execute(
-        "SELECT price_std_paris, price_team_paris, article_type, is_alcohol, active "
+        "SELECT price_std, price_team, article_type, is_alcohol, active, campus "
         "FROM articles WHERE name='TsingTao'"
     ).fetchone()
-    _expect(tsingtao == (150, 150, "biere", 1, 1), f"article CSV projeté ({tsingtao})")
-    duvel = c.execute("SELECT active, price_std_paris FROM articles WHERE name='Duvel'").fetchone()
-    _expect(duvel == (0, 200), f"article hors vente importé inactif ({duvel})")
+    _expect(tsingtao == (150, 150, "biere", 1, 1, "paris"), f"article CSV projeté ({tsingtao})")
+    duvel = c.execute(
+        "SELECT active, price_std, campus FROM articles WHERE name='Duvel'"
+    ).fetchone()
+    _expect(duvel == (0, 200, "paris"), f"article hors vente importé inactif ({duvel})")
     c.close()
     remaining = [p.name for p in sdir.iterdir()]
     _expect(remaining == [], f"sources supprimées après run ({remaining})")

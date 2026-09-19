@@ -313,28 +313,41 @@ donc une reprise après échec reste possible.
   flottante ou à fraction de centime est rejetée (`--money-unit euros|cents`).
 - **Audit de mapping (indépendant)** : `Σ soldes BRUTS sources = Σ soldes
   projetés` (écart global ET par campus strictement nul). Un compte sans
-  identité ou une clé de réconciliation portée par plusieurs lignes (homonymes,
-  doublons de carte) **bloque la bascule** avec le détail des clés en collision
-  et leurs montants. Sur le dump Brest réel (16/09), cela détecte 214 collisions
-  et 3 849,08 € non projetés par l'ancien mapping. Exception : dans une source
-  sans identifiant (CSV clients Paris : Nom/Solde uniquement), les lignes de
-  même clé sont le même compte exporté plusieurs fois — leurs soldes sont
-  **cumulés** (comptés au rapport) pour préserver l'invariant ; avec des
-  identifiants distincts (Brest), la collision reste bloquante.
+  identité **bloque la bascule**. Une clé de réconciliation portée par
+  plusieurs lignes (même nom, plusieurs cartes) est **fusionnée
+  automatiquement** dans deux cas, chacun tracé en clair dans le rapport
+  (clé, règle, occurrences, montants) :
+  - *solde nul* : au plus une occurrence porte un solde non nul (les autres
+    cartes sont vides — rien ne peut être attribué à tort, même s'il s'agit
+    d'un homonyme) ;
+  - *compte ancien* : au moins une occurrence a été créée il y a plus de
+    3 ans (compte d'un étudiant parti ; `FUSION_ANCIENNETE_ANNEES` dans
+    `migration/etl.py`).
+  Le compte fusionné porte la **somme des soldes** et toutes les cartes
+  (identifiants source) y sont rattachées, transactions comprises. Dans les
+  autres cas (soldes réels des deux côtés sur des comptes récents), la
+  décision même personne vs homonymes reste humaine et **bloque la bascule**
+  avec le détail des clés en collision. Exception : dans une source sans
+  identifiant (CSV clients Paris : Nom/Solde uniquement), les lignes de même
+  clé sont le même compte exporté plusieurs fois — leurs soldes sont
+  **cumulés** (comptés au rapport) pour préserver l'invariant.
 - **Invariable comptable** : `Σ soldes projetés = Σ soldes cibles après − avant`
   (écart global ET par campus strictement nul), vérifié dans la transaction
   avant `COMMIT`.
-- **Catalogue** : les articles Brest (codes-barres, prix public/équipe, volumes)
-  sont importés avec leur type (table `article_types` ; « Boisson Chaude/Froide »
-  rattachées aux consommables `snack`, seul vocabulaire cible non alcoolisé —
-  ajustable dans `migration/sources/__init__.py`). Les lignes de vente
-  historiques sont rattachées aux articles importés quand c'est possible. Les
-  articles de la caisse Paris (CSV `Famille`) sont typés (« Bières
-  Bouteilles/Pression » -> `biere`, « Vins/alcools » -> `vin`, « Nourriture »,
-  « Boissons chaudes/sans alcool » -> `snack`, « Z Treso BDE » -> `evenement`)
-  pour que le contrôle blacklist alcool reste effectif ; sans tarif membre
-  source, le prix équipe vaut le prix public ; les entrées hors vente
-  (« A ne pas ouvrir », « Ne pas utiliser », …) sont importées **inactives**.
+- **Catalogue** : chaque campus reçoit ses propres articles (`articles.campus`) :
+  les catalogues Brest et Paris sont distincts et l'encaissement d'un article
+  est limité à son campus. Les articles Brest (codes-barres, prix public/équipe,
+  volumes) sont importés avec leur type (table `article_types` ;
+  « Boisson Chaude/Froide » rattachées aux consommables `snack`, seul
+  vocabulaire cible non alcoolisé — ajustable dans
+  `migration/sources/__init__.py`). Les lignes de vente historiques sont
+  rattachées aux articles importés quand c'est possible. Les articles de la
+  caisse Paris (CSV `Famille`) sont typés (« Bières Bouteilles/Pression » ->
+  `biere`, « Vins/alcools » -> `vin`, « Nourriture », « Boissons chaudes/sans
+  alcool » -> `snack`, « Z Treso BDE » -> `evenement`) pour que le contrôle
+  blacklist alcool reste effectif ; sans tarif membre source, le prix équipe
+  vaut le prix public ; les entrées hors vente (« A ne pas ouvrir », « Ne pas
+  utiliser », …) sont importées **inactives**.
 - **Tireuses** : les fûts (`draft_beers`) deviennent des kegs avec leurs tarifs
   par format (`keg_prices`), et l'état courant des tireuses
   (`draft_beer_current`, lignes non closes, ouverture la plus récente) configure

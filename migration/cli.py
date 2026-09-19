@@ -316,6 +316,7 @@ def _run_migration(args, engine, files):
             )
             raise
         audit.print_audit(result, extra_counts=counts)
+        audit.print_merged(migrator.merged)
         _print_scan_stats(migrator.reader.scan_stats, set(brest_tables()))
         if args.mode == "dry-run":
             transaction.rollback()
@@ -363,12 +364,15 @@ def _drop_staging_after_rollback(conn):
 
 
 def _run_audit_only(args, engine, files):
+    from .etl import fusion_cutoff, fusion_rule
+
     _ensure_schema(engine)
     with engine.connect() as conn:
         reader = SourceReader(files, args.money_unit, args.chunk_rows, conn=None)
         source = {"brest": 0, "paris": 0}
         raw = {"brest": 0, "paris": 0}
         occurrences = {"brest": {}, "paris": {}}
+        users_by_key = {"brest": {}, "paris": {}}
         unmapped = []
         users_count = 0
         for campus, filename, user, _warning, raw_cents in reader.iter_users():
@@ -378,23 +382,34 @@ def _run_audit_only(args, engine, files):
                     unmapped.append((campus, filename, raw_cents))
                 continue
             key = user["key"]
-            seen = occurrences[campus].setdefault(key, [])
-            seen.append(
+            users_by_key[campus].setdefault(key, []).append(user)
+            occurrences[campus].setdefault(key, []).append(
                 {"src_id": user["src_id"], "name": user["name"], "balance": user["balance_cents"]}
             )
-            if len(seen) == 1 or (
-                # même règle que load_accounts : doublons d'une source sans
-                # identifiant -> soldes cumulés (sinon écart fictif au rapport)
-                user["src_id"] is None and seen[0].get("src_id") is None
-            ):
-                source[campus] += user["balance_cents"]
+        # même résolution que l'ETL (fusion_rule) : la somme comparée à la
+        # cible est celle que le run projeterait, fusions comprises
+        cutoff = fusion_cutoff()
+        collisions, merged = [], []
+        for campus in ("brest", "paris"):
+            for key, users in users_by_key[campus].items():
+                occ = occurrences[campus][key]
+                if len(users) == 1:
+                    source[campus] += users[0]["balance_cents"]
+                elif not any(u["src_id"] is not None for u in users):
+                    # doublons d'une source sans identifiant : soldes cumulés
+                    source[campus] += sum(u["balance_cents"] for u in users)
+                else:
+                    rule = fusion_rule(users, cutoff)
+                    if rule is None:
+                        # collision non résolue : seule la 1re occurrence est projetée
+                        collisions.append((campus, key, occ))
+                        source[campus] += users[0]["balance_cents"]
+                    else:
+                        source[campus] += sum(u["balance_cents"] for u in users)
+                        merged.append(
+                            {"campus": campus, "key": key, "rule": rule, "occurrences": occ}
+                        )
                 users_count += 1
-        collisions = [
-            (campus, key, occ)
-            for campus in ("brest", "paris")
-            for key, occ in occurrences[campus].items()
-            if len(occ) > 1
-        ]
         captured = audit.capture_target(conn)
         result = audit.AuditResult(
             source=source,
@@ -410,6 +425,7 @@ def _run_audit_only(args, engine, files):
                 ("Comptes sources exploités", users_count),
             ],
         )
+        audit.print_merged(merged)
         _print_scan_stats(reader.scan_stats, set(brest_tables()))
         if result.ok:
             print("  >>> AUDIT-ONLY : sommes sources et cibles réconciliées. <<<")
