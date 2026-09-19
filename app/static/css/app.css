@@ -181,6 +181,12 @@ body.has-mobile-pay-bar .main-area { padding-bottom: 7.5rem; }
 
 .table-sm td, .table-sm th { padding: .35rem .5rem; }
 
+/* Catalogue des prix : les colonnes Volume et Prix gardent une largeur fixe,
+   pour un alignement identique quel que soit le campus (noms d'articles plus
+   ou moins longs). La colonne Article absorbe l'espace restant. */
+.catalogue-table th:nth-child(2), .catalogue-table td:nth-child(2) { width: 110px; }
+.catalogue-table th:nth-child(3), .catalogue-table td:nth-child(3) { width: 150px; }
+
 .postit {
   border-radius: 6px;
   padding: 1rem;
