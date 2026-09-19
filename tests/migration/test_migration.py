@@ -1065,7 +1065,7 @@ def test_p5_merge_key_and_birth_date():
     _expect(a["key"] != b["key"], "homonymes -> clés distinctes")
 
 
-def test_p5_disabled_imported():
+def test_p5_disabled_not_migrated():
     src = Path(tempfile.mkdtemp(prefix="p5_disabled_"))
     sdir = src / "sources"
     sdir.mkdir()
@@ -1079,12 +1079,42 @@ def test_p5_disabled_imported():
     db_path = src / "cible.db"
     _fresh_db(db_path)
     code = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
-    _expect(code == 0, "bascule avec compte désactivé")
+    _expect(code == 0, "bascule sans compte désactivé")
     c = sqlite3.connect(db_path)
-    actif = c.execute("SELECT disabled FROM users WHERE name='Actif Compte'").fetchone()[0]
-    off = c.execute("SELECT disabled FROM users WHERE name='Desactive Compte'").fetchone()[0]
+    noms = {r[0] for r in c.execute("SELECT name FROM users")}
+    total = c.execute("SELECT COALESCE(SUM(balance), 0) FROM wallets").fetchone()[0]
     c.close()
-    _expect((actif, off) == (0, 1), f"état disabled conservé ({actif},{off})")
+    _expect(noms == {"Actif Compte"}, f"compte désactivé non migré ({noms})")
+    _expect(total == 100, f"solde du compte désactivé exclu ({total})")
+    shutil.rmtree(src)
+
+
+def test_p5_disabled_on_one_campus_only_is_migrated():
+    # désactivé sur Brest mais actif sur Paris : le compte reste utilisable (R19)
+    src = Path(tempfile.mkdtemp(prefix="p5_disabled_merge_"))
+    sdir = src / "sources"
+    sdir.mkdir()
+    _write_brest(
+        sdir / "brest_lot.sql",
+        [_user("0041", "Léo Martin", "1.00", disabled=1)],
+    )
+    (sdir / "paris_export.json").write_text(
+        json.dumps(
+            {"etudiants": [{"prenom": "Léo", "nom": "Martin", "promotion": 2026, "solde": "4,50"}]}
+        ),
+        encoding="utf-8",
+    )
+    db_path = src / "cible.db"
+    _fresh_db(db_path)
+    code = _cli(["--run", "--source-dir", str(sdir), "--database-url", f"sqlite:///{db_path}"])
+    _expect(code == 0, "compte actif sur un campus migré")
+    c = sqlite3.connect(db_path)
+    wallets = c.execute(
+        "SELECT COUNT(*), COALESCE(SUM(w.balance), 0) FROM users u "
+        "JOIN wallets w ON w.user_id = u.id WHERE u.name='Léo Martin'"
+    ).fetchone()
+    c.close()
+    _expect(wallets == (2, 100 + 450), f"deux portefeuilles migrés ({wallets})")
     shutil.rmtree(src)
 
 

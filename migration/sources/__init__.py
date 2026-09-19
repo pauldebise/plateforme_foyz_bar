@@ -214,7 +214,7 @@ USER_FIELDS = {
         "dob",
         "anniversaire",
     ),
-    # Compte désactivé côté source (R19) : conservé désactivé en cible.
+    # Compte désactivé côté source (R19) : exclu de la migration (compte et solde).
     "disabled": (
         "disabled",
         "desactive",

@@ -365,8 +365,9 @@ donc une reprise après échec reste possible.
   compte unique avec deux portefeuilles (un par campus) ; l'historique reste
   rattaché à son `campus` d'origine. La date de naissance (quand elle existe)
   discrimine les homonymes.
-- **Comptes désactivés** : `users.disabled` de la source est conservé
-  (`disabled` en cible) et la connexion est refusée.
+- **Comptes désactivés** : un compte désactivé sur toutes ses occurrences
+  source n'est **pas migré** (ni compte, ni portefeuille, ni solde à l'audit) ;
+  un compte actif sur au moins un campus reste migré normalement.
 - **Consignes** : `users.ecocups` (verres empruntés) est migré dans
   `wallets.glasses_outstanding` ; hors du périmètre de l'audit **monétaire**.
 - **Transferts** : les demi-lignes Brest sont appariées par

@@ -364,7 +364,9 @@ def _drop_staging_after_rollback(conn):
 
 
 def _run_audit_only(args, engine, files):
-    from .etl import fusion_cutoff, fusion_rule
+    from collections import defaultdict
+
+    from .etl import account_disabled, fusion_cutoff, fusion_rule
 
     _ensure_schema(engine)
     with engine.connect() as conn:
@@ -373,6 +375,7 @@ def _run_audit_only(args, engine, files):
         raw = {"brest": 0, "paris": 0}
         occurrences = {"brest": {}, "paris": {}}
         users_by_key = {"brest": {}, "paris": {}}
+        raw_by_key = {"brest": defaultdict(int), "paris": defaultdict(int)}
         unmapped = []
         users_count = 0
         for campus, filename, user, _warning, raw_cents in reader.iter_users():
@@ -382,16 +385,27 @@ def _run_audit_only(args, engine, files):
                     unmapped.append((campus, filename, raw_cents))
                 continue
             key = user["key"]
+            raw_by_key[campus][key] += raw_cents
             users_by_key[campus].setdefault(key, []).append(user)
             occurrences[campus].setdefault(key, []).append(
                 {"src_id": user["src_id"], "name": user["name"], "balance": user["balance_cents"]}
             )
+        # comptes désactivés sur toutes leurs occurrences : non migrés, donc
+        # exclus de la comparaison (brut et projeté) comme le fait l'ETL.
+        disabled_keys = {
+            key
+            for key in set(users_by_key["brest"]) | set(users_by_key["paris"])
+            if account_disabled(users_by_key["brest"].get(key), users_by_key["paris"].get(key))
+        }
         # même résolution que l'ETL (fusion_rule) : la somme comparée à la
         # cible est celle que le run projeterait, fusions comprises
         cutoff = fusion_cutoff()
         collisions, merged = [], []
         for campus in ("brest", "paris"):
             for key, users in users_by_key[campus].items():
+                if key in disabled_keys:
+                    raw[campus] -= raw_by_key[campus][key]
+                    continue
                 occ = occurrences[campus][key]
                 if len(users) == 1:
                     source[campus] += users[0]["balance_cents"]
@@ -423,6 +437,7 @@ def _run_audit_only(args, engine, files):
             result,
             extra_counts=[
                 ("Comptes sources exploités", users_count),
+                ("Comptes désactivés non migrés", len(disabled_keys)),
             ],
         )
         audit.print_merged(merged)

@@ -13,7 +13,8 @@ Déroulé (le tout DANS la transaction ouverte par la CLI) :
       connexion prenom.nom dédoublonné, surnom d'usage conservé pour
       l'affichage ; motif de blacklist importé, mot de passe conservé : hash
       werkzeug réutilisable ou valeur legacy brute — bcrypt/md5 — vérifiée à
-      la connexion) ;
+      la connexion ; les comptes désactivés sur toutes leurs occurrences sont
+      exclus, ainsi que leurs soldes de l'audit) ;
   6. passe « catalogue » : articles (prix public/équipe), fûts pressions
      (kegs + keg_prices) et état courant des tireuses (taps + articles de
      tireuse régénérés comme app.services.catalog) ;
@@ -124,6 +125,17 @@ FUSION_ANCIENNETE_ANNEES = 3
 def fusion_cutoff(now=None):
     """Date limite : une création antérieure déclenche la règle « compte ancien »."""
     return (now or now_utc()) - timedelta(days=365 * FUSION_ANCIENNETE_ANNEES)
+
+
+def account_disabled(*user_lists):
+    """Compte désactivé en cible : désactivé sur TOUTES ses occurrences source.
+
+    Un compte n'est exclu de la migration que s'il est désactivé partout où il
+    existe (aucune carte active ne doit disparaître) ; les comptes désactivés ne
+    sont pas importés du tout (ni compte, ni portefeuille, ni solde à l'audit).
+    """
+    users = [u for lst in user_lists for u in (lst or [])]
+    return bool(users) and all(u.get("disabled") for u in users)
 
 
 def fusion_rule(users, cutoff):
@@ -330,6 +342,7 @@ class Migrator:
         self.key_occurrences = {"brest": defaultdict(list), "paris": defaultdict(list)}
         self.key_users = {"brest": defaultdict(list), "paris": defaultdict(list)}
         self.key_files = {"brest": {}, "paris": {}}  # clé -> fichier source (1re occurrence)
+        self.key_raw = {"brest": defaultdict(int), "paris": defaultdict(int)}  # clé -> solde brut
         self.key_order = {"brest": [], "paris": []}
         self.merged = []  # fusions automatiques appliquées (rapport)
         self.resolved = set()  # (campus, clé) fusionnées : plus comptées en collision
@@ -382,6 +395,7 @@ class Migrator:
                     self.counts[f"warn_{warning[:40]}"] += 1
                 continue
             key = user["key"]
+            self.key_raw[campus][key] += raw_cents
             if user["src_id"] is not None:
                 # enregistré même si le compte est un doublon : les transactions
                 # référencent l'id source et doivent rester traçables
@@ -498,9 +512,21 @@ class Migrator:
             )
             if team_status and not team_campus:
                 team_campus = campus
-            # désactivé seulement si TOUS les comptes fusionnés le sont : un
-            # compte actif sur un campus rend le compte utilisable (R19)
-            disabled = primary["disabled"] and (secondary["disabled"] if secondary else True)
+            # désactivé seulement si TOUTES les occurrences fusionnées le sont :
+            # un compte actif (même sur une seule carte/campus) rend le compte
+            # utilisable (R19)
+            disabled = account_disabled(
+                self.key_users["brest"].get(key), self.key_users["paris"].get(key)
+            )
+            if disabled:
+                # compte désactivé : non migré (ni compte, ni portefeuille) ;
+                # ses soldes sortent aussi de l'audit (brut et projeté) pour que
+                # les invariants restent stricts.
+                self.counts["comptes_desactives_ignores"] += 1
+                for c in campuses:
+                    self.source_sums[c] -= self.accounts[c][key][0]["balance_cents"]
+                    self.raw_source_sums[c] -= self.key_raw[c][key]
+                continue
             created_at = primary["created_at"] or (secondary["created_at"] if secondary else None)
             promotion = primary["promotion"] or (secondary["promotion"] if secondary else None)
             password_hash = primary["password_hash"] or (
@@ -539,13 +565,11 @@ class Migrator:
                 ),
                 "blacklist_reason": primary["blacklist_reason"]
                 or (secondary["blacklist_reason"] if secondary else None),
-                "disabled": bool(disabled),
+                "disabled": False,  # les comptes désactivés ne sont pas migrés
                 "created_at": created_at or now_utc(),
             }
             if params["blacklist_reason"]:
                 self.counts["motifs_blacklist"] += 1
-            if params["disabled"]:
-                self.counts["comptes_desactives"] += 1
             user_id = self.conn.execute(sa.text(_USERS_SQL), params).scalar_one()
             self.target_id_by_key[key] = user_id
             # Libellé opérateur = nom long complet (nom réel + surnom), comme
@@ -972,7 +996,7 @@ class Migrator:
             ),
             ("Mots de passe à réinitialiser", c.get("passwords_a_reinitialiser")),
             ("Motifs de blacklist importés", c.get("motifs_blacklist")),
-            ("Comptes désactivés importés (connexion refusée)", c.get("comptes_desactives")),
+            ("Comptes désactivés non migrés", c.get("comptes_desactives_ignores")),
             ("Types d'articles (référence)", c.get("refs_article_types")),
             ("Articles importés", c.get("articles_importes")),
             ("dont Brest", c.get("articles_brest")),
