@@ -50,6 +50,9 @@ def ensure_dev_admin():
     admin.team_status = None
     admin.team_campus = None
     admin.disabled = False
+    # Ce n'est pas une personne consommatrice : aucune restriction possible.
+    admin.blacklist = False
+    admin.blacklist_alcohol = False
     if not admin.password_hash:
         admin.password_hash = generate_password_hash(password)
     if not get_setting("admin_password_hash"):

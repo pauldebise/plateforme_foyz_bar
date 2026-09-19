@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Compte de {{ u.display_name }}{% endblock %}
 {% block content %}
+{% set admin_account = u.is_super_admin %}
 <h1 class="h3 mb-1"><i class="bi bi-person"></i> {{ u.display_name }}</h1>
 <p class="text-muted">
   Identifiant de connexion : <strong>{{ u.username }}</strong> ·
@@ -14,6 +15,9 @@
     <div class="card">
       <div class="card-header">Profil &amp; restrictions</div>
       <div class="card-body">
+        {% if admin_account %}
+        <p class="text-muted mb-0"><i class="bi bi-lock"></i> Compte d'administration figé : nom et identifiant « admin », hors équipe et hors campus, sans restriction.</p>
+        {% else %}
         <form method="post">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <div class="mb-3"><label class="form-label">Nom réel complet</label><input class="form-control" name="name" value="{{ u.name }}" required></div>
@@ -38,9 +42,11 @@
           </div>
           <button class="btn btn-primary">Enregistrer</button>
         </form>
+        {% endif %}
       </div>
     </div>
   </div>
+  {% if not admin_account %}
   <div class="col-lg-6">
     <div class="card mb-4">
       <div class="card-header">Accès équipe</div>
@@ -64,6 +70,7 @@
       </div>
     </div>
   </div>
+  {% endif %}
 </div>
 
 <hr class="mt-4">
@@ -72,6 +79,7 @@
     <i class="bi bi-exclamation-triangle"></i> <strong>Attention :</strong> {{ warnings|join(" · ") }}.
   </div>
 {% endif %}
+{% if not admin_account %}
 <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#delete-account-modal">
   <i class="bi bi-trash"></i> Supprimer ce compte
 </button>
@@ -98,4 +106,5 @@
     </form>
   </div>
 </div>
+{% endif %}
 {% endblock %}

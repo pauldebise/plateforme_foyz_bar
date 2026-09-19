@@ -190,6 +190,11 @@ def compte(user_id):
     if u is None:
         abort(404)
     if request.method == "POST":
+        # Le compte d'administration est intouchable par l'équipe (même en
+        # mandat) : nom, identifiant et mot de passe compris.
+        protected = u.is_super_admin
+        if protected and not g.current_user.is_super_admin:
+            abort(403)
         before = {
             "name": u.name,
             "nickname": u.nickname,
@@ -198,36 +203,47 @@ def compte(user_id):
             "blacklist": u.blacklist,
             "blacklist_alcohol": u.blacklist_alcohol,
         }
-        new_name = clamp_text((request.form.get("name") or "").strip(), 255)
-        if new_name and new_name != u.name:
-            u.name = new_name
-        new_nickname = clamp_text((request.form.get("nickname") or "").strip(), 255) or None
-        u.nickname = new_nickname
-        new_username = slug_username(request.form.get("username") or "")
-        if not new_username:
-            flash("Identifiant invalide (lettres et chiffres uniquement).", "danger")
-            return redirect(url_for("admin.compte", user_id=u.id))
-        if new_username != u.username:
-            existing = db.session.scalars(select(User).where(User.username == new_username)).first()
-            if existing:
-                flash(f"L'identifiant « {new_username} » est déjà utilisé.", "danger")
+        if protected:
+            # Compte figé : nom et identifiant « admin » (l'identifiant porte le
+            # statut super-admin), pas de surnom, ni blacklist ni blacklist
+            # alcool (ce n'est pas une personne consommatrice).
+            u.name = "admin"
+            u.username = "admin"
+            u.nickname = None
+            u.blacklist = False
+            u.blacklist_alcohol = False
+        else:
+            new_name = clamp_text((request.form.get("name") or "").strip(), 255)
+            if new_name and new_name != u.name:
+                u.name = new_name
+            u.nickname = clamp_text((request.form.get("nickname") or "").strip(), 255) or None
+            new_username = slug_username(request.form.get("username") or "")
+            if not new_username:
+                flash("Identifiant invalide (lettres et chiffres uniquement).", "danger")
                 return redirect(url_for("admin.compte", user_id=u.id))
-            u.username = new_username
-        promotion = request.form.get("promotion", "").strip()
-        u.promotion = int(promotion) if promotion.isdigit() else None
-        u.blacklist = request.form.get("blacklist") == "on"
-        new_ba = request.form.get("blacklist_alcohol") == "on"
-        if (
-            u.blacklist_alcohol
-            and not new_ba
-            and not S.check_admin_password(request.form.get("admin_password", ""))
-        ):
-            flash(
-                "Le retrait du statut « blacklist alcool » exige le mot de passe administrateur.",
-                "danger",
-            )
-            return redirect(url_for("admin.compte", user_id=u.id))
-        u.blacklist_alcohol = new_ba
+            if new_username != u.username:
+                existing = db.session.scalars(
+                    select(User).where(User.username == new_username)
+                ).first()
+                if existing:
+                    flash(f"L'identifiant « {new_username} » est déjà utilisé.", "danger")
+                    return redirect(url_for("admin.compte", user_id=u.id))
+                u.username = new_username
+            promotion = request.form.get("promotion", "").strip()
+            u.promotion = int(promotion) if promotion.isdigit() else None
+            u.blacklist = request.form.get("blacklist") == "on"
+            new_ba = request.form.get("blacklist_alcohol") == "on"
+            if (
+                u.blacklist_alcohol
+                and not new_ba
+                and not S.check_admin_password(request.form.get("admin_password", ""))
+            ):
+                flash(
+                    "Le retrait du statut « blacklist alcool » exige le mot de passe administrateur.",
+                    "danger",
+                )
+                return redirect(url_for("admin.compte", user_id=u.id))
+            u.blacklist_alcohol = new_ba
         if u.blacklist:
             flash(
                 "Statut blacklist activé : tous les accès de ce compte (dont équipe) sont retirés.",
@@ -292,6 +308,9 @@ def compte_supprimer(user_id):
     u = db.session.get(User, user_id)
     if u is None:
         abort(404)
+    # Le compte d'administration ne peut jamais être supprimé.
+    if u.is_super_admin:
+        abort(403)
     if not S.check_admin_password(request.form.get("admin_password", "")):
         flash("La suppression d'un compte exige le mot de passe administrateur.", "danger")
         return redirect(url_for("admin.compte", user_id=u.id))
@@ -340,9 +359,10 @@ def membre(user_id):
         abort(404)
     own = own_campus()
     # chaque équipe gère les membres de son campus ; un membre sans campus
-    # attribué peut être rattaché par n'importe quelle équipe ; l'admin
-    # global couvre les deux campus
-    editable = u.team_campus in (None, own) or u.is_super_admin
+    # attribué peut être rattaché par n'importe quelle équipe. Le compte
+    # d'administration, hors équipe, n'est jamais modifiable ici (ni statut,
+    # ni campus, ni mot de passe), même par un mandat.
+    editable = not u.is_super_admin and u.team_campus in (None, own)
     if request.method == "POST":
         if not editable:
             abort(403)

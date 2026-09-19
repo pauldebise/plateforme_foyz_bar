@@ -385,6 +385,91 @@ def test_admin_account_is_standalone():
     auth_module._attempts.clear()
 
 
+def test_admin_account_is_protected_from_team():
+    from app.routes import auth as auth_module
+
+    app = create_app()
+    with app.app_context():
+        admin = db.session.scalars(db.select(User).where(User.username == "admin")).first()
+        admin_id = admin.id
+        db.session.add(
+            User(
+                name="Mandat Protect",
+                username="mandat.protect",
+                team_status="mandat",
+                team_campus="brest",
+                password_hash=generate_password_hash("secret123"),
+            )
+        )
+        db.session.commit()
+
+    # un mandat ne peut ni modifier le profil de l'admin, ni le gérer en équipe
+    auth_module._attempts.clear()
+    client = app.test_client()
+    _expect(_login(client, "mandat.protect", "secret123").status_code == 302, "connexion mandat")
+    token = _csrf(client.get("/admin/comptes").get_data(as_text=True))
+    res = client.post(
+        f"/admin/comptes/{admin_id}",
+        data={"name": "Pirate", "username": "pirate", "_csrf": token},
+    )
+    _expect(res.status_code == 403, f"mandat ne modifie pas l'admin ({res.status_code})")
+    res = client.post(
+        f"/admin/equipe/{admin_id}",
+        data={"team_status": "mandat", "_csrf": token},
+    )
+    _expect(res.status_code == 403, f"mandat ne gère pas l'admin en équipe ({res.status_code})")
+    html = client.get(f"/admin/comptes/{admin_id}").get_data(as_text=True)
+    _expect("Compte d'administration figé" in html, "profil admin en lecture seule")
+    _expect("delete-account-modal" not in html, "suppression admin masquée au mandat")
+    with app.app_context():
+        admin = db.session.get(User, admin_id)
+        _expect(
+            (admin.name, admin.username, admin.team_status) == ("admin", "admin", None),
+            "profil admin inchangé",
+        )
+
+    # l'admin n'est ni blacklistable ni supprimable, même par lui-même
+    auth_module._attempts.clear()
+    client = app.test_client()
+    _expect(_login(client, "admin", ADMIN_PASSWORD).status_code == 302, "connexion admin")
+    admin_html = client.get(f"/admin/comptes/{admin_id}").get_data(as_text=True)
+    _expect("Accès équipe" not in admin_html, "carte équipe absente du compte admin")
+    _expect("Opérations rapides" not in admin_html, "cartes d'opérations absentes du compte admin")
+    _expect('name="nickname"' not in admin_html, "champ surnom absent du compte admin")
+    _expect('name="name"' not in admin_html, "champ nom absent du compte admin")
+    _expect('name="username"' not in admin_html, "champ identifiant absent du compte admin")
+    token = _csrf(admin_html)
+    res = client.post(
+        f"/admin/comptes/{admin_id}",
+        data={
+            "name": "Pirate",
+            "username": "pirate",
+            "blacklist": "on",
+            "blacklist_alcohol": "on",
+            "_csrf": token,
+        },
+    )
+    _expect(res.status_code == 302, f"enregistrement profil admin ({res.status_code})")
+    with app.app_context():
+        admin = db.session.get(User, admin_id)
+        _expect(
+            (admin.name, admin.username) == ("admin", "admin"),
+            "nom et identifiant admin figés",
+        )
+        _expect(
+            not admin.blacklist and not admin.blacklist_alcohol,
+            "admin non blacklistable",
+        )
+    res = client.post(
+        f"/admin/comptes/{admin_id}/supprimer",
+        data={"admin_password": ADMIN_PASSWORD, "_csrf": token},
+    )
+    _expect(res.status_code == 403, f"admin non supprimable ({res.status_code})")
+    html = client.get(f"/admin/equipe/{admin_id}").get_data(as_text=True)
+    _expect("Nouveau mot de passe" not in html, "mot de passe admin non modifiable")
+    auth_module._attempts.clear()
+
+
 def main():
     tests = [
         (name, fn)
