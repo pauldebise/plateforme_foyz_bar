@@ -866,15 +866,21 @@ def evenement(event_id):
     )
 
 
-@bp.route("/journaux")
-@login_required
-def journaux():
-    days = S.int_setting("login_logs_retention_days")
-    if days > 0:
-        db.session.query(LoginLog).filter(
-            LoginLog.created_at < utcnow() - timedelta(days=days)
-        ).delete()
-        db.session.commit()
+def _journal_pagination(stmt, per_page=50):
+    """Pagine un `stmt` ordonné ; retourne (lignes, page, pages, total)."""
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except ValueError:
+        page = 1
+    total = db.session.scalar(select(func.count()).select_from(stmt.subquery()))
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, pages)
+    rows = db.session.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).all()
+    return rows, page, pages, total
+
+
+def _journal_connexions():
+    """Onglet connexions : tentatives de connexion (LoginLog)."""
     ffrom = request.args.get("from", "")
     fto = request.args.get("to", "")
     fuser = request.args.get("user", "").strip()
@@ -901,19 +907,13 @@ def journaux():
                 )
             )
         )
-    logs = query.order_by(LoginLog.created_at.desc()).limit(500).all()
-    return render_template("admin/journaux.html", logs=logs, filters=request.args)
+    stmt = query.order_by(LoginLog.created_at.desc(), LoginLog.id.desc())
+    rows, page, pages, total = _journal_pagination(stmt)
+    return {"logs": rows, "page": page, "pages": pages, "total": total}
 
 
-@bp.route("/audit")
-@login_required
-def audit():
-    days = S.int_setting("audit_logs_retention_days")
-    if days > 0:
-        db.session.query(AuditLog).filter(
-            AuditLog.created_at < utcnow() - timedelta(days=days)
-        ).delete()
-        db.session.commit()
+def _journal_actions():
+    """Onglet actions : actions d'administration sensibles (AuditLog)."""
     faction = request.args.get("action", "").strip()
     fuser = request.args.get("user", "").strip()
     ffrom = request.args.get("from", "")
@@ -934,25 +934,54 @@ def audit():
                 <= datetime.strptime(fto, "%Y-%m-%d") + timedelta(days=1, microseconds=-1)
             )
     stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
-    try:
-        page = max(1, int(request.args.get("page", 1)))
-    except ValueError:
-        page = 1
-    per_page = 50
-    total = db.session.scalar(select(func.count()).select_from(stmt.subquery()))
-    pages = max(1, (total + per_page - 1) // per_page)
-    page = min(page, pages)
-    logs = db.session.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).all()
+    rows, page, pages, total = _journal_pagination(stmt)
+    return {"logs": rows, "page": page, "pages": pages, "total": total}
+
+
+@bp.route("/journal")
+@login_required
+def journal():
+    """Journal unifié : onglet connexions (LoginLog) et onglet actions (AuditLog).
+
+    Chaque onglet a sa propre rétention et sa propre purge, déclenchée à la
+    consultation, comme avant la fusion des deux pages."""
+    tab = request.args.get("tab", "connexions")
+    if tab not in ("connexions", "actions"):
+        tab = "connexions"
+    if tab == "connexions":
+        days = S.int_setting("login_logs_retention_days")
+        model = LoginLog
+    else:
+        days = S.int_setting("audit_logs_retention_days")
+        model = AuditLog
+    if days > 0:
+        db.session.query(model).filter(model.created_at < utcnow() - timedelta(days=days)).delete()
+        db.session.commit()
+    data = _journal_connexions() if tab == "connexions" else _journal_actions()
+    link_args = {**{k: v for k, v in request.args.items() if k != "page"}, "tab": tab}
     return render_template(
-        "admin/audit.html",
-        logs=logs,
-        actions=A.ACTION_LABELS,
+        "admin/journal.html",
+        tab=tab,
         filters=request.args,
-        page=page,
-        pages=pages,
-        total=total,
-        link_args={k: v for k, v in request.args.items() if k != "page"},
+        actions=A.ACTION_LABELS,
+        link_args=link_args,
+        **data,
     )
+
+
+@bp.route("/journaux")
+@login_required
+def journaux():
+    """Ancienne URL du registre des connexions : redirige vers le journal unifié."""
+    return redirect(url_for("admin.journal", **request.args.to_dict()))
+
+
+@bp.route("/audit")
+@login_required
+def audit():
+    """Ancienne URL du journal d'audit : redirige vers l'onglet actions."""
+    args = {k: v for k, v in request.args.items() if k != "tab"}
+    return redirect(url_for("admin.journal", tab="actions", **args))
 
 
 @bp.route("/sante")

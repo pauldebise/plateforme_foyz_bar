@@ -6,7 +6,7 @@ Couvre :
 - enregistrement des actions sensibles (comptes, équipe, articles, réglages,
   liens) avec acteur, cible, IP ;
 - aucune fuite de secret (un mot de passe redéfini n'apparaît jamais) ;
-- consultation /admin/audit (filtres action et acteur/cible, pagination) ;
+- consultation du journal (/admin/journal, onglet actions : filtres, pagination) ;
 - accès réservé aux mandats (un ancien membre reçoit 403) ;
 - purge selon la rétention (CLI, --dry-run).
 """
@@ -202,19 +202,32 @@ def test_page_audit_et_filtres():
     app = create_app()
     client = app.test_client()
     _expect(_login(client).status_code == 302, "connexion administrateur")
-    page = client.get("/admin/audit").get_data(as_text=True)
-    _expect("Journal d'audit" in page, "page accessible")
+    page = client.get("/admin/journal?tab=actions").get_data(as_text=True)
+    _expect("Journal" in page, "page accessible")
     _expect("Action" in page and "Acteur" in page, "filtres présents")
 
-    filtered = client.get("/admin/audit?action=reglages.modification").get_data(as_text=True)
+    filtered = client.get("/admin/journal?tab=actions&action=reglages.modification").get_data(
+        as_text=True
+    )
     _expect("Modification des réglages" in filtered, "filtre par action")
     _expect("Jeanne Audit" not in filtered, "actions non concernées filtrées")
 
-    client.get("/admin/audit?page=abc")
-    _expect(client.get("/admin/audit?page=abc").status_code == 200, "pagination tolérante")
+    client.get("/admin/journal?tab=actions&page=abc")
     _expect(
-        client.get("/admin/audit?from=pas-une-date").status_code == 200, "date invalide tolérée"
+        client.get("/admin/journal?tab=actions&page=abc").status_code == 200,
+        "pagination tolérante",
     )
+    _expect(
+        client.get("/admin/journal?tab=actions&from=pas-une-date").status_code == 200,
+        "date invalide tolérée",
+    )
+
+    connexions = client.get("/admin/journal?tab=connexions").get_data(as_text=True)
+    _expect("Résultat" in connexions and "Compte" in connexions, "onglet connexions présent")
+    _expect("admin" in connexions, "connexion de l'administrateur journalisée")
+
+    _expect(client.get("/admin/audit").status_code == 302, "ancienne URL audit redirigée")
+    _expect(client.get("/admin/journaux").status_code == 302, "ancienne URL journaux redirigée")
 
 
 def test_acces_reserve_aux_mandats():
@@ -233,7 +246,7 @@ def test_acces_reserve_aux_mandats():
     _expect(
         _login(client, "ancien.audit", "secret123").status_code == 302, "connexion ancien membre"
     )
-    _expect(client.get("/admin/audit").status_code == 403, "audit interdit aux anciens membres")
+    _expect(client.get("/admin/journal").status_code == 403, "journal interdit aux anciens membres")
 
 
 def test_purge_audit():

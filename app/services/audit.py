@@ -2,8 +2,8 @@
 
 Chaque action sensible d'administration (comptes, équipe, articles, fûts,
 tireuses, événements, réglages) est enregistrée avec son acteur, sa cible,
-son campus et l'IP d'origine. Les entrées sont consultables dans
-`/admin/audit` et purgées selon `audit_logs_retention_days`.
+son campus et l'IP d'origine. Les entrées sont consultables dans l'onglet
+« Actions » de `/admin/journal` et purgées selon `audit_logs_retention_days`.
 
 Le journal ne contient jamais de secret : ni mot de passe, ni jeton, ni
 empreinte. Les messages sont rédigés pour être lisibles par un humain sans

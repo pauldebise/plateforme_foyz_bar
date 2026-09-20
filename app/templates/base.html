@@ -59,8 +59,7 @@
         <a class="side-link {{ 'active' if request.endpoint == 'admin.equipe' or request.endpoint == 'admin.membre' }}" href="{{ url_for('admin.equipe') }}"><i class="bi bi-people-fill"></i> Équipe</a>
         <a class="side-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin.article') }}" href="{{ url_for('admin.articles') }}"><i class="bi bi-box-seam"></i> Articles</a>
         <a class="side-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin.evenement') }}" href="{{ url_for('admin.evenements') }}"><i class="bi bi-stars"></i> Événements</a>
-        <a class="side-link {{ 'active' if request.endpoint == 'admin.journaux' }}" href="{{ url_for('admin.journaux') }}"><i class="bi bi-journal-lock"></i> Journaux</a>
-        <a class="side-link {{ 'active' if request.endpoint == 'admin.audit' }}" href="{{ url_for('admin.audit') }}"><i class="bi bi-shield-check"></i> Audit</a>
+        <a class="side-link {{ 'active' if request.endpoint in ('admin.journal', 'admin.journaux', 'admin.audit') }}" href="{{ url_for('admin.journal') }}"><i class="bi bi-journal-text"></i> Journal</a>
         <a class="side-link {{ 'active' if request.endpoint == 'admin.sante' }}" href="{{ url_for('admin.sante') }}"><i class="bi bi-activity"></i> Santé</a>
         <a class="side-link {{ 'active' if request.endpoint == 'admin.module_dev' }}" href="{{ url_for('admin.module_dev') }}"><i class="bi bi-sliders"></i> Module dev</a>
         {% endif %}

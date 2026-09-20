@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% import "_pagination.html" as pg %}
+{% block title %}Journal{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-journal-text"></i> Journal</h1>
+
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item">
+    <a class="nav-link {{ 'active' if tab == 'connexions' }}" href="{{ url_for('admin.journal', tab='connexions') }}"><i class="bi bi-journal-lock"></i> Connexions</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {{ 'active' if tab == 'actions' }}" href="{{ url_for('admin.journal', tab='actions') }}"><i class="bi bi-shield-check"></i> Actions</a>
+  </li>
+</ul>
+
+{% if tab == 'connexions' %}
+<form class="card mb-3">
+  <input type="hidden" name="tab" value="connexions">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small">Identifiant / nom</label>
+      <input class="form-control form-control-sm" name="user" value="{{ filters.get('user','') }}" placeholder="ex : paul.dupont">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small">Du</label>
+      <input class="form-control form-control-sm" type="date" name="from" value="{{ filters.get('from','') }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small">Au</label>
+      <input class="form-control form-control-sm" type="date" name="to" value="{{ filters.get('to','') }}">
+    </div>
+    <div class="col-md-2 d-grid"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filtrer</button></div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light"><tr><th>Date &amp; heure</th><th>Compte</th><th>Campus</th><th>IP</th><th>Résultat</th></tr></thead>
+      <tbody>
+        {% for log in logs %}
+        <tr class="{{ 'table-danger' if not log.success }}">
+          <td class="text-nowrap">{{ log.created_at|dt }}</td>
+          <td>{{ log.name }}{% if log.user_id %} <span class="text-muted small">(compte #{{ log.user_id }})</span>{% endif %}</td>
+          <td>{{ CAMPUSSES.get(log.campus, log.campus) }}</td>
+          <td class="small text-muted">{{ log.ip }}</td>
+          <td>{% if log.success %}<span class="badge bg-success">succès</span>{% else %}<span class="badge bg-danger">échec</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">Aucune connexion enregistrée.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pages > 1 %}
+  <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="small text-muted">{{ total }} connexion{{ 's' if total > 1 }} · page {{ page }} / {{ pages }}</span>
+    {{ pg.pagination(page, pages, 'admin.journal', link_args) }}
+  </div>
+  {% endif %}
+</div>
+<p class="small text-muted mt-2">{{ total }} connexion(s) enregistrée(s). Les entrées sont purgées au-delà de la durée configurable dans le Module développement.</p>
+
+{% else %}
+<form class="card mb-3">
+  <input type="hidden" name="tab" value="actions">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label small">Action</label>
+      <select class="form-select form-select-sm" name="action">
+        <option value="">Toutes</option>
+        {% for code, libelle in actions.items() %}
+        <option value="{{ code }}" {% if filters.get('action') == code %}selected{% endif %}>{{ libelle }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small">Acteur / cible</label>
+      <input class="form-control form-control-sm" name="user" value="{{ filters.get('user','') }}" placeholder="ex : paul.dupont">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Du</label>
+      <input class="form-control form-control-sm" type="date" name="from" value="{{ filters.get('from','') }}">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Au</label>
+      <input class="form-control form-control-sm" type="date" name="to" value="{{ filters.get('to','') }}">
+    </div>
+    <div class="col-md-2 d-grid"><button class="btn btn-sm btn-primary"><i class="bi bi-funnel"></i> Filtrer</button></div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light"><tr><th>Date &amp; heure</th><th>Acteur</th><th>Action</th><th>Cible</th><th>Détails</th><th>IP</th></tr></thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="text-nowrap">{{ log.created_at|dt }}</td>
+          <td>{{ log.actor or '—' }}{% if log.campus %} <span class="text-muted small">({{ CAMPUSSES.get(log.campus, log.campus) }})</span>{% endif %}</td>
+          <td><span class="badge bg-light text-dark">{{ actions.get(log.action, log.action) }}</span></td>
+          <td>{{ log.target or '—' }}</td>
+          <td class="small text-muted">{{ log.details }}</td>
+          <td class="small text-muted">{{ log.ip }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Aucune action enregistrée.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pages > 1 %}
+  <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="small text-muted">{{ total }} action{{ 's' if total > 1 }} · page {{ page }} / {{ pages }}</span>
+    {{ pg.pagination(page, pages, 'admin.journal', link_args) }}
+  </div>
+  {% endif %}
+</div>
+<p class="small text-muted mt-2">{{ total }} action(s) enregistrée(s). Les entrées sont purgées au-delà de la durée configurable dans le Module développement.</p>
+{% endif %}
+{% endblock %}
