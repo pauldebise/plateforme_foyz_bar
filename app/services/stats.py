@@ -210,8 +210,10 @@ def students_stats(filters=None, search="", page=1, per_page=0):
         )
     result.sort(key=lambda s: -s["spent"])
     if search:
-        needle = _fold(search)
-        result = [s for s in result if needle in _fold(s["name"])]
+        # Chaque mot doit apparaître, dans n'importe quel ordre : « prénom nom »
+        # retrouve un compte enregistré « nom prénom ».
+        needles = [t for t in _fold(search).split() if t]
+        result = [s for s in result if all(n in _fold(s["name"]) for n in needles)]
     top = result[:10]
     if not per_page:
         return {"rows": result, "top": top, "total": len(result), "page": 1, "pages": 1}

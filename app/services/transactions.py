@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
@@ -130,12 +130,20 @@ def search_students(query, campus=None, limit=15):
     # La recherche porte sur le nom réel, le surnom et l'identifiant.
     stmt = select(User).outerjoin(activity, activity.c.user_id == User.id)
     if q:
-        like = f"%{q}%"
+        # Chaque mot de la requête doit apparaître (dans n'importe quel ordre)
+        # dans le nom, le surnom ou l'identifiant : « prénom nom » retrouve
+        # donc un compte enregistré « nom prénom ».
+        tokens = [t for t in q.split() if t]
         stmt = stmt.where(
-            or_(
-                User.name.ilike(like),
-                User.nickname.ilike(like),
-                User.username.ilike(like),
+            and_(
+                *[
+                    or_(
+                        User.name.ilike(f"%{t}%"),
+                        User.nickname.ilike(f"%{t}%"),
+                        User.username.ilike(f"%{t}%"),
+                    )
+                    for t in tokens
+                ]
             )
         )
     stmt = stmt.order_by(
