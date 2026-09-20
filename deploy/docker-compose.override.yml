@@ -1,0 +1,33 @@
+services:
+  web:
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    environment:
+      HTTPS_ONLY: ${HTTPS_ONLY:-1}
+      TRUSTED_PROXY: ${TRUSTED_PROXY:-cloudflare}
+      PROXY_FIX_X_FOR: ${PROXY_FIX_X_FOR:-1}
+      APP_VERSION: ${APP_VERSION:-dev}
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      web:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  caddy_data:
+  caddy_config:

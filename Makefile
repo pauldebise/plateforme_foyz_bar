@@ -7,7 +7,7 @@ PG_TEST_URL ?= postgresql+psycopg2://foyz:foyztest@127.0.0.1:55432/foyz_test
 
 .PHONY: help init-db upgrade-db migrate-audit migrate-dry migrate-run migrate-keep \
         backup restore-list health purge-archives purge-logs \
-        tests tests-postgres lint format audit
+        tests tests-postgres lint format audit deploy-dev push-data
 
 help:
 	@echo "make init-db        cree/met a jour le schema + le mot de passe administrateur"
@@ -26,6 +26,8 @@ help:
 	@echo "make lint           ruff check (lint) + ruff format --check (format)"
 	@echo "make format         applique ruff format"
 	@echo "make audit          pip-audit sur requirements.txt"
+	@echo "make deploy-dev     synchronise et deploie la version locale sur https://dev.foyz.fr"
+	@echo "make push-data      importe la base SQLite + uploads locaux vers dev.foyz.fr"
 
 init-db:
 	$(PYTHON) -m flask --app wsgi.py init-db
@@ -75,3 +77,9 @@ format:
 
 audit:
 	$(PYTHON) -m pip_audit -r requirements.txt
+
+deploy-dev:
+	./deploy/deploy-dev.sh
+
+push-data:
+	./deploy/push-local-data.sh $(ARGS)

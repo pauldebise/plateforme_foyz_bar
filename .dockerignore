@@ -31,6 +31,7 @@ requirements-dev.txt
 pyproject.toml
 AUDIT_TECHNIQUE.md
 PLAN_ACTION.md
+deploy
 
 # Tests (inutiles à l'exécution)
 tests

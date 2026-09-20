@@ -1,0 +1,9 @@
+{
+	admin off
+}
+
+dev.foyz.fr {
+	tls /certs/cert.pem /certs/key.pem
+	encode gzip
+	reverse_proxy web:8000
+}
