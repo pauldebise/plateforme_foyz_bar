@@ -365,11 +365,13 @@ def membre(user_id):
     if u is None:
         abort(404)
     own = own_campus()
+    admin = g.current_user is not None and g.current_user.is_super_admin
     # chaque équipe gère les membres de son campus ; un membre sans campus
     # attribué peut être rattaché par n'importe quelle équipe. Le compte
     # d'administration, hors équipe, n'est jamais modifiable ici (ni statut,
-    # ni campus, ni mot de passe), même par un mandat.
-    editable = not u.is_super_admin and u.team_campus in (None, own)
+    # ni campus, ni mot de passe), même par un mandat. Seul l'admin global
+    # peut réaffecter un membre à l'autre campus.
+    editable = not u.is_super_admin and (admin or u.team_campus in (None, own))
     if request.method == "POST":
         if not editable:
             abort(403)
@@ -378,9 +380,15 @@ def membre(user_id):
             status = ""
         u.team_status = status or None
         # le membre est rattaché au campus de l'équipe qui le gère ; un
-        # rattachement existant est conservé (l'admin global gère les deux
-        # campus sans déplacer les membres)
-        u.team_campus = (u.team_campus or own) if u.team_status else None
+        # rattachement existant est conservé. L'admin global peut en plus
+        # réaffecter le membre à l'autre campus (formulaire avec `campus`).
+        campus = request.form.get("campus")
+        if admin and campus in CAMPUSSES:
+            u.team_campus = campus
+        if u.team_status:
+            u.team_campus = u.team_campus or own
+        else:
+            u.team_campus = None
         password = request.form.get("password") or ""
         if password:
             from werkzeug.security import generate_password_hash
@@ -404,6 +412,11 @@ def membre(user_id):
             details="; ".join(
                 [
                     f"statut équipe : {u.team_status or 'aucun'}",
+                    (
+                        f"campus {CAMPUSSES.get(u.team_campus, '—')}"
+                        if u.team_status
+                        else "aucun campus"
+                    ),
                     "mot de passe redéfini" if password else "mot de passe inchangé",
                 ]
             ),
@@ -411,7 +424,7 @@ def membre(user_id):
         db.session.commit()
         flash("Membre mis à jour.", "success")
         return redirect(url_for("admin.membre", user_id=u.id))
-    return render_template("admin/membre.html", u=u, editable=editable, own_campus=own)
+    return render_template("admin/membre.html", u=u, editable=editable, own_campus=own, admin=admin)
 
 
 @bp.route("/articles")

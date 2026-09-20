@@ -318,6 +318,102 @@ def test_admin_password_fallback_is_dev_only():
         _expect(check_admin_password("admin"), "repli en clair toléré en développement")
 
 
+def test_admin_can_reassign_member_campus():
+    from app.routes import auth as auth_module
+
+    app = create_app()
+    with app.app_context():
+        db.session.add(
+            User(
+                name="Membre Campus",
+                username="membre.campus",
+                team_status="mandat",
+                team_campus="brest",
+                password_hash=generate_password_hash("secret123"),
+            )
+        )
+        db.session.commit()
+        member_id = (
+            db.session.scalars(db.select(User).where(User.username == "membre.campus")).first().id
+        )
+
+    auth_module._attempts.clear()
+    client = app.test_client()
+    _expect(_login(client, "admin", ADMIN_PASSWORD).status_code == 302, "connexion admin")
+    token = _csrf(client.get(f"/admin/equipe/{member_id}").get_data(as_text=True))
+    res = client.post(
+        f"/admin/equipe/{member_id}",
+        data={"team_status": "mandat", "campus": "paris", "_csrf": token},
+    )
+    _expect(res.status_code == 302, f"admin réaffecte le campus ({res.status_code})")
+    with app.app_context():
+        member = db.session.get(User, member_id)
+        _expect(member.team_campus == "paris", f"campus déplacé vers Paris ({member.team_campus})")
+        _expect(member.team_status == "mandat", "statut équipe conservé")
+    # le formulaire de mot de passe porte le campus (pas de retour à brest)
+    token = _csrf(client.get(f"/admin/equipe/{member_id}").get_data(as_text=True))
+    client.post(
+        f"/admin/equipe/{member_id}",
+        data={
+            "team_status": "mandat",
+            "campus": "paris",
+            "password": "NouveauMotDePasse1",
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        _expect(
+            db.session.get(User, member_id).team_campus == "paris",
+            "campus conservé après mise à jour du mot de passe",
+        )
+    auth_module._attempts.clear()
+
+
+def test_mandat_cannot_reassign_member_campus():
+    from app.routes import auth as auth_module
+
+    app = create_app()
+    with app.app_context():
+        db.session.add(
+            User(
+                name="Mandat Simple",
+                username="mandat.simple",
+                team_status="mandat",
+                team_campus="brest",
+                password_hash=generate_password_hash("secret123"),
+            )
+        )
+        db.session.add(
+            User(
+                name="Cible Mandat",
+                username="cible.mandat",
+                team_status="mandat",
+                team_campus="brest",
+                password_hash=generate_password_hash("secret123"),
+            )
+        )
+        db.session.commit()
+        target_id = (
+            db.session.scalars(db.select(User).where(User.username == "cible.mandat")).first().id
+        )
+
+    auth_module._attempts.clear()
+    client = app.test_client()
+    _expect(_login(client, "mandat.simple", "secret123").status_code == 302, "connexion mandat")
+    token = _csrf(client.get(f"/admin/equipe/{target_id}").get_data(as_text=True))
+    # un champ `campus` injecté est ignoré pour un mandat ordinaire
+    client.post(
+        f"/admin/equipe/{target_id}",
+        data={"team_status": "mandat", "campus": "paris", "_csrf": token},
+    )
+    with app.app_context():
+        target = db.session.get(User, target_id)
+        _expect(
+            target.team_campus == "brest", f"campus inchangé pour un mandat ({target.team_campus})"
+        )
+    auth_module._attempts.clear()
+
+
 def test_chart_pages_render_with_json_data():
     app = create_app()
     authed = _client(app)

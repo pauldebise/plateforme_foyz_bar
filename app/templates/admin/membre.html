@@ -35,7 +35,15 @@
           </div>
           <div class="mb-3">
             <label class="form-label">Campus</label>
-            <input class="form-control" value="{{ CAMPUSSES[own_campus] }}" disabled>
+            {% if admin %}
+            <select class="form-select" name="campus">
+              {% for value, label in CAMPUSSES.items() %}
+              <option value="{{ value }}" {% if (u.team_campus or own_campus) == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+            {% else %}
+            <input class="form-control" value="{{ CAMPUSSES[u.team_campus or own_campus] }}" disabled>
+            {% endif %}
           </div>
           <button class="btn btn-primary">Enregistrer</button>
         </form>
@@ -51,6 +59,7 @@
         <form method="post" enctype="multipart/form-data">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="team_status" value="{{ u.team_status or '' }}">
+          {% if admin %}<input type="hidden" name="campus" value="{{ u.team_campus or own_campus }}">{% endif %}
           <div class="mb-3">
             <label class="form-label">Nouveau mot de passe</label>
             <input class="form-control" type="password" name="password" placeholder="{% if u.password_hash %}laisser vide pour conserver{% else %}définir un mot de passe{% endif %}">
