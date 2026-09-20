@@ -370,6 +370,13 @@ donc une reprise après échec reste possible.
   un compte actif sur au moins un campus reste migré normalement.
 - **Consignes** : `users.ecocups` (verres empruntés) est migré dans
   `wallets.glasses_outstanding` ; hors du périmètre de l'audit **monétaire**.
+- **Statut équipe (mandat / ancien)** : la source Brest ne porte que le drapeau
+  `is_foyz` (0/1), vrai pour **tout** membre passé par l'équipe depuis
+  l'ouverture — il ne dit pas quel mandat. Les comptes `is_foyz=1` dont
+  l'inscription (`registration`) remonte à l'année précédant le mandat en
+  cours (ou plus récemment) sont classés `team_status = "mandat"`, les autres
+  `"ancien"` ; le campus équipe est déduit (`brest`). L'année du mandat est
+  réglée par `MANDATE_YEAR` (`migration/settings.py`, sinon année courante).
 - **Transferts** : les demi-lignes Brest sont appariées par
   (date, opérateur, montant) — la source n'offre pas de lien explicite ; les
   groupes ambigus sont appariés dans l'ordre des identifiants et comptés au

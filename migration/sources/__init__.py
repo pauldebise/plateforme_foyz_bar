@@ -11,6 +11,7 @@ import re
 import unicodedata
 from datetime import datetime
 
+from .. import settings
 from ..util import liters_to_cl, normalize_key, parse_dt, slug_username, to_cents, unescape_html
 
 # ---------------------------------------------------------------- alias utils
@@ -123,8 +124,12 @@ TEAM_STATUS_MAP = {
     "ancien membre": "ancien",
     "alumni": "ancien",
     "anciens": "ancien",
-    # Brest : users.is_foyz (tinyint 0/1) -> statut équipe
-    "1": "mandat",
+    # Brest : users.is_foyz (tinyint 0/1) = « a été de l'équipe » (TOUS mandats
+    # confondus depuis l'ouverture). Le mapping statique est neutralisé :
+    # `classify_brest_team_status` tranche « mandat » vs « ancien » selon
+    # l'année d'inscription (cf. settings.MANDATE_YEAR). Valeur booléenne
+    # sentinelle, jamais rendue telle quelle.
+    "1": True,
 }
 
 
@@ -144,6 +149,34 @@ def normalize_team_status(value):
     if value is None:
         return None
     return TEAM_STATUS_MAP.get(str(value).strip().lower())
+
+
+def is_foyz_flag(value):
+    """Vrai si la valeur de statut source est le drapeau Brest `is_foyz`.
+
+    `pick` restitue indifféremment l'entier SQL 1 ou la chaîne '1' : les deux
+    (dont la sentinelle booléenne de TEAM_STATUS_MAP) signalent le drapeau
+    équipe, pas un statut textuel explicite (« ancien », « mandat »…).
+    """
+    return value is True or (value is not None and str(value).strip() == "1")
+
+
+def classify_brest_team_status(is_foyz, created_at, mandate_year=None):
+    """Statut équipe d'un compte Brest selon `is_foyz` et l'année d'inscription.
+
+    `is_foyz` marque tout membre passé par l'équipe, sans distinguer le mandat
+    en cours : un compte créé l'année précédant le mandat (ou plus récemment)
+    est considéré membre du mandat, sinon « ancien ». Retourne None sans
+    `is_foyz`.
+    """
+    if not is_foyz:
+        return None
+    mandate_year = mandate_year or settings.MANDATE_YEAR
+    if created_at is not None and getattr(created_at, "year", None) is not None:
+        return "mandat" if created_at.year >= mandate_year - 1 else "ancien"
+    # Sans date d'inscription exploitable : mandat par défaut (l'équipe en place
+    # reste active) plutôt que d'écarter un membre faute de donnée.
+    return "mandat"
 
 
 # ------------------------------------------------------------ alias tables
@@ -471,6 +504,9 @@ def map_user_row(row, campus, money_unit):
     hash réutilisable en cible (format werkzeug) -> `password_hash`, sinon
     valeur brute (bcrypt, md5, texte...) -> `legacy_password`, vérifiable à la
     connexion puis converti.
+    Statut équipe : le drapeau Brest `is_foyz` ne dit pas si le membre est du
+    mandat en cours ; il est reclassé « mandat »/« ancien » selon l'année
+    d'inscription (cf. `classify_brest_team_status`).
     """
     pseudo = pick(row, NAME_FIELDS)
     email = pick(row, USER_FIELDS["email"])
@@ -502,10 +538,22 @@ def map_user_row(row, campus, money_unit):
     if password is not None and hash_val is None:
         legacy_password = str(password).strip()[:255] or None
     balance = to_cents(pick(row, USER_FIELDS["balance"]), money_unit, context=f"solde {campus}")
+    created_at = parse_dt(pick(row, USER_FIELDS["created_at"]))
+    raw_status = pick(row, USER_FIELDS["team_status"])
+    # Drapeau `is_foyz` (Brest) : statut recalculé selon l'ancienneté du compte
+    # (mandat en cours vs ancien membre) ; un statut textuel explicite est
+    # conservé tel quel (Paris, autres sources).
+    team_status = (
+        classify_brest_team_status(True, created_at)
+        if is_foyz_flag(raw_status)
+        else normalize_team_status(raw_status)
+    )
     team_campus = pick(row, USER_FIELDS["team_campus"])
     team_campus = (
         team_campus.lower() if str(team_campus or "").lower() in ("brest", "paris") else None
     )
+    if team_status and not team_campus:
+        team_campus = campus
     user = {
         "src_id": pick(row, USER_FIELDS["src_id"]),
         "key": key,
@@ -516,7 +564,7 @@ def map_user_row(row, campus, money_unit):
         "promotion": as_int(pick(row, USER_FIELDS["promotion"])),
         "password_hash": hash_val,
         "legacy_password": legacy_password,
-        "team_status": normalize_team_status(pick(row, USER_FIELDS["team_status"])),
+        "team_status": team_status,
         "team_campus": team_campus,
         "blacklist": as_bool(pick(row, USER_FIELDS["blacklist"])) or False,
         "blacklist_alcohol": as_bool(pick(row, USER_FIELDS["blacklist_alcohol"])) or False,
@@ -524,7 +572,7 @@ def map_user_row(row, campus, money_unit):
         "disabled": as_bool(pick(row, USER_FIELDS["disabled"])) or False,
         "glasses_outstanding": as_int(pick(row, USER_FIELDS["glasses_outstanding"])) or 0,
         "birth_date": birth_date,
-        "created_at": parse_dt(pick(row, USER_FIELDS["created_at"])),
+        "created_at": created_at,
         "balance_cents": balance,
         "campus": campus,
     }

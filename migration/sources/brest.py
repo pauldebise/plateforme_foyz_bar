@@ -50,6 +50,13 @@ badge est connu. Les tables
 extras comptoir) n'ont pas d'équivalent cible : les articles de tireuse sont
 régénérés depuis les tarifs des fûts.
 
+Statut équipe : `users.is_foyz` (0/1) marque tout membre passé par l'équipe
+— tous mandats confondus depuis l'ouverture — et ne distingue donc PAS le
+mandat en cours. Les comptes `is_foyz=1` sont reclassés « mandat » (compte
+créé l'année précédant le mandat, ou plus récemment) ou « ancien » selon
+`registration` (cf. `classify_brest_team_status` et `settings.MANDATE_YEAR`,
+ajustable la veille de la bascule via la variable d'environnement MANDATE_YEAR).
+
 Consignes : la colonne `users.ecocups` (verres empruntés) est bien migrée vers
 `wallets.glasses_outstanding`, mais elle est HORS du périmètre de l'audit
 comptable, qui ne porte que sur les soldes monétaires (R20). Comptes

@@ -1,6 +1,7 @@
 """Constantes et réglages du pipeline de migration."""
 
 import os
+from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -30,3 +31,11 @@ ARCHIVE_RETENTION_DAYS = max(1, int(os.environ.get("ARCHIVE_RETENTION_DAYS") or 
 # Unité par défaut des montants sources : euros (décimaux) convertis en centimes.
 DEFAULT_MONEY_UNIT = "euros"
 MONEY_UNITS = ("euros", "cents")
+
+# Année du mandat en cours (celle qui prend ses fonctions à la bascule). Le
+# dump Brest ne porte aucun marqueur « mandat courant » : `is_foyz` (0/1) vaut
+# pour TOUS les anciens membres depuis l'ouverture. On classe donc « mandat »
+# les comptes équipe créés l'année précédant le mandat (year(registration) >=
+# MANDATE_YEAR - 1), les autres en « ancien ». Ajustable la veille de la
+# bascule via MANDATE_YEAR, sinon déduit de l'année courante.
+MANDATE_YEAR = int(os.environ.get("MANDATE_YEAR") or datetime.now().year)

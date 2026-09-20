@@ -237,6 +237,47 @@ def test_user_password_and_real_name_mapping():
     _expect(paris["username"] == "marie.le.goff", f"identifiant multi-mots ({paris['username']})")
 
 
+def test_brest_team_status_mandate_vs_ancien():
+    """`is_foyz` (Brest) = « a été de l'équipe » sans dire quel mandat : on
+    tranche selon l'année d'inscription (compte créé l'année précédant le
+    mandat -> « mandat », sinon « ancien »)."""
+    from migration import settings
+
+    mandate = settings.MANDATE_YEAR
+
+    def team(registration):
+        user, _ = map_user_row(
+            {"card_id": "1", "name": "Team Test", "is_foyz": 1, "registration": registration},
+            "brest",
+            "euros",
+        )
+        return user
+
+    recent = team(f"{mandate - 1}-09-01 10:00:00")
+    _expect(
+        recent["team_status"] == "mandat",
+        f"inscription année mandat-1 -> mandat ({recent['team_status']})",
+    )
+    _expect(recent["team_campus"] == "brest", "campus équipe par défaut")
+    older = team(f"{mandate - 5}-05-01 08:00:00")
+    _expect(
+        older["team_status"] == "ancien", f"inscription ancienne -> ancien ({older['team_status']})"
+    )
+    # is_foyz=0 : aucun statut équipe, quelle que soit la date
+    neutral, _ = map_user_row(
+        {"card_id": "2", "name": "Neutre", "is_foyz": 0, "registration": f"{mandate - 1}-09-01"},
+        "brest",
+        "euros",
+    )
+    _expect(neutral["team_status"] is None, "is_foyz=0 -> pas d'accès équipe")
+    _expect(neutral["team_campus"] is None, "pas de campus équipe sans statut")
+    # un statut textuel explicite (Paris) n'est pas reclassé
+    paris, _ = map_user_row(
+        {"prenom": "Ancien", "nom": "Paris", "statut": "ancien"}, "paris", "euros"
+    )
+    _expect(paris["team_status"] == "ancien", "statut textuel Paris conservé")
+
+
 def test_bit_literals_and_html():
     # mysqldump écrit les colonnes bit(1) sous forme b'0' / b'1' (Brest :
     # alcohol_blacklisted) — sans ce fix, tout importait à False
