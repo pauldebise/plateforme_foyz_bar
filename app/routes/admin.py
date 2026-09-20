@@ -343,12 +343,19 @@ def compte_supprimer(user_id):
 @bp.route("/equipe")
 @login_required
 def equipe():
-    members = (
-        db.session.scalars(select(User).where(User.team_status.is_not(None)).order_by(User.name))
-        .unique()
-        .all()
-    )
-    return render_template("admin/equipe.html", members=members, own_campus=own_campus())
+    q = request.args.get("q", "").strip()
+    stmt = select(User).where(User.team_status.is_not(None))
+    if q:
+        like = f"%{q}%"
+        stmt = stmt.where(
+            or_(
+                User.name.ilike(like),
+                User.nickname.ilike(like),
+                User.username.ilike(like),
+            )
+        )
+    members = db.session.scalars(stmt.order_by(User.name)).unique().all()
+    return render_template("admin/equipe.html", members=members, own_campus=own_campus(), q=q)
 
 
 @bp.route("/equipe/<int:user_id>", methods=["GET", "POST"])

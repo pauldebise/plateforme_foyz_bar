@@ -6,10 +6,16 @@
   <a class="btn btn-primary" href="{{ url_for('admin.comptes') }}"><i class="bi bi-person-plus"></i> Attribuer depuis les comptes</a>
 </div>
 
-<div class="alert alert-info small">
-  Les <strong>membres de mandat</strong> accèdent à l'interface équipe <em>et</em> aux onglets administrateur.
-  Les <strong>anciens membres</strong> conservent l'interface équipe mais perdent les onglets administrateur.
-</div>
+<form class="card mb-3">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-md-8">
+      <label class="form-label small">Recherche</label>
+      <input class="form-control" name="q" value="{{ q }}" placeholder="Ex : Dupont, Flavie…">
+    </div>
+    <div class="col-md-2 d-grid"><button class="btn btn-primary"><i class="bi bi-search"></i> Rechercher</button></div>
+    <div class="col-md-2 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.equipe') }}">Réinitialiser</a></div>
+  </div>
+</form>
 
 <div class="card">
   <div class="table-responsive">
