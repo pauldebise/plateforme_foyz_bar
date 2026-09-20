@@ -325,7 +325,7 @@ def create_purchase(
                     "overdraft_limit",
                     f"Découvert maximum dépassé pour {u.display_name} : transaction refusée.",
                 )
-        if negative and not S.check_admin_password(admin_password):
+        if negative and not S.check_admin_password(admin_password, campus):
             raise OperationError(
                 "admin_password_required",
                 "Un étudiant passera en négatif : mot de passe administrateur requis.",
@@ -629,7 +629,7 @@ def create_transfer(*, operator_label, campus, from_user, to_user, amount_cents)
 def cancel_transaction(transaction, admin_password):
     if transaction.cancelled:
         raise OperationError("invalid", "Transaction déjà annulée.")
-    if not S.check_admin_password(admin_password):
+    if not S.check_admin_password(admin_password, transaction.campus):
         raise OperationError("admin_password_required", "Mot de passe administrateur requis.")
 
     # Portefeuilles concernés : regroupés par campus puis verrouillés par id

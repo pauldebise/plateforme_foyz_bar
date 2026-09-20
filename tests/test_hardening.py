@@ -309,13 +309,17 @@ def test_account_deletion_is_scoped_to_campus():
 def test_admin_password_fallback_is_dev_only():
     app = create_app()
     with app.app_context():
-        set_setting("admin_password_hash", "")
+        for campus in ("brest", "paris"):
+            set_setting(f"admin_password_hash_{campus}", "")
         db.session.commit()
         app.config["DEFAULT_ADMIN_PASSWORD"] = "admin"
         app.config["DEBUG"] = False
-        _expect(not check_admin_password("admin"), "repli en clair refusé hors développement")
+        _expect(
+            not check_admin_password("admin", "brest"),
+            "repli en clair refusé hors développement",
+        )
         app.config["DEBUG"] = True
-        _expect(check_admin_password("admin"), "repli en clair toléré en développement")
+        _expect(check_admin_password("admin", "brest"), "repli en clair toléré en développement")
 
 
 def test_admin_can_reassign_member_campus():
@@ -412,6 +416,29 @@ def test_mandat_cannot_reassign_member_campus():
             target.team_campus == "brest", f"campus inchangé pour un mandat ({target.team_campus})"
         )
     auth_module._attempts.clear()
+
+
+def test_admin_password_is_per_campus():
+    from app.services.settings import set_admin_password
+
+    app = create_app()
+    with app.app_context():
+        set_admin_password("MotDePasseBrest12!", "brest")
+        set_admin_password("MotDePasseParis12!", "paris")
+        db.session.commit()
+        _expect(check_admin_password("MotDePasseBrest12!", "brest"), "brest accepte son mdp")
+        _expect(
+            not check_admin_password("MotDePasseParis12!", "brest"), "brest refuse celui de paris"
+        )
+        _expect(check_admin_password("MotDePasseParis12!", "paris"), "paris accepte son mdp")
+        _expect(
+            not check_admin_password("MotDePasseBrest12!", "paris"), "paris refuse celui de brest"
+        )
+        _expect(not check_admin_password("MotDePasseBrest12!", "lyon"), "campus inconnu refusé")
+        # restaure l'état partagé par la suite (mot de passe initial des deux campus)
+        set_admin_password(ADMIN_PASSWORD, "brest")
+        set_admin_password(ADMIN_PASSWORD, "paris")
+        db.session.commit()
 
 
 def test_chart_pages_render_with_json_data():

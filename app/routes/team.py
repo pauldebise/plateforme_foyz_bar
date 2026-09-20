@@ -289,7 +289,7 @@ def annuler():
         flash("Aucune transaction sélectionnée.", "danger")
         return redirect(url_for("team.historique"))
     password = request.form.get("admin_password", "")
-    if not check_admin_password(password):
+    if not check_admin_password(password, own_campus()):
         flash("Mot de passe administrateur requis pour annuler une transaction.", "danger")
         return redirect(url_for("team.historique"))
     cancelled, errors = 0, []

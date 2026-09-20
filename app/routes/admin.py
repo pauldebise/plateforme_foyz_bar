@@ -236,7 +236,7 @@ def compte(user_id):
             if (
                 u.blacklist_alcohol
                 and not new_ba
-                and not S.check_admin_password(request.form.get("admin_password", ""))
+                and not S.check_admin_password(request.form.get("admin_password", ""), own_campus())
             ):
                 flash(
                     "Le retrait du statut « blacklist alcool » exige le mot de passe administrateur.",
@@ -311,7 +311,7 @@ def compte_supprimer(user_id):
     # Le compte d'administration ne peut jamais être supprimé.
     if u.is_super_admin:
         abort(403)
-    if not S.check_admin_password(request.form.get("admin_password", "")):
+    if not S.check_admin_password(request.form.get("admin_password", ""), own_campus()):
         flash("La suppression d'un compte exige le mot de passe administrateur.", "danger")
         return redirect(url_for("admin.compte", user_id=u.id))
     if not _deletion_campus_ok(u):
@@ -1120,14 +1120,17 @@ def module_dev():
             from app.services import passwords
 
             problem = passwords.validate(new, username="admin", name="administrateur")
-            if not S.check_admin_password(current):
-                flash("Mot de passe administrateur actuel incorrect.", "danger")
+            if not S.check_admin_password(current, own):
+                flash(
+                    f"Mot de passe administrateur actuel incorrect ({CAMPUSSES[own]}).",
+                    "danger",
+                )
             elif problem:
                 flash(problem, "danger")
             else:
-                S.set_admin_password(new)
-                A.record("reglages.mot_de_passe")
-                flash("Mot de passe administrateur modifié.", "success")
+                S.set_admin_password(new, own)
+                A.record("reglages.mot_de_passe", details=f"campus {CAMPUSSES[own]}")
+                flash(f"Mot de passe administrateur modifié ({CAMPUSSES[own]}).", "success")
         elif action == "add_link":
             label = clamp_text((request.form.get("label") or "").strip(), 160)
             url = clamp_text((request.form.get("url") or "").strip(), 500)

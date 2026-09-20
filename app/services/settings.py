@@ -2,6 +2,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
 from app.models import Setting
+from app.utils import CAMPUSSES
 
 DEFAULTS = {
     "overdraft_limit_cents": "500",
@@ -23,7 +24,11 @@ DEFAULTS = {
     "session_timeout_minutes": "30",
     "max_postits_private": "20",
     "max_postits_public": "10",
-    "admin_password_hash": "",
+    # Mot de passe administrateur (opérations sensibles) : un par campus, saisi
+    # et vérifié dans le contexte du campus de l'opération (voir
+    # check_admin_password / set_admin_password).
+    "admin_password_hash_brest": "",
+    "admin_password_hash_paris": "",
     "link_hosting": "",
     "link_database": "",
     "link_repository": "",
@@ -71,10 +76,21 @@ def deposit_enabled():
     return bool_setting("deposit_enabled")
 
 
-def check_admin_password(password):
-    if not password:
+def admin_password_key(campus):
+    """Clé de réglage du mot de passe administrateur d'un campus."""
+    return f"admin_password_hash_{campus}"
+
+
+def check_admin_password(password, campus):
+    """Vérifie le mot de passe administrateur du campus de l'opération.
+
+    Chaque campus a son propre mot de passe (opérations sensibles : découvert,
+    annulation, suppression de compte, retrait « blacklist alcool »). Un campus
+    inconnu refuse la vérification.
+    """
+    if not password or campus not in CAMPUSSES:
         return False
-    stored = get_setting("admin_password_hash", "")
+    stored = get_setting(admin_password_key(campus), "")
     if stored:
         return check_password_hash(stored, password)
     # Repli en clair uniquement en développement (au démarrage, ensure_dev_admin
@@ -87,5 +103,5 @@ def check_admin_password(password):
     return password == current_app.config.get("DEFAULT_ADMIN_PASSWORD", "admin")
 
 
-def set_admin_password(password):
-    set_setting("admin_password_hash", generate_password_hash(password))
+def set_admin_password(password, campus):
+    set_setting(admin_password_key(campus), generate_password_hash(password))

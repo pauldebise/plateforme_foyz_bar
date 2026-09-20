@@ -194,18 +194,20 @@
 
   <div class="col-lg-5">
     <div class="card mb-4">
-      <div class="card-header"><i class="bi bi-shield-lock"></i> Mot de passe administrateur</div>
+      <div class="card-header"><i class="bi bi-shield-lock"></i> Mot de passe administrateur — {{ CAMPUSSES[own_campus] }}</div>
       <div class="card-body">
         <form method="post">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="password">
-          <div class="mb-3"><label class="form-label">Mot de passe actuel</label><input class="form-control" type="password" name="current_password" required></div>
-          <div class="mb-3"><label class="form-label">Nouveau mot de passe</label><input class="form-control" type="password" name="new_password" required></div>
+          <div class="mb-3"><label class="form-label">Mot de passe actuel ({{ CAMPUSSES[own_campus] }})</label><input class="form-control" type="password" name="current_password" required></div>
+          <div class="mb-3"><label class="form-label">Nouveau mot de passe ({{ CAMPUSSES[own_campus] }})</label><input class="form-control" type="password" name="new_password" required></div>
           <div class="d-grid"><button class="btn btn-primary">Modifier</button></div>
         </form>
         <p class="small text-muted mt-3 mb-0">
-          Ce mot de passe sert à confirmer les opérations sensibles : commandes en découvert,
-          annulations de transactions et retrait du statut « blacklist alcool ».
+          Chaque campus a son propre mot de passe administrateur : il confirme les opérations
+          sensibles de ce campus (commandes en découvert, annulations de transactions,
+          suppression de comptes, retrait du statut « blacklist alcool »). Basculez de campus
+          pour modifier celui de l'autre site.
         </p>
       </div>
     </div>

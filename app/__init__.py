@@ -36,8 +36,13 @@ from app.utils import (
 
 
 def ensure_dev_admin():
-    from app.models import User
-    from app.services.settings import get_setting, set_admin_password
+    from app.models import Setting, User
+    from app.services.settings import (
+        admin_password_key,
+        get_setting,
+        set_admin_password,
+        set_setting,
+    )
 
     password = current_app.config.get("DEFAULT_ADMIN_PASSWORD", "admin")
     admin = db.session.scalars(select(User).where(User.username == "admin")).first()
@@ -55,8 +60,22 @@ def ensure_dev_admin():
     admin.blacklist_alcohol = False
     if not admin.password_hash:
         admin.password_hash = generate_password_hash(password)
-    if not get_setting("admin_password_hash"):
-        set_admin_password(password)
+    # Mot de passe administrateur : un par campus. Un ancien réglage global
+    # (`admin_password_hash`, installations antérieures) est dupliqué sur les
+    # deux campus pour ne pas changer les mots de passe en service.
+    legacy = get_setting("admin_password_hash", "")
+    for campus in CAMPUSSES:
+        key = admin_password_key(campus)
+        if get_setting(key, ""):
+            continue
+        if legacy:
+            set_setting(key, legacy)
+        else:
+            set_admin_password(password, campus)
+    if legacy:
+        old = db.session.get(Setting, "admin_password_hash")
+        if old is not None:
+            db.session.delete(old)
     db.session.commit()
 
 

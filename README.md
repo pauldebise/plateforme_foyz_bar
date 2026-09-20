@@ -233,7 +233,7 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 | `FLASK_ENV`     | `production` ou `development`                               | `production`      |
 | `SECRET_KEY`    | Signature des sessions — **obligatoire en production** (32 car. min.) | valeur de dev (refusée en production) |
 | `DATABASE_URL`  | URI SQLAlchemy (SQLite ou PostgreSQL)                       | SQLite locale     |
-| `ADMIN_PASSWORD`| Mot de passe administrateur initial (créé par `init-db`) — **obligatoire en production** | `admin` (refusé en production) |
+| `ADMIN_PASSWORD`| Mot de passe administrateur initial des deux campus (créé par `init-db`) — **obligatoire en production** | `admin` (refusé en production) |
 | `HTTPS_ONLY`    | `1` = cookies `Secure` (derrière HTTPS)                     | `0`               |
 | `UPLOAD_DIR`    | Dossier des fichiers téléversés                             | `instance/uploads`|
 | `TRUSTED_PROXY` | `cloudflare` = IP client lue dans `CF-Connecting-IP`        | vide (aucun)      |
@@ -270,7 +270,12 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 ## 5. Maintenance
 
 - **Sauvegardes automatiques, restauration, supervision, purge** : voir §7.
-- **Changer le mot de passe administrateur** : Module développement → Mot de passe administrateur.
+- **Changer le mot de passe administrateur** : Module développement → Mot de passe
+  administrateur. Ce mot de passe est **propre à chaque campus** (il confirme les
+  opérations sensibles : découvert, annulation, suppression de compte, retrait
+  « blacklist alcool ») ; basculez de campus pour modifier celui de l'autre site. À
+  la première exécution, `ADMIN_PASSWORD` initialise les deux campus, et un ancien
+  réglage unique (`admin_password_hash`) est repris sur les deux.
 - Les paramètres (découvert, consigne, thèmes, durées de conservation…) se règlent dans
   **Administrateur → Module développement**, sans redéploiement.
 

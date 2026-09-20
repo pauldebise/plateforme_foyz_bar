@@ -169,7 +169,9 @@ def test_b_politique_dans_administration():
         },
     )
     with app.app_context():
-        _expect(check_admin_password(ADMIN_PASSWORD), "mot de passe administrateur inchangé")
+        _expect(
+            check_admin_password(ADMIN_PASSWORD, "brest"), "mot de passe administrateur inchangé"
+        )
 
 
 def main():
