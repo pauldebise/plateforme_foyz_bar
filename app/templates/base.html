@@ -52,7 +52,7 @@
         <a class="side-link {{ 'active' if request.endpoint == 'team.statistiques' }}" href="{{ url_for('team.statistiques') }}"><i class="bi bi-bar-chart"></i> Statistiques</a>
         <a class="side-link {{ 'active' if request.endpoint == 'team.tresorerie' }}" href="{{ url_for('team.tresorerie') }}"><i class="bi bi-cash-stack"></i> Trésorerie</a>
         <a class="side-link {{ 'active' if request.endpoint == 'team.notes' }}" href="{{ url_for('team.notes') }}"><i class="bi bi-sticky"></i> Notes</a>
-        <a class="side-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin.tireuse') or request.endpoint and request.endpoint.startswith('admin.keg') or request.endpoint and request.endpoint.startswith('admin.tap') }}" href="{{ url_for('admin.tireuses') }}"><i class="bi bi-beaker"></i> Tireuses</a>
+        <a class="side-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin.tireuse') or request.endpoint and request.endpoint.startswith('admin.keg') or request.endpoint and request.endpoint.startswith('admin.tap') }}" href="{{ url_for('admin.tireuses') }}"><i class="bi bi-cup-straw"></i> Tireuses</a>
         {% if current_user.team_status == 'mandat' or current_user.is_super_admin %}
         <div class="side-section">Administrateur</div>
         <a class="side-link {{ 'active' if request.endpoint == 'admin.comptes' or request.endpoint == 'admin.compte' }}" href="{{ url_for('admin.comptes') }}"><i class="bi bi-person-lines-fill"></i> Comptes</a>
