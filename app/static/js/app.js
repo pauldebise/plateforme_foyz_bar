@@ -83,7 +83,7 @@ function initStudentSearch(inputEl, listEl, onPick, options = {}) {
     activeIndex = -1;
     listEl.innerHTML = '';
     setOpen(false);
-    inputEl.value = '';
+    inputEl.value = options.keepValue ? r.name : '';
   }
 
   inputEl.addEventListener('input', () => {
