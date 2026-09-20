@@ -4,7 +4,7 @@ Exécutable sans pytest : python -m tests.test_sante
 
 Couvre :
 - page /admin/sante : état base/uploads/schéma, version, activité, disques,
-  sauvegardes, dernières connexions ; accès réservé aux mandats ;
+  sauvegardes ; accès réservé aux mandats ;
 - service app/services/health.py : inventaire des sauvegardes (chiffrement,
   hebdomadaires, fichiers étrangers ignorés), espace disque, taille de base,
   cohérence avec /health.
@@ -73,7 +73,6 @@ def test_page_sante():
         "Version applicative",
         "Espace disque",
         "Sauvegardes",
-        "Dernières connexions",
     ):
         _expect(marker in page, f"section « {marker} » présente")
 

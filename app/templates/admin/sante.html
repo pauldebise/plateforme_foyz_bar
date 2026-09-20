@@ -107,25 +107,5 @@
   </div>
 </div>
 
-<div class="card mb-3">
-  <div class="card-header"><i class="bi bi-clock-history"></i> Dernières connexions</div>
-  <div class="table-responsive">
-    <table class="table table-sm align-middle mb-0">
-      <thead class="table-light"><tr><th>Date</th><th>Compte</th><th>Campus</th><th>Résultat</th></tr></thead>
-      <tbody>
-        {% for log in last_logins %}
-        <tr class="{{ 'table-danger' if not log.success }}">
-          <td class="text-nowrap">{{ log.created_at|dt }}</td>
-          <td>{{ log.name }}</td>
-          <td>{{ CAMPUSSES.get(log.campus, log.campus) }}</td>
-          <td>{% if log.success %}<span class="badge bg-success">succès</span>{% else %}<span class="badge bg-danger">échec</span>{% endif %}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="4" class="text-center text-muted py-3">Aucune connexion enregistrée.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
 <p class="small text-muted">Sonde publique : <a href="{{ url_for('health') }}">/health</a> (base, téléversements, schéma).</p>
 {% endblock %}

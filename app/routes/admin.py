@@ -1022,9 +1022,6 @@ def sante():
         ),
         "db_size": H.database_size(),
     }
-    last_logins = db.session.scalars(
-        select(LoginLog).order_by(LoginLog.created_at.desc()).limit(5)
-    ).all()
     return render_template(
         "admin/sante.html",
         checks=checks,
@@ -1033,7 +1030,6 @@ def sante():
         disks=disks,
         activity=activity,
         version=current_app.config.get("APP_VERSION", "?"),
-        last_logins=last_logins,
     )
 
 
