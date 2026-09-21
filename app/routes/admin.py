@@ -431,14 +431,17 @@ def membre(user_id):
 @login_required
 def articles():
     campus = view_campus()
-    articles = db.session.scalars(
-        select(Article).where(Article.campus == campus).order_by(Article.is_tap, Article.name)
-    ).all()
+    q = request.args.get("q", "").strip()
+    stmt = select(Article).where(Article.campus == campus)
+    if q:
+        stmt = stmt.where(Article.name.ilike(f"%{q}%"))
+    articles = db.session.scalars(stmt.order_by(Article.is_tap, Article.name)).all()
     return render_template(
         "admin/articles.html",
         articles=articles,
         campus=campus,
         writable=campus == own_campus(),
+        q=q,
     )
 
 

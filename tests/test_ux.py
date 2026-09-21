@@ -302,6 +302,47 @@ def test_d_article_prive():
     )
 
 
+def test_e_recherche_articles():
+    """Barre de recherche de l'onglet article : filtre par nom, campus conservé."""
+    app = create_app()
+    with app.app_context():
+        db.session.add_all(
+            [
+                Article(
+                    name="Pinte blonde",
+                    article_type="biere",
+                    campus="brest",
+                    price_std=450,
+                    price_team=350,
+                    active=True,
+                ),
+                Article(
+                    name="Coca",
+                    article_type="snack",
+                    campus="brest",
+                    price_std=200,
+                    price_team=150,
+                    active=True,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    client = app.test_client()
+    _login(client)
+
+    page = client.get("/admin/articles?campus=brest&q=pinte").get_data(as_text=True)
+    _expect("Pinte blonde" in page, "article correspondant affiché")
+    _expect(">Coca<" not in page, "article non correspondant masqué")
+    _expect('<input type="hidden" name="campus" value="brest">' in page, "campus conservé")
+
+    empty = client.get("/admin/articles?campus=brest&q=zzz").get_data(as_text=True)
+    _expect("Aucun article ne correspond à « zzz »" in empty, "message si aucun résultat")
+
+    full = client.get("/admin/articles?campus=brest").get_data(as_text=True)
+    _expect("Pinte blonde" in full and ">Coca<" in full, "liste complète sans recherche")
+
+
 def main():
     tests = [
         (name, fn)

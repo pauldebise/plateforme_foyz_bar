@@ -11,6 +11,18 @@
   </div>
 </div>
 
+<form class="card mb-3" method="get" action="{{ url_for('admin.articles') }}">
+  <input type="hidden" name="campus" value="{{ campus }}">
+  <div class="card-body row g-2 align-items-end">
+    <div class="col-md-8">
+      <label class="form-label small">Recherche</label>
+      <input class="form-control" name="q" value="{{ q }}" placeholder="Ex : Pinte, Coca…">
+    </div>
+    <div class="col-md-2 d-grid"><button class="btn btn-primary"><i class="bi bi-search"></i> Rechercher</button></div>
+    <div class="col-md-2 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.articles', campus=campus) }}">Réinitialiser</a></div>
+  </div>
+</form>
+
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
     <span>Catalogue — {{ CAMPUSSES[campus] }}</span>
@@ -52,7 +64,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">Aucun article sur ce campus.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">{% if q %}Aucun article ne correspond à « {{ q }} ».{% else %}Aucun article sur ce campus.{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
