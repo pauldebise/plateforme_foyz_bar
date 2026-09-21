@@ -35,10 +35,12 @@
       {% else %}
       <div class="mb-3">
         <label class="form-label">Étudiant</label>
-        <input class="form-control op-search" id="user-search" data-target="user_id" placeholder="Rechercher…" autocomplete="off" required>
-        <div class="border rounded bg-white shadow-sm position-absolute d-none op-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
+        <div class="position-relative">
+          <input class="form-control op-search" id="user-search" data-target="user_id" data-list="user-list" placeholder="Rechercher…" autocomplete="off" required>
+          <div class="border rounded bg-white shadow-sm position-absolute w-100 d-none op-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
+        </div>
         <input type="hidden" name="user_id" id="user_id">
-        <div class="form-text op-info" id="user-info"></div>
+        <ul class="list-group list-group-flush mt-2" id="user-list"></ul>
       </div>
       {% endif %}
 

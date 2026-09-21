@@ -1,26 +1,59 @@
+// Rechargement/retrait : un seul compte à la fois, présenté comme les
+// contributeurs du paiement et les comptes du transfert (même carte de liste).
 document.querySelectorAll('.op-search').forEach((input) => {
   const results = input.parentElement.querySelector('.op-results');
   const hidden = document.getElementById(input.dataset.target);
-  const info = input.parentElement.querySelector('.op-info');
+  const list = document.getElementById(input.dataset.list);
+  let selected = null;
+
+  function render() {
+    list.replaceChildren();
+    if (!selected) {
+      list.appendChild(
+        makeEl('li', 'list-group-item text-muted px-2', 'Aucun étudiant sélectionné.'),
+      );
+      return;
+    }
+    const li = makeEl('li', 'list-group-item d-flex justify-content-between align-items-center px-2');
+    const info = document.createElement('div');
+    info.appendChild(makeEl('i', 'bi bi-person-circle'));
+    info.appendChild(document.createTextNode(' '));
+    info.appendChild(makeEl('strong', '', selected.name));
+    info.appendChild(document.createTextNode(' '));
+    info.appendChild(makeEl('span', 'badge bg-light text-dark', `${(selected.balance / 100).toFixed(2)} €`));
+    const badges = [];
+    if (selected.blacklist) badges.push(['badge-blacklist', 'blacklist']);
+    if (selected.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
+    if (badges.length) info.appendChild(document.createTextNode(' '));
+    appendBadges(info, badges);
+    const remove = makeEl('button', 'btn btn-sm btn-outline-danger');
+    remove.type = 'button';
+    remove.title = 'Retirer';
+    remove.appendChild(makeEl('i', 'bi bi-x'));
+    remove.addEventListener('click', () => {
+      selected = null;
+      hidden.value = '';
+      input.value = '';
+      render();
+    });
+    li.appendChild(info);
+    li.appendChild(remove);
+    list.appendChild(li);
+  }
+
   // Une nouvelle saisie invalide la sélection précédente : le champ caché et
-  // le récapitulatif sont vidés tant qu'un résultat n'a pas été choisi.
+  // la carte sont vidés tant qu'un résultat n'a pas été choisi.
   input.addEventListener('input', () => {
+    selected = null;
     hidden.value = '';
-    info.replaceChildren();
+    render();
   });
   initStudentSearch(input, results, async (r) => {
+    selected = await apiFetch(`/api/wallet/${r.id}`);
     hidden.value = r.id;
-    const w = await apiFetch(`/api/wallet/${r.id}`);
-    const badges = [];
-    if (w.blacklist) badges.push(['badge-blacklist', 'blacklist']);
-    if (w.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
-    info.replaceChildren();
-    info.appendChild(makeEl('strong', '', w.name));
-    info.appendChild(document.createTextNode(' — solde : '));
-    info.appendChild(makeEl('strong', '', `${(w.balance / 100).toFixed(2)} €`));
-    info.appendChild(document.createTextNode(` · verres consignés : ${w.glasses} `));
-    appendBadges(info, badges);
+    render();
   }, { keepValue: true });
+  render();
 });
 
 // Transfert multi-comptes : on peut choisir plusieurs donneurs et plusieurs

@@ -387,6 +387,23 @@ def test_f_suppression_article_conserve_historique():
         )
 
 
+def test_g_selection_etudiant_operations():
+    """Rechargement/retrait : étudiant sélectionné présenté comme au paiement."""
+    app = create_app()
+    client = app.test_client()
+    _login(client)
+    for path in ("/equipe/rechargement", "/equipe/retrait"):
+        page = client.get(path).get_data(as_text=True)
+        _expect('id="user-list"' in page, f"carte de sélection sur {path}")
+        _expect('data-list="user-list"' in page, f"recherche reliée à la carte sur {path}")
+    op_js = (STATIC / "js" / "operation.js").read_text(encoding="utf-8")
+    _expect(
+        "list-group-item d-flex justify-content-between" in op_js,
+        "carte de liste identique au paiement/transfert",
+    )
+    _expect("bi-person-circle" in op_js, "icône étudiant sur la carte")
+
+
 def main():
     tests = [
         (name, fn)
