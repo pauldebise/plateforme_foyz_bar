@@ -491,9 +491,7 @@ def article(article_id):
             "article.modification",
             target=a.name,
             details=(
-                f"Actif : {'oui' if a.active else 'non'}, "
-                f"privé : {'oui' if a.is_private else 'non'}, "
-                f"campus {CAMPUSSES[own_campus()]}"
+                f"Privé : {'oui' if a.is_private else 'non'}, campus {CAMPUSSES[own_campus()]}"
             ),
         )
         db.session.commit()
@@ -509,10 +507,14 @@ def article_supprimer(article_id):
     if a and not a.is_tap and not a.event_id:
         if a.campus != own_campus():
             abort(403)
-        a.active = False
-        A.record("article.desactivation", target=a.name)
+        name = a.name
+        # Suppression réelle : l'historique des ventes reste lisible car chaque
+        # ligne de transaction conserve le nom, le type et le prix de l'article
+        # (la clé étrangère passe à NULL via ON DELETE SET NULL).
+        db.session.delete(a)
+        A.record("article.suppression", target=name)
         db.session.commit()
-        flash("Article désactivé.", "success")
+        flash("Article supprimé. L'historique des ventes est conservé.", "success")
     return redirect(url_for("admin.articles"))
 
 
@@ -525,7 +527,6 @@ def _article_from_form(a, writable_campus):
     a.volume_cl = int(volume) if volume.isdigit() else None
     a.is_alcohol = request.form.get("is_alcohol") == "on"
     a.is_private = request.form.get("is_private") == "on"
-    a.active = request.form.get("active", "on") == "on"
     a.campus = writable_campus
     a.price_std = cents(request.form.get("price_std", "0"))
     a.price_team = cents(request.form.get("price_team", "0"))

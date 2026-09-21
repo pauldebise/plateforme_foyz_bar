@@ -28,7 +28,7 @@ os.environ.pop("FLASK_ENV", None)
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
-from app.models import Article, Note, Transaction, User  # noqa: E402
+from app.models import Article, AuditLog, Note, Transaction, User  # noqa: E402
 from app.services import transactions as T  # noqa: E402
 from app.services.settings import set_setting  # noqa: E402
 
@@ -341,6 +341,50 @@ def test_e_recherche_articles():
 
     full = client.get("/admin/articles?campus=brest").get_data(as_text=True)
     _expect("Pinte blonde" in full and ">Coca<" in full, "liste complète sans recherche")
+
+
+def test_f_suppression_article_conserve_historique():
+    """Suppression d'un article : retiré de la base, ventes passées intactes."""
+    app = create_app()
+    with app.app_context():
+        article = Article(
+            name="Pinte a supprimer",
+            article_type="biere",
+            campus="brest",
+            price_std=300,
+            price_team=250,
+            active=True,
+        )
+        user = User(name="Élève Historique", username="ux.historique")
+        db.session.add(user)
+        db.session.flush()
+        user.wallet("brest").balance = 1000
+        db.session.add(article)
+        db.session.commit()
+        article_id = article.id
+        txn = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article_id, "quantity": 1}],
+            contributor_ids=[user.id],
+        )
+        txn_id = txn.id
+
+    client = app.test_client()
+    token = _login(client)
+    res = client.post(f"/admin/articles/{article_id}/supprimer", data={"_csrf": token})
+    _expect(res.status_code == 302, "suppression acceptée")
+
+    with app.app_context():
+        _expect(db.session.get(Article, article_id) is None, "article supprimé de la base")
+        line = db.session.get(Transaction, txn_id).lines[0]
+        _expect(line.article_id is None, "ligne d'historique détachée de l'article")
+        _expect(line.article_name == "Pinte a supprimer", "nom conservé dans l'historique")
+        _expect(
+            db.session.query(AuditLog).filter(AuditLog.action == "article.suppression").count()
+            == 1,
+            "suppression journalisée",
+        )
 
 
 def main():
