@@ -402,6 +402,12 @@ def test_g_selection_etudiant_operations():
         "carte de liste identique au paiement/transfert",
     )
     _expect("bi-person-circle" in op_js, "icône étudiant sur la carte")
+    # Le résultat de recherche porte déjà solde/badges : pas de requête en plus.
+    _expect("/api/wallet/" not in op_js, "sélection sans appel portefeuille redondant")
+    payment_js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    _expect("/api/wallet/" not in payment_js, "paiement sans appel portefeuille redondant")
+    app_js = (STATIC / "js" / "app.js").read_text(encoding="utf-8")
+    _expect("}, 120);" in app_js, "debounce de recherche réduit (120 ms)")
 
 
 def main():

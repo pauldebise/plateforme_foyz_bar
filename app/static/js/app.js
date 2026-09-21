@@ -133,7 +133,7 @@ function initStudentSearch(inputEl, listEl, onPick, options = {}) {
       });
       setOpen(true);
       setActive(0);
-    }, 200);
+    }, 120);
   });
 
   inputEl.addEventListener('keydown', (e) => {

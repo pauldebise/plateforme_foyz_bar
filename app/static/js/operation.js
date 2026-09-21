@@ -48,8 +48,10 @@ document.querySelectorAll('.op-search').forEach((input) => {
     hidden.value = '';
     render();
   });
-  initStudentSearch(input, results, async (r) => {
-    selected = await apiFetch(`/api/wallet/${r.id}`);
+  // Le résultat de recherche porte déjà solde/badges : aucune requête
+  // supplémentaire, la carte s'affiche immédiatement à la sélection.
+  initStudentSearch(input, results, (r) => {
+    selected = r;
     hidden.value = r.id;
     render();
   }, { keepValue: true });
@@ -106,10 +108,9 @@ function initTransferMultiSelect({ searchId, resultsId, inputsId, listId }) {
     }
   }
 
-  initStudentSearch(input, results, async (r) => {
+  initStudentSearch(input, results, (r) => {
     if (selected.some((u) => u.id === r.id)) return;
-    const w = await apiFetch(`/api/wallet/${r.id}`);
-    selected.push(w);
+    selected.push(r);
     render();
     input.focus();
   });

@@ -127,9 +127,19 @@ def _unique_users(users, message):
 # chaque frappe (fenêtre glissante de 45 jours sur `contributions`).
 _ACTIVITY_TTL_SECONDS = 30
 _activity_cache = {}
+# Compteur incrémenté à chaque encaissement/annulation : les caches de
+# classement (activité des étudiants, popularité du catalogue) s'en servent
+# comme clé de version, en plus du TTL qui couvre les autres workers.
+_ranking_generation = 0
+
+
+def ranking_generation():
+    return _ranking_generation
 
 
 def _invalidate_activity_cache():
+    global _ranking_generation
+    _ranking_generation += 1
     _activity_cache.clear()
 
 

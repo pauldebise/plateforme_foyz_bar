@@ -944,6 +944,45 @@ def test_recherche_etudiants_classement_et_cache():
         _expect(second[1]["id"] == alpha_id, "second compte ensuite")
 
 
+def test_top_article_ids_cache_par_generation():
+    """Classement catalogue : ordre par ventes récentes, rafraîchi à l'achat."""
+    app = create_app()
+    with app.app_context():
+        from app.services import stats as S
+
+        first = _article(name="Classement Alpha", std=100)
+        second = _article(name="Classement Bravo", std=100)
+        buyer = _user(balance=5000)
+
+        before = S.top_article_ids(campus="brest")
+        _expect(first.id not in before and second.id not in before, "sans vente : absents")
+
+        T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": first.id, "quantity": 2}],
+            contributor_ids=[buyer.id],
+        )
+        # Deux appels identiques : le cache renvoie le même classement.
+        cached = S.top_article_ids(campus="brest")
+        _expect(S.top_article_ids(campus="brest") == cached, "cache stable")
+        _expect(first.id in cached, "premier article vendu classé")
+
+        # Un encaissement postérieur doit invalider le cache (nouvelle génération).
+        T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": second.id, "quantity": 3}],
+            contributor_ids=[buyer.id],
+        )
+        after = S.top_article_ids(campus="brest")
+        _expect(second.id in after, "second article pris en compte après achat")
+        _expect(
+            after.index(second.id) < after.index(first.id),
+            "plus vendu devant (cache invalidé)",
+        )
+
+
 def main():
     tests = [
         (name, fn)

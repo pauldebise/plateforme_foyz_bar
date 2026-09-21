@@ -1,3 +1,4 @@
+import time
 import unicodedata
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -6,7 +7,7 @@ from sqlalchemy import Float, case, cast, exists, func, literal, select
 
 from app.extensions import db
 from app.models import Contribution, Transaction, TransactionLine, User
-from app.services.transactions import history_cutoff
+from app.services.transactions import history_cutoff, ranking_generation
 from app.utils import ARTICLE_TYPES, to_paris, utcnow
 
 
@@ -284,20 +285,42 @@ def top_articles_stats(filters=None, search=""):
     return articles
 
 
+# Classement du catalogue : recalculé au plus une fois par génération
+# d'encaissement et par fenêtre, avec un TTL qui couvre les autres workers.
+_TOP_ARTICLES_TTL_SECONDS = 30
+_top_articles_cache = {}
+
+
 def top_article_ids(campus=None, limit=None, days=45):
     """Classement des articles par popularité récente, comme le tri des
     étudiants : quantités vendues sur les `days` derniers jours (décroissant),
     puis date de la dernière vente (décroissante). Les articles sans vente
     récente n'apparaissent pas."""
+    generation = ranking_generation()
+    key = (campus, limit, days)
+    now = time.monotonic()
+    cached = _top_articles_cache.get(key)
+    if cached is not None and cached[0] > now and cached[1] == generation:
+        return cached[2]
+
     since = utcnow() - timedelta(days=days)
+    # Transactions récentes sélectionnées à part : le planificateur s'appuie sur
+    # l'index `transaction_lines.transaction_id` au lieu de balayer toute la
+    # table des lignes (des centaines de milliers, dont la majorité est hors
+    # fenêtre).
+    recent = select(Transaction.id).where(
+        Transaction.type.in_(["achat", "direct"]),
+        Transaction.cancelled.is_(False),
+        Transaction.created_at >= since,
+    )
+    if campus in ("brest", "paris"):
+        recent = recent.where(Transaction.campus == campus)
     stmt = (
         select(TransactionLine.article_id, func.sum(TransactionLine.quantity).label("qty"))
         .join(Transaction, TransactionLine.transaction_id == Transaction.id)
         .where(
-            Transaction.type.in_(["achat", "direct"]),
-            Transaction.cancelled.is_(False),
-            Transaction.created_at >= since,
             TransactionLine.article_id.isnot(None),
+            TransactionLine.transaction_id.in_(recent),
         )
         .group_by(TransactionLine.article_id)
         .order_by(
@@ -305,8 +328,8 @@ def top_article_ids(campus=None, limit=None, days=45):
             func.max(Transaction.created_at).desc(),
         )
     )
-    if campus in ("brest", "paris"):
-        stmt = stmt.where(Transaction.campus == campus)
     if limit:
         stmt = stmt.limit(limit)
-    return [aid for aid in db.session.scalars(stmt)]
+    ids = [aid for aid in db.session.scalars(stmt)]
+    _top_articles_cache[key] = (now + _TOP_ARTICLES_TTL_SECONDS, generation, ids)
+    return ids

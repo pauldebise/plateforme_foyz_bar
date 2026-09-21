@@ -596,15 +596,16 @@ initStudentSearch(els.search, els.results, (r) => {
 
 if (els.rgSearch) {
   let rgUser = null;
-  initStudentSearch(els.rgSearch, els.rgResults, async (r) => {
+  // Solde et verres viennent déjà du résultat de recherche : pas d'appel
+  // réseau supplémentaire à la sélection.
+  initStudentSearch(els.rgSearch, els.rgResults, (r) => {
     rgUser = r;
-    const w = await apiFetch(`/api/wallet/${r.id}`);
     els.rgPanel.classList.remove('d-none');
     const info = $('glasses-info');
     info.replaceChildren();
-    info.appendChild(makeEl('strong', '', w.name));
+    info.appendChild(makeEl('strong', '', r.name));
     info.appendChild(document.createTextNode(' — verres consignés en cours : '));
-    info.appendChild(makeEl('span', 'badge bg-secondary', `${w.glasses}`));
+    info.appendChild(makeEl('span', 'badge bg-secondary', `${r.glasses}`));
   }, { campus: CAMPUS });
 
   $('glasses-return-1').addEventListener('click', () => returnGlasses(1));
