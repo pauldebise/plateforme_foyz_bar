@@ -1,5 +1,6 @@
+import time
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -121,35 +122,62 @@ def _unique_users(users, message):
     return unique
 
 
+# Classement par activité récente : mis en cache quelques secondes par campus
+# car il ne change qu'à un encaissement, alors que la recherche le recalcule à
+# chaque frappe (fenêtre glissante de 45 jours sur `contributions`).
+_ACTIVITY_TTL_SECONDS = 30
+_activity_cache = {}
+
+
+def _invalidate_activity_cache():
+    _activity_cache.clear()
+
+
 def _recent_activity(campus=None, days=45):
-    """Achats récents par utilisateur : (nombre d'achats, dernier achat)."""
+    """Achats récents par utilisateur : {user_id: (nombre, dernier achat)}."""
+    key = (campus, days)
+    now = time.monotonic()
+    cached = _activity_cache.get(key)
+    if cached is not None and cached[0] > now:
+        return cached[1]
+
     since = utcnow() - timedelta(days=days)
+    # Les transactions récentes sont sélectionnées à part : le planificateur
+    # s'appuie alors sur l'index `contributions.transaction_id` au lieu de
+    # balayer toute la table des contributions (des centaines de milliers de
+    # lignes, dont l'immense majorité est hors fenêtre).
+    recent = select(Transaction.id).where(
+        Transaction.type == "achat",
+        Transaction.cancelled.is_(False),
+        Transaction.created_at >= since,
+    )
+    conditions = [
+        Contribution.user_id.isnot(None),
+        Contribution.transaction_id.in_(recent),
+    ]
+    if campus:
+        conditions.append(Contribution.campus == campus)
     stmt = (
         select(
-            Contribution.user_id.label("user_id"),
-            func.count(Transaction.id).label("recent_count"),
-            func.max(Transaction.created_at).label("last_at"),
+            Contribution.user_id,
+            func.count(Contribution.id),
+            func.max(Transaction.created_at),
         )
         .join(Transaction, Transaction.id == Contribution.transaction_id)
-        .where(
-            Contribution.user_id.isnot(None),
-            Transaction.cancelled.is_(False),
-            Transaction.type == "achat",
-            Transaction.created_at >= since,
-        )
+        .where(*conditions)
         .group_by(Contribution.user_id)
     )
-    if campus:
-        stmt = stmt.where(Contribution.campus == campus)
-    return stmt.subquery()
+    ranking = {uid: (count, last_at) for uid, count, last_at in db.session.execute(stmt).all()}
+    _activity_cache[key] = (now + _ACTIVITY_TTL_SECONDS, ranking)
+    return ranking
 
 
 def search_students(query, campus=None, limit=15):
     q = (query or "").strip()
-    activity = _recent_activity(campus)
+    ranking = _recent_activity(campus)
     # En tête : comptes les plus actifs récemment ; ensuite alphabétique.
     # La recherche porte sur le nom réel, le surnom et l'identifiant.
-    stmt = select(User).outerjoin(activity, activity.c.user_id == User.id)
+    stmt = select(User.id, User.name, User.nickname)
     if q:
         # Chaque mot de la requête doit apparaître (dans n'importe quel ordre)
         # dans le nom, le surnom ou l'identifiant : « prénom nom » retrouve
@@ -167,14 +195,26 @@ def search_students(query, campus=None, limit=15):
                 ]
             )
         )
-    stmt = stmt.order_by(
-        func.coalesce(activity.c.recent_count, 0).desc(),
-        func.coalesce(activity.c.last_at, datetime(1970, 1, 1)).desc(),
-        User.name.asc(),
-    ).limit(limit)
-    users = db.session.scalars(stmt).unique().all()
+    candidates = db.session.execute(stmt).all()
+
+    def rank_key(row):
+        count, last_at = ranking.get(row.id, (0, None))
+        return (
+            -count,
+            -(last_at.timestamp() if last_at else 0.0),
+            (row.name or "").casefold(),
+        )
+
+    # Tri du classement sur les seules colonnes utiles (id/nom), puis chargement
+    # des portefeuilles des `limit` retenus uniquement.
+    candidates.sort(key=rank_key)
+    top_ids = [row.id for row in candidates[:limit]]
+    users = {u.id: u for u in db.session.scalars(select(User).where(User.id.in_(top_ids)))}
     results = []
-    for u in users:
+    for uid in top_ids:
+        u = users.get(uid)
+        if u is None:
+            continue
         w = wallet_view(u, campus) if campus else None
         results.append(
             {
@@ -452,6 +492,7 @@ def create_purchase(
         if existing is not None:
             return existing
         raise
+    _invalidate_activity_cache()
     return t
 
 
@@ -784,6 +825,7 @@ def cancel_transaction(transaction, admin_password):
     transaction.cancelled = True
     transaction.cancelled_at = utcnow()
     db.session.commit()
+    _invalidate_activity_cache()
 
 
 def history_cutoff():

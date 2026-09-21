@@ -910,6 +910,40 @@ def test_api_validation_400_pas_500():
     _expect(res.status_code == 404, f"utilisateur inconnu -> 404 (obtenu {res.status_code})")
 
 
+def test_recherche_etudiants_classement_et_cache():
+    """Recherche : tri par activité récente, rafraîchi dès un achat (cache)."""
+    app = create_app()
+    with app.app_context():
+        article = _article(std=300)
+        alpha = User(name="Recherche Alpha", username="recherche.alpha")
+        bravo = User(name="Recherche Bravo", username="recherche.bravo")
+        db.session.add_all([alpha, bravo])
+        db.session.flush()
+        alpha.wallet("brest").balance = 1000
+        bravo.wallet("brest").balance = 1000
+        db.session.commit()
+        alpha_id, bravo_id = alpha.id, bravo.id
+
+        # Premier appel (aucun achat) : ordre alphabétique, cache peuplé.
+        first = T.search_students("Recherche", campus="brest")
+        _expect(
+            [s["id"] for s in first][:2] == [alpha_id, bravo_id],
+            "ordre alphabétique sans activité",
+        )
+
+        # Achat par Bravo : le classement doit suivre malgré le TTL du cache.
+        T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article.id, "quantity": 1}],
+            contributor_ids=[bravo_id],
+        )
+        second = T.search_students("Recherche", campus="brest")
+        _expect(second[0]["id"] == bravo_id, "acheteur récent en tête")
+        _expect(second[0]["balance"] == 700, "solde débité reflété")
+        _expect(second[1]["id"] == alpha_id, "second compte ensuite")
+
+
 def main():
     tests = [
         (name, fn)
