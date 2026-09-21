@@ -165,18 +165,19 @@ def transfert():
         if require_write():
             return redirect(url_for("team.transfert"))
         try:
-            src = _get_user_or_fail(request.form.get("from_id"))
-            dst = _get_user_or_fail(request.form.get("to_id"))
+            srcs = [_get_user_or_fail(raw) for raw in request.form.getlist("from_id")]
+            dsts = [_get_user_or_fail(raw) for raw in request.form.getlist("to_id")]
             amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
             T.create_transfer(
                 operator_label=operator(),
                 campus=campus(),
-                from_user=src,
-                to_user=dst,
+                from_users=srcs,
+                to_users=dsts,
                 amount_cents=amount,
             )
             flash(
-                f"Transfert de {amount / 100:.2f} € de {src.display_name} vers {dst.display_name} effectué.",
+                f"Transfert de {amount / 100:.2f} € : {len(srcs)} donneur(s) → "
+                f"{len(dsts)} receveur(s) effectué.",
                 "success",
             )
             return redirect(url_for("team.transfert"))

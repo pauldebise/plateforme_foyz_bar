@@ -94,10 +94,31 @@ def _existing_by_key(idempotency_key):
 
 
 def _split_shares(total, n):
-    base = total // n
+    """Répartit ``total`` (centimes) en ``n`` parts entières.
+
+    Les centimes indivisibles sont distribués un par un aux premiers comptes,
+    de sorte que la somme des parts vaille exactement ``total`` et que l'écart
+    entre deux parts n'excède jamais un centime.
+    """
+    base, remainder = divmod(total, n)
     shares = [base] * n
-    shares[0] += total - base * n
+    for i in range(remainder):
+        shares[i] += 1
     return shares
+
+
+def _unique_users(users, message):
+    """Déduplique une sélection d'utilisateurs en conservant l'ordre choisi."""
+    unique = []
+    seen = set()
+    for u in users or []:
+        if u is None or u.id in seen:
+            continue
+        seen.add(u.id)
+        unique.append(u)
+    if not unique:
+        raise OperationError("invalid", message)
+    return unique
 
 
 def _recent_activity(campus=None, days=45):
@@ -578,50 +599,81 @@ def create_withdrawal(*, operator_label, campus, user, amount_cents):
     return t
 
 
-def create_transfer(*, operator_label, campus, from_user, to_user, amount_cents):
+def create_transfer(*, operator_label, campus, from_users, to_users, amount_cents):
+    """Transfert de N donneurs vers M receveurs pour un montant total fixé.
+
+    Le montant est réparti en centimes entiers, sans jamais diviser un centime :
+    chaque donneur paie ``part`` et chaque receveur reçoit ``part``, les
+    centimes restants étant attribués aux premiers de chaque liste. La somme
+    débitée et la somme créditée valent donc exactement ``amount``.
+    """
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
     if amount <= 0:
         raise OperationError("invalid", "Montant invalide.")
-    if from_user.id == to_user.id:
-        raise OperationError("invalid", "Les deux comptes doivent être différents.")
-    wallets = _lock_wallets(campus, [from_user, to_user])
-    wf, wt = wallets[from_user.id], wallets[to_user.id]
-    if amount > wf.balance:
-        raise OperationError("solde", "Solde du donneur insuffisant.")
+    donors = _unique_users(from_users, "Sélectionnez au moins un donneur.")
+    recipients = _unique_users(to_users, "Sélectionnez au moins un receveur.")
+    donor_ids = {u.id for u in donors}
+    if donor_ids & {u.id for u in recipients}:
+        raise OperationError("invalid", "Un compte ne peut pas être à la fois donneur et receveur.")
+    if amount < len(donors) or amount < len(recipients):
+        # Sinon une part nulle apparaîtrait : au moins 1 centime par compte.
+        raise OperationError(
+            "invalid", "Montant trop faible pour être réparti (1 centime minimum par compte)."
+        )
+
+    donor_shares = _split_shares(amount, len(donors))
+    recipient_shares = _split_shares(amount, len(recipients))
+
+    wallets = _lock_wallets(campus, donors + recipients)
+    for u, share in zip(donors, donor_shares, strict=True):
+        if share > wallets[u.id].balance:
+            raise OperationError("solde", f"Solde de {u.display_name} insuffisant pour sa part.")
+
     t = Transaction(
         type="transfert",
         campus=campus,
         total=amount,
         operator_label=operator_label or "",
-        from_user_id=from_user.id,
-        to_user_id=to_user.id,
+        # Conservés pour l'affichage/l'historique quand le transfert est simple.
+        from_user_id=donors[0].id if len(donors) == 1 else None,
+        to_user_id=recipients[0].id if len(recipients) == 1 else None,
     )
     db.session.add(t)
     db.session.flush()
-    wf.balance = Wallet.balance - amount
-    wt.balance = Wallet.balance + amount
+
+    for u, share in zip(donors, donor_shares, strict=True):
+        wallets[u.id].balance = Wallet.balance - share
+    for u, share in zip(recipients, recipient_shares, strict=True):
+        wallets[u.id].balance = Wallet.balance + share
     db.session.flush()
-    if wf.balance < 0:
-        db.session.rollback()
-        raise OperationError("solde", "Solde du donneur insuffisant.")
-    db.session.add(
-        Contribution(
-            transaction_id=t.id,
-            user_id=from_user.id,
-            campus=campus,
-            amount=-amount,
-            balance_after=wf.balance,
+
+    # Contrôle post-écriture : aucun donneur ne doit passer négatif (un
+    # transfert n'autorise pas le découvert, contrairement à un achat).
+    for u in donors:
+        if wallets[u.id].balance < 0:
+            db.session.rollback()
+            raise OperationError("solde", f"Solde de {u.display_name} insuffisant.")
+
+    for u, share in zip(donors, donor_shares, strict=True):
+        db.session.add(
+            Contribution(
+                transaction_id=t.id,
+                user_id=u.id,
+                campus=campus,
+                amount=-share,
+                balance_after=wallets[u.id].balance,
+            )
         )
-    )
-    db.session.add(
-        Contribution(
-            transaction_id=t.id,
-            user_id=to_user.id,
-            campus=campus,
-            amount=amount,
-            balance_after=wt.balance,
+    for u, share in zip(recipients, recipient_shares, strict=True):
+        db.session.add(
+            Contribution(
+                transaction_id=t.id,
+                user_id=u.id,
+                campus=campus,
+                amount=share,
+                balance_after=wallets[u.id].balance,
+            )
         )
-    )
     db.session.commit()
     return t
 
@@ -701,14 +753,23 @@ def cancel_transaction(transaction, admin_password):
                 w = w_of(c.campus, c.user_id)
                 w.balance = Wallet.balance + (-c.amount)
     elif transaction.type == "transfert":
-        if transaction.from_user_id:
-            w_of(transaction.campus, transaction.from_user_id).balance = (
-                Wallet.balance + transaction.total
-            )
-        if transaction.to_user_id:
-            w_of(transaction.campus, transaction.to_user_id).balance = (
-                Wallet.balance - transaction.total
-            )
+        if transaction.contributions:
+            # Annulation symétrique : on inverse chaque part enregistrée, ce
+            # qui couvre aussi bien les transferts à plusieurs donneurs /
+            # receveurs que les transferts migrés.
+            for c in transaction.contributions:
+                if c.user_id is not None:
+                    w = w_of(c.campus, c.user_id)
+                    w.balance = Wallet.balance - c.amount
+        else:
+            if transaction.from_user_id:
+                w_of(transaction.campus, transaction.from_user_id).balance = (
+                    Wallet.balance + transaction.total
+                )
+            if transaction.to_user_id:
+                w_of(transaction.campus, transaction.to_user_id).balance = (
+                    Wallet.balance - transaction.total
+                )
 
     for keg_id, volume_l in volumes.items():
         keg = kegs.get(keg_id)
@@ -765,7 +826,16 @@ def describe_transaction(t):
     elif t.type == "retrait":
         label = "Retrait — " + ", ".join(names)
     elif t.type == "transfert":
-        label = "Transfert — " + " → ".join(names)
+        donors = [
+            c.user.display_name for c in t.contributions if c.user_id is not None and c.amount < 0
+        ]
+        recipients = [
+            c.user.display_name for c in t.contributions if c.user_id is not None and c.amount > 0
+        ]
+        if donors or recipients:
+            label = "Transfert — " + ", ".join(donors) + " → " + ", ".join(recipients)
+        else:
+            label = "Transfert — " + " → ".join(names)
     elif t.type == "consigne":
         label = "Retour de consigne — " + ", ".join(names)
     else:

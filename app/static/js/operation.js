@@ -22,3 +22,79 @@ document.querySelectorAll('.op-search').forEach((input) => {
     appendBadges(info, badges);
   }, { keepValue: true });
 });
+
+// Transfert multi-comptes : on peut choisir plusieurs donneurs et plusieurs
+// receveurs, matérialisés par un champ caché par personne sélectionnée.
+function initTransferMultiSelect({ searchId, resultsId, inputsId, listId }) {
+  const input = document.getElementById(searchId);
+  const results = document.getElementById(resultsId);
+  const inputs = document.getElementById(inputsId);
+  const list = document.getElementById(listId);
+  const fieldName = inputs.dataset.name;
+  const selected = [];
+
+  function render() {
+    inputs.replaceChildren();
+    list.replaceChildren();
+    selected.forEach((u) => {
+      const li = makeEl('li', 'list-group-item d-flex justify-content-between align-items-center px-2');
+      const info = document.createElement('div');
+      info.appendChild(makeEl('i', 'bi bi-person-circle'));
+      info.appendChild(document.createTextNode(' '));
+      info.appendChild(makeEl('strong', '', u.name));
+      info.appendChild(document.createTextNode(' '));
+      info.appendChild(makeEl('span', 'badge bg-light text-dark', `${(u.balance / 100).toFixed(2)} €`));
+      const badges = [];
+      if (u.blacklist) badges.push(['badge-blacklist', 'blacklist']);
+      if (u.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
+      if (badges.length) info.appendChild(document.createTextNode(' '));
+      appendBadges(info, badges);
+      const remove = makeEl('button', 'btn btn-sm btn-outline-danger');
+      remove.type = 'button';
+      remove.title = 'Retirer';
+      remove.appendChild(makeEl('i', 'bi bi-x'));
+      remove.addEventListener('click', () => {
+        const index = selected.findIndex((x) => x.id === u.id);
+        if (index >= 0) selected.splice(index, 1);
+        render();
+      });
+      li.appendChild(info);
+      li.appendChild(remove);
+      list.appendChild(li);
+
+      const hidden = document.createElement('input');
+      hidden.type = 'hidden';
+      hidden.name = fieldName;
+      hidden.value = u.id;
+      inputs.appendChild(hidden);
+    });
+    if (!selected.length) {
+      list.appendChild(makeEl('li', 'list-group-item text-muted px-2', 'Aucun compte sélectionné.'));
+    }
+  }
+
+  initStudentSearch(input, results, async (r) => {
+    if (selected.some((u) => u.id === r.id)) return;
+    const w = await apiFetch(`/api/wallet/${r.id}`);
+    selected.push(w);
+    render();
+    input.focus();
+  });
+
+  render();
+}
+
+if (document.getElementById('from-inputs')) {
+  initTransferMultiSelect({
+    searchId: 'from-search',
+    resultsId: 'from-results',
+    inputsId: 'from-inputs',
+    listId: 'from-list',
+  });
+  initTransferMultiSelect({
+    searchId: 'to-search',
+    resultsId: 'to-results',
+    inputsId: 'to-inputs',
+    listId: 'to-list',
+  });
+}

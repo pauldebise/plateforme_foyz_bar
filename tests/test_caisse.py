@@ -379,7 +379,11 @@ def test_mouvements_rechargement_retrait_transfert():
 
         autre = _user(balance=0)
         t = T.create_transfer(
-            operator_label="test", campus="brest", from_user=user, to_user=autre, amount_cents=400
+            operator_label="test",
+            campus="brest",
+            from_users=[user],
+            to_users=[autre],
+            amount_cents=400,
         )
         _expect(_balance(user.id) == 600 and _balance(autre.id) == 400, "transfert équilibré")
         _refus(
@@ -387,8 +391,8 @@ def test_mouvements_rechargement_retrait_transfert():
             T.create_transfer,
             operator_label="test",
             campus="brest",
-            from_user=user,
-            to_user=user,
+            from_users=[user],
+            to_users=[user],
             amount_cents=100,
         )
         _refus(
@@ -396,11 +400,69 @@ def test_mouvements_rechargement_retrait_transfert():
             T.create_transfer,
             operator_label="test",
             campus="brest",
-            from_user=autre,
-            to_user=user,
+            from_users=[autre],
+            to_users=[user],
             amount_cents=99999,
         )
         _expect(t.type == "transfert", "type transfert")
+
+
+def test_transfert_multi_repartition_exacte():
+    app = create_app()
+    with app.app_context():
+        donors = [_user(balance=1000) for _ in range(3)]
+        recipients = [_user(balance=0) for _ in range(2)]
+        t = T.create_transfer(
+            operator_label="test",
+            campus="brest",
+            from_users=donors,
+            to_users=recipients,
+            amount_cents=100,
+        )
+        _expect(t.total == 100, f"total 100 (obtenu {t.total})")
+        debits = [1000 - _balance(u.id) for u in donors]
+        credits = [_balance(u.id) for u in recipients]
+        _expect(sum(debits) == 100, f"somme des débits exacte ({debits})")
+        _expect(sum(credits) == 100, f"somme des crédits exacte ({credits})")
+        _expect(max(debits) - min(debits) <= 1, f"écart d'un centime au plus ({debits})")
+        _expect(max(credits) - min(credits) <= 1, f"écart d'un centime au plus ({credits})")
+
+        # Un compte ne peut pas être simultanément donneur et receveur.
+        _refus(
+            "invalid",
+            T.create_transfer,
+            operator_label="test",
+            campus="brest",
+            from_users=[donors[0], recipients[0]],
+            to_users=[recipients[0]],
+            amount_cents=50,
+        )
+        # Montant trop faible : au moins 1 centime par compte.
+        _refus(
+            "invalid",
+            T.create_transfer,
+            operator_label="test",
+            campus="brest",
+            from_users=donors,
+            to_users=recipients,
+            amount_cents=1,
+        )
+        # Un donneur sans solde suffisant est refusé sans écriture partielle.
+        pauvre = _user(balance=10)
+        _refus(
+            "solde",
+            T.create_transfer,
+            operator_label="test",
+            campus="brest",
+            from_users=[pauvre],
+            to_users=[recipients[0]],
+            amount_cents=100,
+        )
+        _expect(_balance(pauvre.id) == 10, "aucun débit partiel sur refus")
+
+        T.cancel_transaction(t, ADMIN_PASSWORD)
+        _expect(all(_balance(u.id) == 1000 for u in donors), "donneurs restaurés")
+        _expect(all(_balance(u.id) == 0 for u in recipients), "receveurs restaurés")
 
 
 def test_annulation_achat_consigne_et_direct():
@@ -455,7 +517,11 @@ def test_annulation_rechargement_retrait_transfert():
 
         autre = _user(balance=0)
         transfer = T.create_transfer(
-            operator_label="test", campus="brest", from_user=user, to_user=autre, amount_cents=300
+            operator_label="test",
+            campus="brest",
+            from_users=[user],
+            to_users=[autre],
+            amount_cents=300,
         )
         T.cancel_transaction(transfer, ADMIN_PASSWORD)
         _expect(_balance(user.id) == 500 and _balance(autre.id) == 0, "transfert annulé")

@@ -15,18 +15,22 @@
 
       {% if op == 'transfert' %}
       <div class="mb-3">
-        <label class="form-label">Compte donneur</label>
-        <input class="form-control op-search" id="from-search" data-target="from_id" placeholder="Rechercher…" autocomplete="off" required>
-        <div class="border rounded bg-white shadow-sm position-absolute d-none op-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
-        <input type="hidden" name="from_id" id="from_id">
-        <div class="form-text op-info" id="from-info"></div>
+        <label class="form-label">Comptes donneurs</label>
+        <div class="position-relative">
+          <input class="form-control" id="from-search" placeholder="Rechercher…" autocomplete="off">
+          <div class="border rounded bg-white shadow-sm position-absolute w-100 d-none" id="from-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
+        </div>
+        <div id="from-inputs" data-name="from_id"></div>
+        <ul class="list-group list-group-flush mt-2" id="from-list"></ul>
       </div>
       <div class="mb-3">
-        <label class="form-label">Compte receveur</label>
-        <input class="form-control op-search" id="to-search" data-target="to_id" placeholder="Rechercher…" autocomplete="off" required>
-        <div class="border rounded bg-white shadow-sm position-absolute d-none op-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
-        <input type="hidden" name="to_id" id="to_id">
-        <div class="form-text op-info" id="to-info"></div>
+        <label class="form-label">Comptes receveurs</label>
+        <div class="position-relative">
+          <input class="form-control" id="to-search" placeholder="Rechercher…" autocomplete="off">
+          <div class="border rounded bg-white shadow-sm position-absolute w-100 d-none" id="to-results" style="z-index: 1050; max-height: 280px; overflow-y: auto;"></div>
+        </div>
+        <div id="to-inputs" data-name="to_id"></div>
+        <ul class="list-group list-group-flush mt-2" id="to-list"></ul>
       </div>
       {% else %}
       <div class="mb-3">
