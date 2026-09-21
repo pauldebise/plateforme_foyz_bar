@@ -44,6 +44,7 @@ def catalogue():
         select(Article)
         .where(
             Article.active.is_(True),
+            Article.is_private.is_(False),
             Article.event_id.is_(None),
             Article.campus == campus,
         )

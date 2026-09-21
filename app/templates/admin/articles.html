@@ -33,7 +33,7 @@
       <tbody>
         {% for a in articles %}
         <tr class="{{ 'table-secondary' if not a.active }}" {% if not a.is_tap %}data-href="{{ url_for('admin.article', article_id=a.id) }}"{% endif %}>
-          <td>{{ a.name }}{% if a.is_tap %} <span class="badge bg-dark">tireuse</span>{% endif %}</td>
+          <td>{{ a.name }}{% if a.is_tap %} <span class="badge bg-dark">tireuse</span>{% endif %}{% if a.is_private %} <span class="badge bg-secondary">privé</span>{% endif %}</td>
           <td>{{ ARTICLE_TYPES.get(a.article_type, a.article_type) }}</td>
           <td>{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
           <td class="text-end">{{ a.price_std|eur }}</td>

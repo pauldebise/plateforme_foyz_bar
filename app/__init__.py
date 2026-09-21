@@ -199,6 +199,17 @@ def ensure_schema_upgrades():
                 conn.execute(
                     text("CREATE INDEX IF NOT EXISTS ix_articles_campus ON articles (campus)")
                 )
+        # Articles privés (révision 0009) : masqués du catalogue public.
+        if "is_private" not in cols:
+            with db.engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE articles ADD COLUMN is_private BOOLEAN NOT NULL DEFAULT 0")
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_articles_is_private ON articles (is_private)"
+                    )
+                )
     if "transaction_lines" in table_columns:
         indexes = {ix["name"] for ix in inspector.get_indexes("transaction_lines")}
         if "ix_transaction_lines_article_id" not in indexes:

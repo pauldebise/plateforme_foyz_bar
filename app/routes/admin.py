@@ -487,7 +487,11 @@ def article(article_id):
         A.record(
             "article.modification",
             target=a.name,
-            details=f"Actif : {'oui' if a.active else 'non'}, campus {CAMPUSSES[own_campus()]}",
+            details=(
+                f"Actif : {'oui' if a.active else 'non'}, "
+                f"privé : {'oui' if a.is_private else 'non'}, "
+                f"campus {CAMPUSSES[own_campus()]}"
+            ),
         )
         db.session.commit()
         flash("Article mis à jour.", "success")
@@ -517,6 +521,7 @@ def _article_from_form(a, writable_campus):
     volume = request.form.get("volume_cl", "").strip()
     a.volume_cl = int(volume) if volume.isdigit() else None
     a.is_alcohol = request.form.get("is_alcohol") == "on"
+    a.is_private = request.form.get("is_private") == "on"
     a.active = request.form.get("active", "on") == "on"
     a.campus = writable_campus
     a.price_std = cents(request.form.get("price_std", "0"))

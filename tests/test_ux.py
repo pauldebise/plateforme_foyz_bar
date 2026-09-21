@@ -28,7 +28,7 @@ os.environ.pop("FLASK_ENV", None)
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
-from app.models import Note, Transaction, User  # noqa: E402
+from app.models import Article, Note, Transaction, User  # noqa: E402
 from app.services import transactions as T  # noqa: E402
 from app.services.settings import set_setting  # noqa: E402
 
@@ -225,6 +225,81 @@ def test_c_annulation_multiple():
             not db.session.get(Transaction, paris_id).cancelled,
             "transaction de l'autre campus refusée",
         )
+
+
+def test_d_article_prive():
+    """Article privé : masqué du catalogue public, encaissable en caisse,
+    bascule depuis l'onglet article."""
+    app = create_app()
+    with app.app_context():
+        public = Article(
+            name="Limonade publique",
+            article_type="snack",
+            campus="brest",
+            price_std=200,
+            price_team=150,
+            active=True,
+        )
+        prive = Article(
+            name="Cocktail prive",
+            article_type="snack",
+            campus="brest",
+            price_std=500,
+            price_team=400,
+            active=True,
+            is_private=True,
+        )
+        db.session.add_all([public, prive])
+        db.session.commit()
+        prive_id = prive.id
+
+    client = app.test_client()
+    catalogue = client.get("/catalogue?campus=brest").get_data(as_text=True)
+    _expect("Limonade publique" in catalogue, "article public visible au catalogue")
+    _expect("Cocktail prive" not in catalogue, "article privé masqué du catalogue public")
+
+    token = _login(client)
+    payment = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect("Cocktail prive" in payment, "article privé toujours encaissable")
+
+    # Bascule privé -> public depuis l'onglet article.
+    client.post(
+        f"/admin/articles/{prive_id}",
+        data={
+            "name": "Cocktail prive",
+            "article_type": "snack",
+            "price_std": "5.00",
+            "price_team": "4.00",
+            "active": "on",
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        _expect(not db.session.get(Article, prive_id).is_private, "article repassé public")
+    _expect(
+        "Cocktail prive" in client.get("/catalogue?campus=brest").get_data(as_text=True),
+        "article repassé public : visible au catalogue",
+    )
+
+    # Bascule public -> privé.
+    client.post(
+        f"/admin/articles/{prive_id}",
+        data={
+            "name": "Cocktail prive",
+            "article_type": "snack",
+            "price_std": "5.00",
+            "price_team": "4.00",
+            "active": "on",
+            "is_private": "on",
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        _expect(db.session.get(Article, prive_id).is_private, "article repassé privé")
+    _expect(
+        "Cocktail prive" not in client.get("/catalogue?campus=brest").get_data(as_text=True),
+        "article rebasculé privé : masqué du catalogue",
+    )
 
 
 def main():

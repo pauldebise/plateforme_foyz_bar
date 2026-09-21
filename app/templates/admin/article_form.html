@@ -49,6 +49,12 @@
             <label class="form-check-label">Article actif (visible et vendable)</label>
           </div>
         </div>
+        <div class="col-12">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" name="is_private" id="is_private" {% if not writable %}disabled{% endif %} {% if a and a.is_private %}checked{% endif %}>
+            <label class="form-check-label" for="is_private">Article privé (masqué du catalogue public)</label>
+          </div>
+        </div>
       </div>
       {% if writable %}
       <button class="btn btn-primary mt-4">Enregistrer</button>
