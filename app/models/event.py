@@ -21,6 +21,11 @@ class Event(db.Model):
     poster: db.Mapped[str | None] = db.mapped_column(db.String(255), nullable=True)
     token: db.Mapped[str] = db.mapped_column(db.String(64), unique=True, index=True)
     closed: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
+    # La passerelle encaisse toujours les articles temporaires de l'événement ;
+    # ce réglage autorise en plus le catalogue standard du campus de l'événement.
+    allow_standard_articles: db.Mapped[bool] = db.mapped_column(
+        db.Boolean, default=True, server_default=db.true()
+    )
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)
 
     temporary_articles: db.Mapped[list["Article"]] = db.relationship(

@@ -231,6 +231,56 @@ def test_gateway_refuses_foreign_article():
     _expect("indisponible" in res.get_json()["error"], "message d'article indisponible")
 
 
+def test_gateway_standard_toggle_and_live_catalogue():
+    """Le réglage « articles standards » s'applique en direct, côté affichage
+    (route /catalogue sans rechargement) comme côté encaissement."""
+    app = create_app()
+    ids = _seed(app, "std")
+    client = app.test_client()
+    html = client.get(f"/passerelle/{ids['token']}").get_data(as_text=True)
+    token = _csrf(html)
+
+    live = client.get(f"/passerelle/{ids['token']}/catalogue").get_json()
+    _expect(live["running"] is True, "catalogue servi en direct")
+    _expect(live["allow_standard"] is True, "réglage standard par défaut")
+    _expect(
+        any(a["id"] == ids["standard"] for a in live["catalog"]),
+        "article standard présent par défaut",
+    )
+
+    with app.app_context():
+        ev = db.session.get(Event, ids["event"])
+        ev.allow_standard_articles = False
+        db.session.commit()
+
+    live = client.get(f"/passerelle/{ids['token']}/catalogue").get_json()
+    _expect(live["allow_standard"] is False, "réglage mis à jour en direct")
+    _expect(
+        all(a["event"] for a in live["catalog"]),
+        "seuls les articles de l'événement restent affichés",
+    )
+
+    res = client.post(
+        f"/passerelle/{ids['token']}/encaisser",
+        json={
+            "items": [{"article_id": ids["standard"], "quantity": 1}],
+            "contributors": [ids["user"]],
+        },
+        headers={"X-CSRFToken": token},
+    )
+    _expect(res.status_code == 400, f"standard refusé réglage désactivé ({res.status_code})")
+
+    res = client.post(
+        f"/passerelle/{ids['token']}/encaisser",
+        json={
+            "items": [{"article_id": ids["event_article"], "quantity": 1}],
+            "contributors": [ids["user"]],
+        },
+        headers={"X-CSRFToken": token},
+    )
+    _expect(res.status_code == 200, "article événement toujours encaissable")
+
+
 def main():
     tests = [
         (name, fn)

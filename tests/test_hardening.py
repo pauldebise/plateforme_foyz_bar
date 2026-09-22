@@ -261,6 +261,34 @@ def test_admin_rejects_invalid_numbers_without_500():
         )
 
 
+def test_optional_article_fields_are_optional():
+    app = create_app()
+    authed = _client(app)
+    token = _csrf(authed.get("/admin/articles/nouveau").get_data(as_text=True))
+    res = authed.post(
+        "/admin/articles/nouveau",
+        data={"name": "Snack sans volume", "article_type": "snack", "_csrf": token},
+    )
+    _expect(res.status_code == 302, f"paramètres optionnels acceptés ({res.status_code})")
+    with app.app_context():
+        stored = db.session.query(Article).filter(Article.name == "Snack sans volume").first()
+        _expect(stored is not None, "article créé sans paramètres optionnels")
+        _expect(stored.volume_cl is None, "volume absent stocké à NULL")
+        _expect(stored.price_std == 0 and stored.price_team == 0, "prix absents stockés à 0")
+
+
+def test_invalid_csrf_renders_dedicated_error_page():
+    app = create_app()
+    authed = _client(app)
+    res = authed.post(
+        "/admin/articles/nouveau",
+        data={"name": "Jetons", "article_type": "biere", "_csrf": "jeton-invalide"},
+    )
+    _expect(res.status_code == 400, f"jeton CSRF invalide -> 400 ({res.status_code})")
+    html = res.get_data(as_text=True)
+    _expect("400" in html and "Recharger" in html, "page d'erreur 400 dédiée affichée")
+
+
 def test_long_names_are_truncated():
     app = create_app()
     authed = _client(app)

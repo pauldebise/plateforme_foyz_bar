@@ -9,6 +9,7 @@ from app.extensions import db
 from app.models import (
     Article,
     Contribution,
+    Event,
     Keg,
     Tap,
     Transaction,
@@ -242,7 +243,7 @@ def search_students(query, campus=None, limit=15):
     return results
 
 
-def _resolve_items(items, event_id=None, campus=None):
+def _resolve_items(items, event_id=None, campus=None, allow_standard=False):
     if not items:
         raise OperationError("invalid", "Aucun article sélectionné.")
     merged = {}
@@ -272,9 +273,10 @@ def _resolve_items(items, event_id=None, campus=None):
         if a.event_id != event_id:
             # hors d'un événement, seuls les articles standard sont vendables ;
             # en contexte événement (passerelle), le catalogue standard du
-            # campus reste disponible en plus des articles de l'événement
+            # campus reste disponible uniquement si l'événement l'autorise
             standard_ok = (
                 event_id is not None
+                and allow_standard
                 and a.event_id is None
                 and campus in ("brest", "paris")
                 and a.price_for(campus) > 0
@@ -319,7 +321,16 @@ def create_purchase(
         if not contributor_ids:
             raise OperationError("invalid", "Aucun étudiant sélectionné.")
 
-    lines = _resolve_items(items, event_id=event_id, campus=campus)
+    # Les articles standards ne sont acceptés qu'en contexte événement et
+    # seulement si l'événement l'autorise (réglage modifiable en direct).
+    allow_standard = False
+    if event_id is not None:
+        event = db.session.get(Event, event_id)
+        if event is None:
+            raise OperationError("invalid", "Événement introuvable.")
+        allow_standard = event.allow_standard_articles
+
+    lines = _resolve_items(items, event_id=event_id, campus=campus, allow_standard=allow_standard)
     users = []
     if not direct:
         seen = set()

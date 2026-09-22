@@ -518,18 +518,33 @@ def article_supprimer(article_id):
     return redirect(url_for("admin.articles"))
 
 
+def _optional_int(value, maximum=1_000_000):
+    """Paramètre facultatif (volume) : vide, non entier ou hors bornes -> None.
+    Ne lève jamais : une valeur géante ferait déborder la colonne entière."""
+    raw = (value or "").strip()
+    if not raw.isdigit():
+        return None
+    number = int(raw)
+    return number if number <= maximum else None
+
+
+def _optional_cents(value):
+    """Prix facultatif : vide -> 0 ; une saisie non vide doit rester valide."""
+    raw = (value or "").strip()
+    return cents(raw) if raw else 0
+
+
 def _article_from_form(a, writable_campus):
     a.name = clamp_text((request.form.get("name") or "Sans nom").strip(), 255)
     a.article_type = request.form.get("article_type", "biere")
     if a.article_type not in ARTICLE_TYPES:
         a.article_type = "biere"
-    volume = request.form.get("volume_cl", "").strip()
-    a.volume_cl = int(volume) if volume.isdigit() else None
+    a.volume_cl = _optional_int(request.form.get("volume_cl"))
     a.is_alcohol = request.form.get("is_alcohol") == "on"
     a.is_private = request.form.get("is_private") == "on"
     a.campus = writable_campus
-    a.price_std = cents(request.form.get("price_std", "0"))
-    a.price_team = cents(request.form.get("price_team", "0"))
+    a.price_std = _optional_cents(request.form.get("price_std", "0"))
+    a.price_team = _optional_cents(request.form.get("price_team", "0"))
     return a
 
 
@@ -839,6 +854,7 @@ def evenement(event_id):
             )
             if poster:
                 ev.poster = poster
+            ev.allow_standard_articles = request.form.get("allow_standard_articles") == "on"
             A.record("evenement.modification", target=ev.name)
         elif action == "add_article":
             try:
@@ -848,15 +864,14 @@ def evenement(event_id):
                     is_alcohol=request.form.get("is_alcohol") == "on",
                     event_id=ev.id,
                     campus=ev.campus,
-                    price_std=cents(request.form.get("price_std", "0")),
-                    price_team=cents(request.form.get("price_team", "0")),
+                    price_std=_optional_cents(request.form.get("price_std", "0")),
+                    price_team=_optional_cents(request.form.get("price_team", "0")),
                     active=True,
                 )
             except ValueError:
                 flash("Prix invalide : montants numériques raisonnables attendus.", "danger")
                 return redirect(url_for("admin.evenement", event_id=ev.id))
-            volume = request.form.get("volume_cl", "").strip()
-            a.volume_cl = int(volume) if volume.isdigit() else None
+            a.volume_cl = _optional_int(request.form.get("volume_cl"))
             db.session.add(a)
             A.record("evenement.article_ajout", target=a.name, details=f"Événement {ev.name}")
         elif action == "del_article":

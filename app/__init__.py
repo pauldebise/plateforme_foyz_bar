@@ -94,6 +94,16 @@ def ensure_schema_upgrades():
     if "users" in table_columns and "legacy_password" not in table_columns["users"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN legacy_password VARCHAR(255)"))
+    if "events" in table_columns and "allow_standard_articles" not in table_columns["events"]:
+        # Passerelle événement : autorisation des articles standards (révision
+        # 0010). Par défaut on conserve le comportement historique (autorisés).
+        with db.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE events ADD COLUMN allow_standard_articles "
+                    "BOOLEAN NOT NULL DEFAULT 1"
+                )
+            )
     if "transactions" in table_columns and "idempotency_key" not in table_columns["transactions"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE transactions ADD COLUMN idempotency_key VARCHAR(64)"))
@@ -364,7 +374,13 @@ def create_app():
             token = session.get("_csrf_token")
             sent = request.form.get("_csrf") or request.headers.get("X-CSRFToken")
             if not token or not sent or not secrets.compare_digest(token, sent):
-                if request.path.startswith("/api/"):
+                # Les appels de l'interface (API, passerelle) reçoivent du JSON ;
+                # les formulaires HTML tombent sur la page 400 dédiée.
+                if (
+                    request.path.startswith("/api/")
+                    or request.is_json
+                    or request.headers.get("X-CSRFToken")
+                ):
                     return jsonify(ok=False, error="Jeton CSRF invalide."), 400
                 abort(400, description="Jeton CSRF invalide, rechargez la page.")
 
@@ -616,6 +632,22 @@ def create_app():
         return jsonify(status="degraded" if degraded else "ok", **checks), (
             503 if degraded else 200
         )
+
+    @app.errorhandler(400)
+    def bad_request(e):
+        description = getattr(e, "description", None)
+        if request.path.startswith("/api/") or request.is_json:
+            return jsonify(ok=False, error=description or "Requête invalide."), 400
+        app.logger.warning(
+            "bad_request",
+            extra={
+                "event": "bad_request",
+                "path": request.path[:255],
+                "method": request.method,
+                "endpoint": request.endpoint or "",
+            },
+        )
+        return render_template("errors/400.html", message=description), 400
 
     @app.errorhandler(403)
     def forbidden(e):

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Passerelle — {{ ev.name }}{% endblock %}
 {% block content %}
-<div id="payment-config" data-gateway="1" data-campus="{{ ev.campus }}" data-deposit-value="{{ deposit_value }}" data-deposit-enabled="{{ '1' if deposit_enabled else '0' }}" data-overdraft-limit="{{ overdraft_limit }}"></div>
+<div id="payment-config" data-gateway="1" data-campus="{{ ev.campus }}" data-allow-standard="{{ '1' if ev.allow_standard_articles else '0' }}" data-deposit-value="{{ deposit_value }}" data-deposit-enabled="{{ '1' if deposit_enabled else '0' }}" data-overdraft-limit="{{ overdraft_limit }}"></div>
 <script type="application/json" id="catalog-data">{{ catalog|tojson }}</script>
 
 <div class="alert alert-warning d-flex justify-content-between align-items-center">
@@ -74,7 +74,7 @@
     </div>
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-shop"></i> Catalogue — événement &amp; standard</span>
+        <span><i class="bi bi-shop"></i> <span id="catalog-title">Catalogue — événement &amp; standard</span></span>
         <input id="catalog-search" class="form-control form-control-sm" style="max-width: 240px;" placeholder="Filtrer…">
       </div>
       <div class="card-body" id="catalog"></div>

@@ -57,30 +57,20 @@ def _event_from_token(token):
     return ev
 
 
-@bp.route("/passerelle/<token>")
-def gateway(token):
-    if _too_many(_page_limiter, token, "chargements"):
-        abort(429)
-    ev = _event_from_token(token)
-    if not ev.is_running:
-        return render_template("gateway/indisponible.html", ev=ev), 403
-    session.clear()
-    session["gateway_event_id"] = ev.id
-    import time
-
-    session["last_activity"] = time.time()
-    session.permanent = True
-    # Catalogue de la passerelle : articles de l'événement + catalogue
-    # standard du campus de l'événement (cahier des charges, §Gestion des
-    # événements). Chaque campus n'encaisse que ses propres articles.
+def _gateway_catalog(ev):
+    """Catalogue de la passerelle : articles de l'événement, plus le catalogue
+    standard du campus uniquement si l'événement l'autorise (réglage modifiable
+    en direct). Chaque campus n'encaisse que ses propres articles."""
+    conditions = [
+        Article.active.is_(True),
+        Article.campus == ev.campus,
+    ]
+    if ev.allow_standard_articles:
+        conditions.append(or_(Article.event_id == ev.id, Article.event_id.is_(None)))
+    else:
+        conditions.append(Article.event_id == ev.id)
     articles = db.session.scalars(
-        select(Article)
-        .where(
-            Article.active.is_(True),
-            Article.campus == ev.campus,
-            or_(Article.event_id == ev.id, Article.event_id.is_(None)),
-        )
-        .order_by(Article.event_id.is_(None), Article.name)
+        select(Article).where(*conditions).order_by(Article.event_id.is_(None), Article.name)
     ).all()
     # un article standard sans prix public sur ce campus est exclu
     articles = [a for a in articles if a.event_id == ev.id or a.price_for(ev.campus) > 0]
@@ -101,7 +91,44 @@ def gateway(token):
         if rank is not None:
             item["rank"] = rank
         data.append(item)
-    return render_template("gateway/paiement.html", ev=ev, catalog=data)
+    return data
+
+
+@bp.route("/passerelle/<token>")
+def gateway(token):
+    if _too_many(_page_limiter, token, "chargements"):
+        abort(429)
+    ev = _event_from_token(token)
+    if not ev.is_running:
+        return render_template("gateway/indisponible.html", ev=ev), 403
+    session.clear()
+    session["gateway_event_id"] = ev.id
+    import time
+
+    session["last_activity"] = time.time()
+    session.permanent = True
+    return render_template("gateway/paiement.html", ev=ev, catalog=_gateway_catalog(ev))
+
+
+@bp.route("/passerelle/<token>/catalogue")
+def catalogue(token):
+    """Rafraîchissement en direct du catalogue et du réglage d'encaissement :
+    la caisse ouverte sur la passerelle interroge cette route à intervalle
+    régulier pour refléter les ajouts/suppressions d'articles et le réglage
+    « articles standards » sans rechargement de page."""
+    if _too_many(_page_limiter, token, "chargements"):
+        return jsonify(ok=False, error="Trop de requêtes, patientez un instant."), 429
+    ev = db.session.scalars(select(Event).where(Event.token == token)).first()
+    if ev is None:
+        return jsonify(ok=False, error="Événement introuvable."), 404
+    if ev.closed or not ev.is_running:
+        return jsonify(ok=True, running=False, catalog=[])
+    return jsonify(
+        ok=True,
+        running=True,
+        allow_standard=ev.allow_standard_articles,
+        catalog=_gateway_catalog(ev),
+    )
 
 
 @bp.route("/passerelle/<token>/encaisser", methods=["POST"])

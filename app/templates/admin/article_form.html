@@ -26,8 +26,8 @@
           </select>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Volume (cl, boissons)</label>
-          <input class="form-control" name="volume_cl" type="number" min="0" value="{{ a.volume_cl if a and a.volume_cl else '' }}" {% if not writable %}disabled{% endif %}>
+          <label class="form-label">Volume (cl, optionnel)</label>
+          <input class="form-control" name="volume_cl" type="number" min="0" step="1" value="{{ a.volume_cl if a and a.volume_cl else '' }}" {% if not writable %}disabled{% endif %}>
         </div>
         <div class="col-md-8 d-flex align-items-end">
           <div class="form-check form-switch">
@@ -36,12 +36,12 @@
           </div>
         </div>
         <div class="col-md-6">
-          <label class="form-label">Prix standard (€)</label>
-          <input class="form-control" name="price_std" value="{{ '%.2f'|format(a.price_std / 100) if a else '0.00' }}" {% if not writable %}disabled{% endif %} required>
+          <label class="form-label">Prix standard (€, optionnel)</label>
+          <input class="form-control" name="price_std" value="{{ '%.2f'|format(a.price_std / 100) if a else '0.00' }}" {% if not writable %}disabled{% endif %}>
         </div>
         <div class="col-md-6">
-          <label class="form-label">Prix équipe (€)</label>
-          <input class="form-control" name="price_team" value="{{ '%.2f'|format(a.price_team / 100) if a else '0.00' }}" {% if not writable %}disabled{% endif %} required>
+          <label class="form-label">Prix équipe (€, optionnel)</label>
+          <input class="form-control" name="price_team" value="{{ '%.2f'|format(a.price_team / 100) if a else '0.00' }}" {% if not writable %}disabled{% endif %}>
         </div>
         <div class="col-12">
           <div class="form-check form-switch">

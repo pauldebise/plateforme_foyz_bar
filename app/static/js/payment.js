@@ -1,12 +1,14 @@
 let contributors = [];
 let cart = new Map();
 let successTimer = null;
-const CATALOG = JSON.parse(document.getElementById('catalog-data').textContent);
+let CATALOG = JSON.parse(document.getElementById('catalog-data').textContent);
 const CONFIG = document.getElementById('payment-config');
 const DEPOSIT_VALUE = parseInt(CONFIG.dataset.depositValue, 10);
 const DEPOSIT_ENABLED = CONFIG.dataset.depositEnabled === '1';
 const CAMPUS = CONFIG.dataset.campus || '';
 const GATEWAY = CONFIG.dataset.gateway === '1';
+let allowStandard = CONFIG.dataset.allowStandard !== '0';
+let catalogSignature = JSON.stringify(CATALOG);
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -309,6 +311,60 @@ function renderCatalog() {
     els.catalog.appendChild(catalogCard(TYPE_LABELS[type] || type, '', '', std));
   });
   clearCatalogActive();
+}
+
+function updateCatalogTitle() {
+  const title = $('catalog-title');
+  if (!title || !GATEWAY) return;
+  title.textContent = allowStandard
+    ? 'Catalogue — événement & standard'
+    : "Catalogue — articles de l'événement";
+}
+
+// Retire du panier les articles qui viennent d'être supprimés/désactivés côté
+// serveur pendant la soirée.
+function pruneCart() {
+  const available = new Set(CATALOG.map((a) => a.id));
+  let removed = 0;
+  cart.forEach((qty, id) => {
+    if (!available.has(id)) {
+      cart.delete(id);
+      removed += 1;
+    }
+  });
+  if (removed) toast("Un article du panier n'est plus disponible : il a été retiré.");
+}
+
+let catalogTimer = null;
+
+// Rafraîchissement en direct : réglage « articles standards », ajout ou
+// suppression d'articles — sans rechargement de la page.
+async function refreshCatalog() {
+  if (!GATEWAY || document.hidden) return;
+  try {
+    const res = await fetch(`${location.pathname}/catalogue`, {
+      headers: { Accept: 'application/json' },
+    });
+    const data = await res.json();
+    if (!data || data.ok !== true) return;
+    if (data.running === false) {
+      clearInterval(catalogTimer);
+      toast('Événement terminé ou clôturé : la passerelle ne peut plus encaisser.');
+      return;
+    }
+    allowStandard = data.allow_standard !== false;
+    const next = data.catalog || [];
+    const signature = JSON.stringify(next);
+    updateCatalogTitle();
+    if (signature === catalogSignature) return;
+    catalogSignature = signature;
+    CATALOG = next;
+    pruneCart();
+    renderCatalog();
+    renderCart();
+  } catch (e) {
+    // Réseau indisponible : on retentera au prochain cycle.
+  }
 }
 
 function catalogRow(a) {
@@ -638,5 +694,15 @@ if (els.rgSearch) {
 }
 
 renderContributors();
+updateCatalogTitle();
 renderCatalog();
 renderCart();
+
+if (GATEWAY) {
+  // Actualisation périodique du catalogue (et du réglage d'encaissement) ainsi
+  // qu'au retour sur l'onglet, pour refléter les changements en direct.
+  catalogTimer = setInterval(refreshCatalog, 8000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refreshCatalog();
+  });
+}

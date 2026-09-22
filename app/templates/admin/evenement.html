@@ -28,6 +28,11 @@
           </div>
           {% if ev.poster %}<img class="event-poster mb-2" style="height: 140px;" src="/uploads/{{ ev.poster }}">{% endif %}
           <div class="mb-3"><label class="form-label">Affiche</label><input class="form-control" type="file" name="poster" accept=".jpg,.jpeg,.png,.webp"></div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" name="allow_standard_articles" id="allow-standard" {% if ev.allow_standard_articles %}checked{% endif %}>
+            <label class="form-check-label" for="allow-standard">Autoriser les articles standards du campus sur la passerelle</label>
+            <div class="form-text">Décoché, la passerelle n'encaisse que les articles temporaires de l'événement.</div>
+          </div>
           <button class="btn btn-primary btn-sm">Enregistrer</button>
         </form>
         <hr>
@@ -44,6 +49,7 @@
           <dt class="col-sm-3">Campus</dt><dd class="col-sm-9">{{ CAMPUSSES[ev.campus] }}</dd>
           <dt class="col-sm-3">Début</dt><dd class="col-sm-9">{{ ev.starts_at|dt }}</dd>
           <dt class="col-sm-3">Fin</dt><dd class="col-sm-9">{{ ev.ends_at|dt }}</dd>
+          <dt class="col-sm-3">Articles standards</dt><dd class="col-sm-9">{{ 'autorisés' if ev.allow_standard_articles else 'refusés' }} sur la passerelle</dd>
         </dl>
         {% if ev.poster %}<img class="event-poster mt-2" style="height: 140px;" src="/uploads/{{ ev.poster }}">{% endif %}
         {% endif %}
@@ -56,7 +62,7 @@
       <div class="card-body">
         <p class="small text-muted mb-2">
           Lien à sens unique à transmettre à l'association organisatrice (ex : BDE).
-          La page se limite à l'encaissement des articles temporaires de l'événement.
+          La page encaisse les articles temporaires de l'événement{% if ev.allow_standard_articles %} ainsi que le catalogue standard du campus{% endif %}.
           Revenir à l'interface équipe exige une nouvelle authentification.
         </p>
         <div class="input-group input-group-sm">
@@ -98,7 +104,7 @@
           <div class="col-12"><label class="form-label small">Nom</label><input class="form-control form-control-sm" name="name" required placeholder="ex : Coupe Spéciale Soirée"></div>
           <div class="col-md-3"><label class="form-label small">Standard (€)</label><input class="form-control form-control-sm" name="price_std" value="0.00"></div>
           <div class="col-md-3"><label class="form-label small">Équipe (€)</label><input class="form-control form-control-sm" name="price_team" value="0.00"></div>
-          <div class="col-md-6"><label class="form-label small">Volume (cl)</label><input class="form-control form-control-sm" name="volume_cl" type="number"></div>
+          <div class="col-md-6"><label class="form-label small">Volume (cl, optionnel)</label><input class="form-control form-control-sm" name="volume_cl" type="number"></div>
           <div class="col-md-6 d-flex align-items-center">
             <div class="form-check">
               <input class="form-check-input" type="checkbox" name="is_alcohol" id="ev-alcohol" checked>
