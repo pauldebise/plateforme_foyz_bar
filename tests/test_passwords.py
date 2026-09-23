@@ -156,7 +156,7 @@ def test_b_politique_dans_administration():
         stored = db.session.get(User, target_id).password_hash
         _expect(check_password_hash(stored, "huitlettres"), "équipe : accepté")
 
-    # Mot de passe administrateur : min 12 caractères exigés, actuel inchangé sinon.
+    # Mot de passe administrateur : min 8 caractères, sans diversité exigée.
     from app.services.settings import check_admin_password
 
     client.post(
@@ -172,6 +172,18 @@ def test_b_politique_dans_administration():
         _expect(
             check_admin_password(ADMIN_PASSWORD, "brest"), "mot de passe administrateur inchangé"
         )
+
+    client.post(
+        "/admin/module-dev",
+        data={
+            "action": "password",
+            "current_password": ADMIN_PASSWORD,
+            "new_password": "huitcarac",
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        _expect(check_admin_password("huitcarac", "brest"), "admin : 8 caractères sans diversité")
 
 
 def main():

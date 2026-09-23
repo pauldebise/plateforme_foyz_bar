@@ -1143,7 +1143,9 @@ def module_dev():
             new = request.form.get("new_password", "")
             from app.services import passwords
 
-            problem = passwords.validate(new, username="admin", name="administrateur")
+            problem = passwords.validate(
+                new, username="admin", name="administrateur", require_diversity=False
+            )
             if not S.check_admin_password(current, own):
                 flash(
                     f"Mot de passe administrateur actuel incorrect ({CAMPUSSES[own]}).",

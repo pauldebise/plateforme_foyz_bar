@@ -247,11 +247,10 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
   `CF-Connecting-IP` si `TRUSTED_PROXY=cloudflare`, sinon `remote_addr` —
   `X-Forwarded-For` brut n'est jamais utilisé ; compteurs purgés et bornés).
 - Sessions signées, `HttpOnly`, expiration automatique configurable (module développement).
-- **Politique de mot de passe** (12 caractères minimum et trois familles de
-  caractères pour l'administrateur ; 8 caractères minimum, sans contrainte de
-  diversité, pour les membres d'équipe ; refus des mots de passe courants et de
-  ceux contenant l'identifiant ou le nom) appliquée aux formulaires
-  d'administration.
+- **Politique de mot de passe** (8 caractères minimum, sans contrainte de
+  diversité, pour l'administrateur et les membres d'équipe ; refus des mots de
+  passe courants et de ceux contenant l'identifiant ou le nom) appliquée aux
+  formulaires d'administration.
 - Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
   annulations de transactions, retrait du statut « blacklist alcool ».
 - Registre des connexions (compte, campus, IP, succès/échec) avec purge automatique.

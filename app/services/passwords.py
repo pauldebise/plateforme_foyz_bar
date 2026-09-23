@@ -1,16 +1,15 @@
 """Politique de mot de passe (P10-5).
 
-Longueur minimale, diversité des caractères, refus des mots de passe les plus
-courants et des mots de passe contenant l'identifiant ou le nom du compte.
-Utilisée par la gestion d'équipe (politique allégée : 8 caractères, sans
-diversité imposée) et par le mot de passe administrateur (politique complète
-par défaut) ; la connexion reste inchangée (les mots de passe existants
+Longueur minimale, refus des mots de passe les plus courants et des mots de
+passe contenant l'identifiant ou le nom du compte. Utilisée par la gestion
+d'équipe et par le mot de passe administrateur (8 caractères minimum, sans
+diversité imposée) ; la connexion reste inchangée (les mots de passe existants
 continuent de fonctionner).
 """
 
 import re
 
-MIN_LENGTH = 12
+MIN_LENGTH = 8
 TEAM_MIN_LENGTH = 8
 
 # Les plus courants (fuites publiques) en français et en anglais. Liste
