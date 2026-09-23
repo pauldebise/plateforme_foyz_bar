@@ -37,7 +37,7 @@
             <label class="form-check-label text-warning" for="bla"><strong>Blacklist alcool</strong> — interdit l'achat d'alcool (mutualisé entre campus)</label>
           </div>
           <div class="mb-3">
-            <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[current_campus] if current_campus else '' }} <span class="text-muted small">(requis uniquement pour retirer le statut blacklist alcool)</span></label>
+            <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[current_campus] if current_campus else '' }} <span class="text-muted small">(requis pour retirer un statut blacklist)</span></label>
             <input class="form-control" type="password" name="admin_password">
           </div>
           <button class="btn btn-primary">Enregistrer</button>

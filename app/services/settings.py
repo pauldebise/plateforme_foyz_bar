@@ -85,7 +85,7 @@ def check_admin_password(password, campus):
     """Vérifie le mot de passe administrateur du campus de l'opération.
 
     Chaque campus a son propre mot de passe (opérations sensibles : découvert,
-    annulation, suppression de compte, retrait « blacklist alcool »). Un campus
+    annulation, suppression de compte, retrait des statuts blacklist). Un campus
     inconnu refuse la vérification.
     """
     if not password or campus not in CAMPUSSES:

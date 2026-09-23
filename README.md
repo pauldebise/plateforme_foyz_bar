@@ -252,7 +252,7 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
   passe courants et de ceux contenant l'identifiant ou le nom) appliquée aux
   formulaires d'administration.
 - Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
-  annulations de transactions, retrait du statut « blacklist alcool ».
+  annulations de transactions, retrait des statuts blacklist.
 - Registre des connexions (compte, campus, IP, succès/échec) avec purge automatique.
 - En-têtes `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
   `Content-Security-Policy` stricte (`script-src 'self'`, aucun script inline) ;
@@ -272,7 +272,7 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 - **Changer le mot de passe administrateur** : Module développement → Mot de passe
   administrateur. Ce mot de passe est **propre à chaque campus** (il confirme les
   opérations sensibles : découvert, annulation, suppression de compte, retrait
-  « blacklist alcool ») ; basculez de campus pour modifier celui de l'autre site. À
+  des statuts blacklist) ; basculez de campus pour modifier celui de l'autre site. À
   la première exécution, `ADMIN_PASSWORD` initialise les deux campus, et un ancien
   réglage unique (`admin_password_hash`) est repris sur les deux.
 - Les paramètres (découvert, consigne, thèmes, durées de conservation…) se règlent dans

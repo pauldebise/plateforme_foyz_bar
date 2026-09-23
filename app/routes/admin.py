@@ -231,18 +231,17 @@ def compte(user_id):
                 u.username = new_username
             promotion = request.form.get("promotion", "").strip()
             u.promotion = int(promotion) if promotion.isdigit() else None
-            u.blacklist = request.form.get("blacklist") == "on"
+            new_bl = request.form.get("blacklist") == "on"
             new_ba = request.form.get("blacklist_alcohol") == "on"
             if (
-                u.blacklist_alcohol
-                and not new_ba
-                and not S.check_admin_password(request.form.get("admin_password", ""), own_campus())
-            ):
+                (u.blacklist and not new_bl) or (u.blacklist_alcohol and not new_ba)
+            ) and not S.check_admin_password(request.form.get("admin_password", ""), own_campus()):
                 flash(
-                    "Le retrait du statut « blacklist alcool » exige le mot de passe administrateur.",
+                    "Le retrait d'un statut blacklist exige le mot de passe administrateur.",
                     "danger",
                 )
                 return redirect(url_for("admin.compte", user_id=u.id))
+            u.blacklist = new_bl
             u.blacklist_alcohol = new_ba
         if u.blacklist:
             flash(

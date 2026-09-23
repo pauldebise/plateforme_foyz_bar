@@ -621,6 +621,101 @@ def test_admin_account_is_protected_from_team():
     auth_module._attempts.clear()
 
 
+def test_blacklist_removal_requires_admin_password():
+    from app.routes import auth as auth_module
+
+    app = create_app()
+    with app.app_context():
+        user = User(
+            name="Blacklist Test",
+            username="blacklist.test",
+            blacklist=True,
+            blacklist_alcohol=True,
+        )
+        db.session.add(user)
+        db.session.commit()
+        user_id = user.id
+
+    auth_module._attempts.clear()
+    client = _client(app)
+    token = _csrf(client.get(f"/admin/comptes/{user_id}").get_data(as_text=True))
+
+    # Retrait blacklist classique sans mot de passe : refusé, statut inchangé.
+    res = client.post(
+        f"/admin/comptes/{user_id}",
+        data={"name": "Blacklist Test", "username": "blacklist.test", "_csrf": token},
+    )
+    _expect(res.status_code == 302, f"POST profil ({res.status_code})")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        _expect(user.blacklist, "blacklist classique inchangé sans mot de passe")
+
+    # Retrait blacklist alcool sans mot de passe : refusé, statut inchangé.
+    res = client.post(
+        f"/admin/comptes/{user_id}",
+        data={
+            "name": "Blacklist Test",
+            "username": "blacklist.test",
+            "blacklist": "on",
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        _expect(user.blacklist_alcohol, "blacklist alcool inchangé sans mot de passe")
+
+    # Retrait des deux avec le bon mot de passe : accepté.
+    res = client.post(
+        f"/admin/comptes/{user_id}",
+        data={
+            "name": "Blacklist Test",
+            "username": "blacklist.test",
+            "admin_password": ADMIN_PASSWORD,
+            "_csrf": token,
+        },
+    )
+    _expect(res.status_code == 302, f"retrait avec mot de passe ({res.status_code})")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        _expect(not user.blacklist and not user.blacklist_alcohol, "blacklists retirés")
+
+    # Mauvais mot de passe : refusé.
+    client.post(
+        f"/admin/comptes/{user_id}",
+        data={
+            "name": "Blacklist Test",
+            "username": "blacklist.test",
+            "blacklist": "on",
+            "blacklist_alcohol": "on",
+            "_csrf": token,
+        },
+    )
+    token = _csrf(client.get(f"/admin/comptes/{user_id}").get_data(as_text=True))
+    client.post(
+        f"/admin/comptes/{user_id}",
+        data={
+            "name": "Blacklist Test",
+            "username": "blacklist.test",
+            "admin_password": "mauvais",
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        _expect(user.blacklist and user.blacklist_alcohol, "mauvais mot de passe : inchangé")
+
+    client.post(
+        f"/admin/comptes/{user_id}",
+        data={
+            "name": "Blacklist Test",
+            "username": "blacklist.test",
+            "admin_password": ADMIN_PASSWORD,
+            "_csrf": token,
+        },
+    )
+    auth_module._attempts.clear()
+
+
 def main():
     tests = [
         (name, fn)
