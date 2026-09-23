@@ -687,9 +687,13 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     recipient_shares = _split_shares(amount, len(recipients))
 
     wallets = _lock_wallets(campus, donors + recipients)
+    limit = S.overdraft_limit()
     for u, share in zip(donors, donor_shares, strict=True):
-        if share > wallets[u.id].balance:
-            raise OperationError("solde", f"Solde de {u.display_name} insuffisant pour sa part.")
+        if wallets[u.id].balance - share < -limit:
+            raise OperationError(
+                "overdraft_limit",
+                f"Découvert maximum dépassé pour {u.display_name} : transfert refusé.",
+            )
 
     t = Transaction(
         type="transfert",
@@ -709,12 +713,15 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
         wallets[u.id].balance = Wallet.balance + share
     db.session.flush()
 
-    # Contrôle post-écriture : aucun donneur ne doit passer négatif (un
-    # transfert n'autorise pas le découvert, contrairement à un achat).
+    # Contrôle post-écriture : le découvert maximum d'un donneur n'est jamais
+    # dépassé (comme pour un achat).
     for u in donors:
-        if wallets[u.id].balance < 0:
+        if wallets[u.id].balance < -limit:
             db.session.rollback()
-            raise OperationError("solde", f"Solde de {u.display_name} insuffisant.")
+            raise OperationError(
+                "overdraft_limit",
+                f"Découvert maximum dépassé pour {u.display_name} : transfert refusé.",
+            )
 
     for u, share in zip(donors, donor_shares, strict=True):
         db.session.add(

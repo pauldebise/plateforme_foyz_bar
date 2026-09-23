@@ -396,7 +396,7 @@ def test_mouvements_rechargement_retrait_transfert():
             amount_cents=100,
         )
         _refus(
-            "solde",
+            "overdraft_limit",
             T.create_transfer,
             operator_label="test",
             campus="brest",
@@ -447,18 +447,30 @@ def test_transfert_multi_repartition_exacte():
             to_users=recipients,
             amount_cents=1,
         )
-        # Un donneur sans solde suffisant est refusé sans écriture partielle.
+        # Un donneur qui dépasserait le découvert autorisé est refusé sans
+        # écriture partielle (découvert 500 : 10 - 600 = -590 < -500).
         pauvre = _user(balance=10)
         _refus(
-            "solde",
+            "overdraft_limit",
             T.create_transfer,
+            operator_label="test",
+            campus="brest",
+            from_users=[pauvre],
+            to_users=[recipients[0]],
+            amount_cents=600,
+        )
+        _expect(_balance(pauvre.id) == 10, "aucun débit partiel sur refus")
+
+        # Un donneur peut passer négatif dans la limite du découvert autorisé.
+        _t = T.create_transfer(
             operator_label="test",
             campus="brest",
             from_users=[pauvre],
             to_users=[recipients[0]],
             amount_cents=100,
         )
-        _expect(_balance(pauvre.id) == 10, "aucun débit partiel sur refus")
+        _expect(_balance(pauvre.id) == -90, f"découvert autorisé (obtenu {_balance(pauvre.id)})")
+        T.cancel_transaction(_t, ADMIN_PASSWORD)
 
         T.cancel_transaction(t, ADMIN_PASSWORD)
         _expect(all(_balance(u.id) == 1000 for u in donors), "donneurs restaurés")
