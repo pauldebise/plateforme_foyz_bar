@@ -206,6 +206,19 @@ def test_decouvert_mot_de_passe_admin_et_limite():
         article = _article(std=300)
         user = _user(balance=100)
         before = _purchase_count()
+        # Solde positif avant l'achat : pas de mot de passe, le négatif est ouvert.
+        T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article.id, "quantity": 1}],
+            contributor_ids=[user.id],
+        )
+        _expect(
+            _balance(user.id) == -200, f"négatif sans mot de passe (obtenu {_balance(user.id)})"
+        )
+        _expect(_purchase_count() == before + 1, "transaction écrite")
+
+        # Déjà dans le négatif : mot de passe administrateur requis.
         exc = _refus(
             "admin_password_required",
             T.create_purchase,
@@ -218,7 +231,7 @@ def test_decouvert_mot_de_passe_admin_et_limite():
             user.display_name in exc.extra.get("negative_users", []),
             "le refus nomme l'étudiant concerné",
         )
-        _expect(_purchase_count() == before, "aucune transaction écrite sans mot de passe")
+        _expect(_purchase_count() == before + 1, "aucune transaction écrite sans mot de passe")
 
         T.create_purchase(
             operator_label="test",
@@ -227,7 +240,7 @@ def test_decouvert_mot_de_passe_admin_et_limite():
             contributor_ids=[user.id],
             admin_password=ADMIN_PASSWORD,
         )
-        _expect(_balance(user.id) == -200, f"négatif autorisé -200 (obtenu {_balance(user.id)})")
+        _expect(_balance(user.id) == -500, f"découvert max -500 (obtenu {_balance(user.id)})")
 
         big = _article(std=1000)
         pauvre = _user(balance=0)

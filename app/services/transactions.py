@@ -394,24 +394,23 @@ def create_purchase(
     wallets = _lock_wallets(campus, users) if not direct else {}
     kegs = _lock_kegs(keg_volumes.keys())
 
-    negative = []
+    already_negative = []
     if not direct:
         for u, share in zip(users, shares, strict=True):
             w = wallets[u.id]
             new_balance = w.balance - share
-            if new_balance < 0:
-                negative.append((u, new_balance))
-        for u, new_balance in negative:
-            if -new_balance > S.overdraft_limit():
+            if new_balance < -S.overdraft_limit():
                 raise OperationError(
                     "overdraft_limit",
                     f"Découvert maximum dépassé pour {u.display_name} : transaction refusée.",
                 )
-        if negative and not S.check_admin_password(admin_password, campus):
+            if w.balance < 0:
+                already_negative.append(u)
+        if already_negative and not S.check_admin_password(admin_password, campus):
             raise OperationError(
                 "admin_password_required",
-                "Un étudiant passera en négatif : mot de passe administrateur requis.",
-                {"negative_users": [u.display_name for u, _ in negative]},
+                "Un étudiant est déjà dans le négatif : mot de passe administrateur requis.",
+                {"negative_users": [u.display_name for u in already_negative]},
             )
 
     ttype = "direct" if direct else "achat"
