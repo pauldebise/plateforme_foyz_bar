@@ -1,5 +1,6 @@
 let contributors = [];
 let cart = new Map();
+let lastArticleId = null;
 let successTimer = null;
 let CATALOG = JSON.parse(document.getElementById('catalog-data').textContent);
 const CONFIG = document.getElementById('payment-config');
@@ -406,6 +407,7 @@ function catalogRow(a) {
 
 function addToCart(article) {
   cart.set(article.id, (cart.get(article.id) || 0) + 1);
+  lastArticleId = article.id;
   renderCart();
   if (els.catalogSearch) els.catalogSearch.focus({ preventScroll: true });
 }
@@ -549,6 +551,7 @@ async function pay(adminPassword) {
 function resetCartState() {
   cart = new Map();
   contributors = [];
+  lastArticleId = null;
   if (els.depositSwitch) els.depositSwitch.checked = false;
   if (els.glasses) els.glasses.value = 1;
   if (els.directSwitch) els.directSwitch.checked = false;
@@ -562,6 +565,41 @@ function resetCartState() {
   renderContributors();
   renderCart();
   renderCatalog();
+}
+
+// Raccourci Échap : vide la commande en cours (articles et étudiants) sans
+// toucher à la consigne ni au mode de paiement direct.
+function clearOrder() {
+  if (!cart.size && !contributors.length) return;
+  cart = new Map();
+  contributors = [];
+  lastArticleId = null;
+  renderContributors();
+  renderCart();
+  renderCatalog();
+}
+
+// Raccourcis + / − : ajustent la quantité du dernier article ajouté.
+function changeLastArticleQuantity(delta) {
+  if (!lastArticleId || !cart.has(lastArticleId)) return;
+  const qty = cart.get(lastArticleId) + delta;
+  if (qty <= 0) {
+    cart.delete(lastArticleId);
+    lastArticleId = null;
+  } else {
+    cart.set(lastArticleId, qty);
+  }
+  renderCart();
+}
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
+function modalOpen() {
+  return !!document.querySelector('.modal.show');
 }
 
 function showSuccess(total) {
@@ -638,6 +676,29 @@ if (els.catalogSearch) {
   });
 }
 payButtons().forEach((button) => button.addEventListener('click', () => pay()));
+
+// Raccourcis clavier caisse : Échap vide la commande en cours, + / − ajustent
+// la quantité du dernier article ajouté. Ignorés pendant la saisie (recherche,
+// consigne, mot de passe) et tant qu'une modale est ouverte.
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || modalOpen()) return;
+  if (e.key === 'Escape') {
+    if (cart.size || contributors.length) {
+      e.preventDefault();
+      clearOrder();
+    }
+    return;
+  }
+  if (isTypingTarget(e.target)) return;
+  if (e.key === '+' || e.key === '=') {
+    e.preventDefault();
+    changeLastArticleQuantity(1);
+  } else if (e.key === '-') {
+    e.preventDefault();
+    changeLastArticleQuantity(-1);
+  }
+});
+
 if (els.mobileBar) document.body.classList.add('has-mobile-pay-bar');
 
 initStudentSearch(els.search, els.results, (r) => {

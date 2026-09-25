@@ -410,6 +410,29 @@ def test_g_selection_etudiant_operations():
     _expect("}, 120);" in app_js, "debounce de recherche réduit (120 ms)")
 
 
+def test_h_raccourcis_caisse():
+    """Caisse : Échap vide la commande, +/− ajustent le dernier article ajouté."""
+    app = create_app()
+    client = app.test_client()
+    _login(client)
+    page = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect("js/payment.js" in page, "script de caisse chargé")
+    payment_js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    _expect("document.addEventListener('keydown'" in payment_js, "écoute clavier globale")
+    _expect("e.key === 'Escape'" in payment_js, "touche Échap gérée")
+    _expect("function clearOrder()" in payment_js, "Échap vide la commande en cours")
+    _expect("lastArticleId = article.id" in payment_js, "dernier article ajouté suivi")
+    _expect(
+        "e.key === '+' || e.key === '='" in payment_js,
+        "touche + gérée",
+    )
+    _expect("e.key === '-'" in payment_js, "touche − gérée")
+    _expect("changeLastArticleQuantity(1)" in payment_js, "augmenter la quantité")
+    _expect("changeLastArticleQuantity(-1)" in payment_js, "diminuer la quantité")
+    _expect("isTypingTarget(e.target)" in payment_js, "saisie texte préservée")
+    _expect("modalOpen()" in payment_js, "raccourcis suspendus pendant une modale")
+
+
 def main():
     tests = [
         (name, fn)
