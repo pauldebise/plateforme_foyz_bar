@@ -407,7 +407,11 @@ def test_g_selection_etudiant_operations():
     payment_js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
     _expect("/api/wallet/" not in payment_js, "paiement sans appel portefeuille redondant")
     app_js = (STATIC / "js" / "app.js").read_text(encoding="utf-8")
-    _expect("}, 120);" in app_js, "debounce de recherche réduit (120 ms)")
+    # Réactivité caisse : plus de debounce, la requête en vol est annulée à
+    # chaque frappe (seule la réponse au dernier état du champ s'affiche).
+    _expect("}, 120);" not in app_js, "recherche étudiant sans debounce")
+    _expect("AbortController" in app_js, "requêtes obsolètes annulées")
+    _expect("cancelPending()" in app_js, "annulation branchée sur les frappes")
 
 
 def test_h_raccourcis_caisse():

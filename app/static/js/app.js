@@ -43,9 +43,22 @@ let searchListSeq = 0;
 // Liste de résultats accessible : combobox + listbox ARIA, options focusables
 // au clavier (flèches, Entrée, Échap) et restituées au lecteur d'écran (U5).
 function initStudentSearch(inputEl, listEl, onPick, options = {}) {
-  let timer = null;
   let results = [];
   let activeIndex = -1;
+  // Recherche volontairement sans debounce : chaque frappe part tout de suite
+  // (réactivité caisse pendant les rushs). En contrepartie, la requête en vol
+  // est annulée à la frappe suivante pour que seule la réponse au dernier état
+  // du champ puisse s'afficher (pas de résultats périmés ni désordonnés).
+  let controller = null;
+  let requestSeq = 0;
+
+  function cancelPending() {
+    requestSeq += 1;
+    if (controller) {
+      controller.abort();
+      controller = null;
+    }
+  }
 
   const listId = listEl.id || `search-list-${++searchListSeq}`;
   listEl.id = listId;
@@ -78,6 +91,7 @@ function initStudentSearch(inputEl, listEl, onPick, options = {}) {
   function pick(index) {
     const r = results[index];
     if (!r) return;
+    cancelPending();
     onPick(r);
     results = [];
     activeIndex = -1;
@@ -86,54 +100,67 @@ function initStudentSearch(inputEl, listEl, onPick, options = {}) {
     inputEl.value = options.keepValue ? r.name : '';
   }
 
-  inputEl.addEventListener('input', () => {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      const q = inputEl.value.trim();
-      if (q.length < 1) {
-        listEl.innerHTML = '';
-        setOpen(false);
-        activeIndex = -1;
-        return;
-      }
-      const campus = options.campus || '';
-      const url = `/api/students?q=${encodeURIComponent(q)}${campus ? '&campus=' + campus : ''}`;
-      results = await apiFetch(url);
-      activeIndex = -1;
+  inputEl.addEventListener('input', async () => {
+    cancelPending();
+    const q = inputEl.value.trim();
+    if (q.length < 1) {
+      results = [];
       listEl.innerHTML = '';
-      if (!results.length) {
-        const empty = document.createElement('div');
-        empty.className = 'px-3 py-2 text-muted small';
-        empty.setAttribute('role', 'status');
-        empty.textContent = 'Aucun résultat';
-        listEl.appendChild(empty);
-      }
-      results.forEach((r, idx) => {
-        const div = document.createElement('div');
-        div.className = 'search-result px-3 py-2 border-bottom d-flex justify-content-between align-items-center';
-        div.id = `${listId}-opt-${idx}`;
-        div.setAttribute('role', 'option');
-        div.setAttribute('aria-selected', 'false');
-        div.tabIndex = -1;
-        const info = document.createElement('div');
-        info.appendChild(makeEl('strong', '', r.name));
-        if (r.promotion) info.appendChild(makeEl('span', 'text-muted small', ` · promo ${r.promotion}`));
-        info.appendChild(makeEl(
-          'span', 'balance-chip badge bg-light text-dark ms-1', `${(r.balance / 100).toFixed(2)} €`,
-        ));
-        const badges = [];
-        if (r.blacklist) badges.push(['badge-blacklist', 'blacklist']);
-        if (r.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
-        if (r.is_team) badges.push(['bg-secondary', 'équipe']);
-        appendBadges(info, badges);
-        div.appendChild(info);
-        div.addEventListener('click', () => pick(idx));
-        div.addEventListener('mouseenter', () => setActive(idx));
-        listEl.appendChild(div);
-      });
-      setOpen(true);
-      setActive(0);
-    }, 120);
+      setOpen(false);
+      activeIndex = -1;
+      return;
+    }
+    const seq = requestSeq;
+    const ctrl = new AbortController();
+    controller = ctrl;
+    const campus = options.campus || '';
+    const url = `/api/students?q=${encodeURIComponent(q)}${campus ? '&campus=' + campus : ''}`;
+    let data;
+    try {
+      data = await apiFetch(url, { signal: ctrl.signal });
+    } catch (e) {
+      // Requête remplacée par une frappe plus récente : rien à afficher.
+      if (e && e.name === 'AbortError') return;
+      throw e;
+    } finally {
+      if (controller === ctrl) controller = null;
+    }
+    if (seq !== requestSeq) return; // réponse obsolète
+    results = data;
+    activeIndex = -1;
+    listEl.innerHTML = '';
+    if (!results.length) {
+      const empty = document.createElement('div');
+      empty.className = 'px-3 py-2 text-muted small';
+      empty.setAttribute('role', 'status');
+      empty.textContent = 'Aucun résultat';
+      listEl.appendChild(empty);
+    }
+    results.forEach((r, idx) => {
+      const div = document.createElement('div');
+      div.className = 'search-result px-3 py-2 border-bottom d-flex justify-content-between align-items-center';
+      div.id = `${listId}-opt-${idx}`;
+      div.setAttribute('role', 'option');
+      div.setAttribute('aria-selected', 'false');
+      div.tabIndex = -1;
+      const info = document.createElement('div');
+      info.appendChild(makeEl('strong', '', r.name));
+      if (r.promotion) info.appendChild(makeEl('span', 'text-muted small', ` · promo ${r.promotion}`));
+      info.appendChild(makeEl(
+        'span', 'balance-chip badge bg-light text-dark ms-1', `${(r.balance / 100).toFixed(2)} €`,
+      ));
+      const badges = [];
+      if (r.blacklist) badges.push(['badge-blacklist', 'blacklist']);
+      if (r.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
+      if (r.is_team) badges.push(['bg-secondary', 'équipe']);
+      appendBadges(info, badges);
+      div.appendChild(info);
+      div.addEventListener('click', () => pick(idx));
+      div.addEventListener('mouseenter', () => setActive(idx));
+      listEl.appendChild(div);
+    });
+    setOpen(true);
+    setActive(0);
   });
 
   inputEl.addEventListener('keydown', (e) => {
@@ -150,12 +177,16 @@ function initStudentSearch(inputEl, listEl, onPick, options = {}) {
         pick(activeIndex);
       }
     } else if (e.key === 'Escape' && !listEl.classList.contains('d-none')) {
+      cancelPending();
       setOpen(false);
       activeIndex = -1;
     }
   });
 
   document.addEventListener('click', (e) => {
-    if (!listEl.contains(e.target) && e.target !== inputEl) setOpen(false);
+    if (!listEl.contains(e.target) && e.target !== inputEl) {
+      cancelPending();
+      setOpen(false);
+    }
   });
 }
