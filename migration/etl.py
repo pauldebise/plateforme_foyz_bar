@@ -54,7 +54,7 @@ from .sources import (
 )
 from .sources import paris as paris_contract
 from . import staging
-from .util import normalize_key, slug_username, to_cents, utcnow as now_utc
+from .util import normalize_key, slug_username, to_cents, unescape_html, utcnow as now_utc
 
 _USERS_SQL = (
     "INSERT INTO users (username, nickname, name, promotion, password_hash, "
@@ -375,7 +375,7 @@ class Migrator:
             if type_id is None or not name:
                 continue
             try:
-                self.type_names[int(str(type_id).strip())] = str(name).strip()
+                self.type_names[int(str(type_id).strip())] = str(unescape_html(name)).strip()
             except ValueError:
                 continue
 

@@ -21,6 +21,7 @@ from migration.errors import AccountingError, MigrationError, SourceError  # noq
 from migration.parsing.sqlstream import iter_business_rows  # noqa: E402
 from migration.sources import (  # noqa: E402
     as_bool,
+    as_promotion,
     map_article_row,
     map_keg_row,
     map_operation_row,
@@ -201,7 +202,35 @@ def test_user_password_and_real_name_mapping():
         user["username"] == "paul.debise",
         f"identifiant de connexion = slug du nom réel ({user['username']})",
     )
+    _expect(user["promotion"] == 2028, f"promo CI2028 -> 2028 ({user['promotion']})")
+    _expect(
+        as_promotion("FIPA2016") == 2016
+        and as_promotion(2025) == 2025
+        and as_promotion("Autre") is None
+        and as_promotion(None) is None,
+        "promotions hétérogènes -> année cible",
+    )
     _expect(user["key"] == "paul debise", "clé de réconciliation = nom réel")
+    # Entités HTML doublement encodées dans l'identité (base Brest réelle) :
+    # décodées AVANT la clé et le slug, sinon username « ...l.x27.epine... »
+    entity, _ = map_user_row(
+        {
+            "card_id": "0034562100008",
+            "name": "Antoine DE L&amp;#x27;EPINE",
+            "real_name": "Antoine DE L&amp;#x27;EPINE",
+            "balance": "0.00",
+            "promo": "CI2021",
+        },
+        "brest",
+        "euros",
+    )
+    _expect(entity["name"] == "Antoine DE L'EPINE", f"nom décodé ({entity['name']})")
+    _expect(
+        entity["username"] == "antoine.de.lepine",
+        f"slug calculé après décodage ({entity['username']})",
+    )
+    _expect(entity["key"] == "antoine de l'epine", "clé de réconciliation décodée")
+    _expect(entity["promotion"] == 2021, f"promo CI2021 -> 2021 ({entity['promotion']})")
     _expect(user["password_hash"] is None, "bcrypt -> pas un hash werkzeug")
     _expect(
         user["legacy_password"] == "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC",
@@ -289,6 +318,14 @@ def test_bit_literals_and_html():
     _expect(as_bool(None) is None, "bit absent -> None")
     _expect(unescape_html("Menu Foy&#x27;z") == "Menu Foy'z", "entités HTML décodées")
     _expect(unescape_html("BDE 21&#x2F;02&#x2F;2025") == "BDE 21/02/2025", "slash encodé")
+    # double encodage (fréquent dans l'ancienne base PHP) : une seule passe de
+    # html.unescape laissait « &#x27; » / « &quot; » dans les valeurs migrées
+    _expect(unescape_html("Foy&amp;#x27;z") == "Foy'z", "double encodage apostrophe")
+    _expect(
+        unescape_html("&amp;quot;le boss&amp;quot;") == '"le boss"', "double encodage guillemets"
+    )
+    _expect(unescape_html("&amp;amp;#x27;") == "'", "triple encodage (borne du décodage)")
+    _expect(unescape_html(None) is None and unescape_html(12) == 12, "non-texte inchangé")
     _expect(liters_to_cl("0.33") == 33, "0.33 L -> 33 cl")
     _expect(liters_to_cl("0.00") is None and liters_to_cl(0) is None, "0 L -> None")
     _expect(liters_to_cl("0.5") == 50 and liters_to_cl(2.5) == 250, "litres variés")
@@ -535,6 +572,9 @@ def test_e2e_run_and_invariants():
     # (Brest prioritaire à la fusion)
     leo = c.execute("SELECT name, nickname FROM users WHERE username = 'leo.martin'").fetchone()
     marie = c.execute("SELECT nickname FROM users WHERE username = 'marie.le.goff'").fetchone()
+    obrien = c.execute(
+        "SELECT name, nickname FROM users WHERE username = 'obrien.quintard'"
+    ).fetchone()
     usernames = [r[0] for r in c.execute("SELECT username FROM users").fetchall()]
     users_with_login = [u for u in usernames if u]
     _expect(len(users_with_login) == len(set(users_with_login)), "identifiants uniques")
@@ -654,6 +694,10 @@ def test_e2e_run_and_invariants():
     _expect(len(merged) == 1, "compte fusionné avec 2 portefeuilles")
     _expect(leo == ("Léo Martin", "léo.martin"), f"nom réel + surnom importés ({leo})")
     _expect(marie == ("marie.le goff",), f"surnom Brest prioritaire à la fusion ({marie})")
+    _expect(
+        obrien == ("O'Brien Quintard", 'o\'brien le boss "OB"'),
+        f"entités doublement encodées décodées dans le surnom ({obrien})",
+    )
     _expect(staging_left == 0, "staging supprimée après commit")
     _expect(
         n_articles

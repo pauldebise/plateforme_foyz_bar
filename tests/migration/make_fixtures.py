@@ -150,6 +150,10 @@ def main(target_dir, logs_rows=5000):
             "verres_restants": i % 3,
             "date_inscription": f"2025-09-{(i % 28) + 1:02d} 12:00:00",
         }
+        if i == 17:
+            # Pseudo volontairement pollué d'entités HTML doublement encodées
+            # (comme la base Brest réelle) : doit ressortir décodé en cible.
+            user["pseudo"] = "o&amp;#x27;brien le boss &amp;quot;OB&amp;quot;"
         brest_users.append(user)
         expected_brest_cents += round(solde * 100)
 
@@ -654,7 +658,7 @@ def main(target_dir, logs_rows=5000):
         },
         {
             "id": "0000000000046",
-            "name": "Menu Foy&#x27;z",
+            "name": "Menu Foy&amp;#x27;z",
             "price": "5.40",
             "price_foyz": "5.20",
             "type": 8,

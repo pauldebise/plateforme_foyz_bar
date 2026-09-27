@@ -95,14 +95,31 @@ def slug_username(value):
     return (text[:64].rstrip(".")) or None
 
 
+# Nombre maximal de passes de décodage HTML : l'ancienne base PHP contient des
+# valeurs encodées une ou DEUX fois (`&#x27;` mais aussi `&amp;#x27;`).
+# `html.unescape` n'étant pas récursif, une seule passe laisse la double
+# entité intacte ; la borne garantit l'arrêt (anti-boucle).
+_HTML_UNESCAPE_MAX_PASSES = 3
+
+
 def unescape_html(value):
-    """Décode les entités HTML des chaînes sources (mysqldump &#x27; etc.)."""
+    """Décode les entités HTML des chaînes sources (mysqldump &#x27; etc.).
+
+    Décode tant que la valeur change (borné à `_HTML_UNESCAPE_MAX_PASSES`
+    passes) : `&amp;#x27;` -> `&#x27;` -> `'`, `&amp;quot;` -> `&quot;` -> `"`.
+    """
     if value is None or not isinstance(value, str):
         return value
-    try:
-        return html.unescape(value)
-    except Exception:
-        return value
+    text = value
+    for _ in range(_HTML_UNESCAPE_MAX_PASSES):
+        try:
+            decoded = html.unescape(text)
+        except Exception:
+            return text
+        if decoded == text:
+            break
+        text = decoded
+    return text
 
 
 def liters_to_cl(value):

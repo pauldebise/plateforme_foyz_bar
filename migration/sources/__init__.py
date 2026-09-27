@@ -57,6 +57,25 @@ def as_int(value):
         return None
 
 
+# Promotion Brest : « CI2021 », « FIPA2016 », « Autre »… -> année de sortie
+# entière (2021, 2016, None). La cible (`users.promotion`) ne stocke que
+# l'année : sans extraction, `as_int` rendait None pour TOUS les comptes Brest.
+_PROMO_YEAR_RE = re.compile(r"(19|20)\d{2}")
+
+
+def as_promotion(value):
+    """Promotion source -> année entière (None si absente/illisible)."""
+    if value is None or str(value).strip() == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    number = as_int(value)
+    if number is not None:
+        return number
+    match = _PROMO_YEAR_RE.search(str(value))
+    return int(match.group(0)) if match else None
+
+
 # ------------------------------------------------- vocabulaires normalisés
 
 # Types de transactions cibles (app.utils.TRANSACTION_TYPES) :
@@ -508,11 +527,15 @@ def map_user_row(row, campus, money_unit):
     mandat en cours ; il est reclassé « mandat »/« ancien » selon l'année
     d'inscription (cf. `classify_brest_team_status`).
     """
-    pseudo = pick(row, NAME_FIELDS)
-    email = pick(row, USER_FIELDS["email"])
-    real_name = pick(row, USER_FIELDS["real_name"])
-    first = pick(row, FIRST_NAME_FIELDS) or ""
-    last = pick(row, LAST_NAME_FIELDS) or ""
+    # Identité : l'ancienne base PHP stocke des entités HTML (`&#x27;`, parfois
+    # doublement encodées `&amp;#x27;`). Décodage AVANT la clé de réconciliation
+    # et le slug du login, sinon les noms affichés et les identifiants
+    # contiennent « &#x27; » (et « x27 » dans les slugs).
+    pseudo = unescape_html(pick(row, NAME_FIELDS))
+    email = unescape_html(pick(row, USER_FIELDS["email"]))
+    real_name = unescape_html(pick(row, USER_FIELDS["real_name"]))
+    first = unescape_html(pick(row, FIRST_NAME_FIELDS)) or ""
+    last = unescape_html(pick(row, LAST_NAME_FIELDS)) or ""
     if real_name is not None and str(real_name).strip():
         name = str(real_name).strip()
     elif str(first).strip() or str(last).strip():
@@ -561,7 +584,7 @@ def map_user_row(row, campus, money_unit):
         "name": name[:255],
         "nickname": nickname,
         "username": slug_username(name) or slug_username(email),
-        "promotion": as_int(pick(row, USER_FIELDS["promotion"])),
+        "promotion": as_promotion(pick(row, USER_FIELDS["promotion"])),
         "password_hash": hash_val,
         "legacy_password": legacy_password,
         "team_status": team_status,
@@ -649,7 +672,7 @@ def map_transaction_row(row, campus, money_unit):
         "payment_method": payment,
         "cancelled": cancelled,
         "cancelled_at": parse_dt(pick(row, TXN_FIELDS["cancelled_at"])),
-        "note": pick(row, TXN_FIELDS["note"]),
+        "note": unescape_html(pick(row, TXN_FIELDS["note"])),
         "deposit_glasses": as_int(pick(row, TXN_FIELDS["deposit_glasses"])) or 0,
         "campus": campus,
         "type_warning": article_note,
@@ -672,7 +695,7 @@ def map_operation_row(row, fields, entity, campus, money_unit):
         if raw is not None and str(raw).strip():
             payment = SOURCE_PAYMENT_ENUM.get(str(raw).strip().lower())
             if payment is None:
-                note = f"moyen de paiement source : {raw}"
+                note = f"moyen de paiement source : {unescape_html(raw)}"
     signed = total if entity == "transferts" else None
     return {
         "src_id": pick(row, fields["src_id"]),
