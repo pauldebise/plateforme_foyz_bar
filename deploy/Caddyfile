@@ -3,7 +3,16 @@
 }
 
 dev.foyz.fr {
-	tls /certs/cert.pem /certs/key.pem
+	# Accès origine restreint à Cloudflare (Authenticated Origin Pulls per-hostname) :
+	# Cloudflare présente un certificat client que Caddy vérifie. Exige la présence
+	# de /certs/origin-pull-ca.pem sur le serveur (CA de confiance, hors dépôt) ;
+	# sans ce fichier Caddy refuse de démarrer. Voir ~/.config/foyz-aop/ (local).
+	tls /certs/cert.pem /certs/key.pem {
+		client_auth {
+			mode require_and_verify
+			trust_pool file /certs/origin-pull-ca.pem
+		}
+	}
 	encode gzip
 	reverse_proxy web:8000
 }
