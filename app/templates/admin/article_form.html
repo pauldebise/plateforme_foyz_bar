@@ -24,6 +24,7 @@
             <option value="{{ key }}" {% if a and a.article_type == key %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
+          <div class="form-text">Les articles de type « Blague » sont vendables mais masqués du catalogue public.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Volume (cl, optionnel)</label>

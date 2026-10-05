@@ -123,6 +123,7 @@ function syncTotals() {
 const TYPE_LABELS = {
   biere: 'Bières', vin: 'Vins', cidre: 'Cidres',
   snack: 'Snacks', saucisson: 'Saucissons', evenement: 'Événements',
+  blague: 'Blagues',
 };
 
 let catalogActive = -1;

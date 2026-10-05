@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app.extensions import db
 from app.models import Article, Event, Note, Tap, UsefulLink
 from app.services.settings import get_setting, int_setting
-from app.utils import ARTICLE_TYPES, CAMPUSSES, utcnow
+from app.utils import ARTICLE_TYPES, CAMPUSSES, HIDDEN_PUBLIC_TYPES, utcnow
 
 bp = Blueprint("public", __name__)
 
@@ -45,6 +45,7 @@ def catalogue():
         .where(
             Article.active.is_(True),
             Article.is_private.is_(False),
+            Article.article_type.notin_(HIDDEN_PUBLIC_TYPES),
             Article.event_id.is_(None),
             Article.campus == campus,
         )

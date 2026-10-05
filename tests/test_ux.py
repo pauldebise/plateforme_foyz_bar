@@ -29,6 +29,7 @@ os.environ.pop("FLASK_ENV", None)
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import Article, AuditLog, Note, Transaction, User  # noqa: E402
+from app.routes import auth as auth_module  # noqa: E402
 from app.services import transactions as T  # noqa: E402
 from app.services.settings import set_setting  # noqa: E402
 
@@ -300,6 +301,62 @@ def test_d_article_prive():
         "Cocktail prive" not in client.get("/catalogue?campus=brest").get_data(as_text=True),
         "article rebasculé privé : masqué du catalogue",
     )
+
+
+def test_d2_article_blague():
+    """Type « Blague » : encaissable en caisse, masqué du catalogue public."""
+    app = create_app()
+    with app.app_context():
+        serieux = Article(
+            name="Pinte serieuse test",
+            article_type="biere",
+            campus="brest",
+            price_std=300,
+            price_team=250,
+            active=True,
+        )
+        blague = Article(
+            name="TA GUEUELE CHOIMET",
+            article_type="blague",
+            campus="brest",
+            price_std=100,
+            price_team=100,
+            active=True,
+        )
+        db.session.add_all([serieux, blague])
+        db.session.commit()
+        blague_id = blague.id
+
+    client = app.test_client()
+    catalogue = client.get("/catalogue?campus=brest").get_data(as_text=True)
+    _expect("Pinte serieuse test" in catalogue, "article sérieux visible au catalogue")
+    _expect("TA GUEUELE CHOIMET" not in catalogue, "article blague masqué du catalogue public")
+
+    # Le limiteur de connexions est partagé par tout le processus de test
+    # (même IP) : purge locale pour rester sous le seuil, comme les suites
+    # sécurité/hardening.
+    auth_module._attempts.clear()
+    _login(client)
+    payment = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect("TA GUEUELE CHOIMET" in payment, "article blague encaissable en caisse")
+
+    form = client.get("/admin/articles/nouveau").get_data(as_text=True)
+    _expect('value="blague"' in form, "type Blague proposé dans le formulaire article")
+
+    with app.app_context():
+        t = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": blague_id, "quantity": 1}],
+            direct=True,
+            payment_method="especes",
+        )
+        _expect(t.total == 100, f"article blague encaissé (total {t.total})")
+
+    stats = client.get("/equipe/statistiques").get_data(as_text=True)
+    _expect("Blague" in stats, "catégorie Blague proposée dans les statistiques")
+    tresorerie = client.get("/equipe/tresorerie").get_data(as_text=True)
+    _expect("Blague" in tresorerie, "colonne Blague présente en trésorerie")
 
 
 def test_e_recherche_articles():

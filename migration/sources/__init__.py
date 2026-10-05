@@ -442,7 +442,7 @@ TAP_FIELDS = {
 }
 
 # Types d'articles Brest (table `article_types`) -> vocabulaire cible
-# (app.utils.ARTICLE_TYPES : biere|vin|cidre|snack|saucisson|evenement).
+# (app.utils.ARTICLE_TYPES : biere|vin|cidre|snack|saucisson|evenement|blague).
 # « Boisson Chaude » / « Boisson Froide » n'existent pas en cible : rattachés
 # aux consommables non alcoolisés (`snack`). Ajustable la veille de la bascule.
 ARTICLE_TYPE_MAP = {
@@ -453,6 +453,7 @@ ARTICLE_TYPE_MAP = {
     "snacks": "snack",
     "snack": "snack",
     "saucisson": "saucisson",
+    "blague": "blague",
     "boisson chaude": "snack",
     "boisson froide": "snack",
     # Familles de la caisse Paris (CSV `Famille`) : les bières doivent être
@@ -486,7 +487,7 @@ DEFAULT_ARTICLE_TYPE = "snack"
 # accents ni casse. Ajustable la veille de la bascule.
 ARTICLE_INACTIVE_LABELS = frozenset({"a ne pas ouvrir", "ne pas utiliser", "rien", "0000", "pb"})
 
-ARTICLE_TYPES_KNOWN = {"biere", "vin", "cidre", "snack", "saucisson", "evenement"}
+ARTICLE_TYPES_KNOWN = {"biere", "vin", "cidre", "snack", "saucisson", "evenement", "blague"}
 ALCOHOLIC_ARTICLE_TYPES = {"biere", "vin", "cidre"}
 
 # Tireuses : nom Brest (enum `draft_beer_current.beer_draught`) -> numéro cible

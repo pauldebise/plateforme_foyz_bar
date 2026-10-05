@@ -25,8 +25,12 @@ ARTICLE_TYPES = {
     "snack": "Snacks",
     "saucisson": "Saucisson",
     "evenement": "Évènement/Soirée",
+    "blague": "Blague",
 }
 ALCOHOL_TYPES = {"biere", "vin", "cidre"}
+# Types vendables (caisse, passerelle, statistiques, trésorerie) mais jamais
+# affichés dans le catalogue public des prix : articles « pour rire ».
+HIDDEN_PUBLIC_TYPES = {"blague"}
 TRANSACTION_TYPES = {
     "achat": "Achat",
     "direct": "Paiement direct",
