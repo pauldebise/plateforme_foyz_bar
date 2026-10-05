@@ -494,6 +494,28 @@ def test_h_raccourcis_caisse():
     _expect("modalOpen()" in payment_js, "raccourcis suspendus pendant une modale")
 
 
+def test_i_modale_decouvert():
+    """Modale découvert : mot de passe focalisé à l'ouverture, Entrée valide."""
+    app = create_app()
+    client = app.test_client()
+    _login(client)
+    page = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect('id="admin-form"' in page, "modale découvert dans un formulaire")
+    _expect('id="admin-password-input"' in page, "champ mot de passe présent")
+    _expect('type="submit"' in page, "validation par soumission (Entrée, clavier mobile)")
+
+    gateway_tpl = (ROOT / "app" / "templates" / "gateway" / "paiement.html").read_text(
+        encoding="utf-8"
+    )
+    _expect('id="admin-form"' in gateway_tpl, "même mécanique sur la passerelle")
+    _expect('type="submit"' in gateway_tpl, "soumission aussi sur la passerelle")
+
+    payment_js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    _expect("'shown.bs.modal'" in payment_js, "focus à l'ouverture de la modale")
+    _expect("$('admin-password-input').focus()" in payment_js, "autofocus du mot de passe")
+    _expect("$('admin-form').addEventListener('submit'" in payment_js, "Entrée valide la saisie")
+
+
 def main():
     tests = [
         (name, fn)

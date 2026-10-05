@@ -614,8 +614,18 @@ function showSuccess(total) {
   successTimer = setTimeout(() => els.successModal.hide(), 2000);
 }
 
-if ($('admin-validate')) {
-  $('admin-validate').addEventListener('click', () => {
+// Modale découvert : le champ mot de passe prend le focus à l'ouverture et la
+// touche Entrée — clavier physique ou bouton « Go » du clavier mobile —
+// valide la commande via la soumission du formulaire.
+if (els.adminModal) {
+  $('admin-modal').addEventListener('shown.bs.modal', () => {
+    $('admin-password-input').focus();
+  });
+}
+
+if ($('admin-form')) {
+  $('admin-form').addEventListener('submit', (e) => {
+    e.preventDefault();
     const pwd = $('admin-password-input').value;
     els.adminModal.hide();
     pay(pwd);
