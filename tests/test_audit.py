@@ -7,7 +7,9 @@ Couvre :
   liens) avec acteur, cible, IP ;
 - aucune fuite de secret (un mot de passe redéfini n'apparaît jamais) ;
 - consultation du journal (/admin/journal, onglet actions : filtres, pagination) ;
-- accès réservé aux mandats (un ancien membre reçoit 403) ;
+- accès administrateur réservé aux mandats (un ancien membre reçoit 403), sauf
+  comptes/articles/tireuses ouverts aux anciens, et trésorerie réservée aux
+  mandats ;
 - purge selon la rétention (CLI, --dry-run).
 """
 
@@ -247,6 +249,74 @@ def test_acces_reserve_aux_mandats():
         _login(client, "ancien.audit", "secret123").status_code == 302, "connexion ancien membre"
     )
     _expect(client.get("/admin/journal").status_code == 403, "journal interdit aux anciens membres")
+
+
+def test_tresorerie_reservee_aux_mandats():
+    app = create_app()
+    with app.app_context():
+        mandat = User(
+            name="Mandat Tresorerie",
+            username="mandat.tresorerie",
+            team_status="mandat",
+            team_campus="brest",
+            password_hash=generate_password_hash("secret123"),
+        )
+        db.session.add(mandat)
+        db.session.commit()
+    client = app.test_client()
+    _expect(
+        _login(client, "mandat.tresorerie", "secret123").status_code == 302,
+        "connexion mandat",
+    )
+    res = client.get("/equipe/tresorerie")
+    _expect(res.status_code == 200, f"trésorerie accessible à un mandat ({res.status_code})")
+    html = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect("/equipe/tresorerie" in html, "onglet Trésorerie visible pour un mandat")
+    _expect("Administrateur" in html, "section administrateur visible pour un mandat")
+
+
+def test_comptes_et_articles_ouverts_aux_anciens():
+    app = create_app()
+    with app.app_context():
+        old = User(
+            name="Ancien Comptes",
+            username="ancien.comptes",
+            team_status="ancien",
+            team_campus="brest",
+            password_hash=generate_password_hash("secret123"),
+        )
+        db.session.add(old)
+        db.session.commit()
+    client = app.test_client()
+    _expect(
+        _login(client, "ancien.comptes", "secret123").status_code == 302,
+        "connexion ancien membre",
+    )
+    # accès complet aux comptes et articles malgré le statut non-administrateur
+    for path in ("/admin/comptes", "/admin/articles"):
+        res = client.get(path)
+        _expect(res.status_code == 200, f"{path} accessible à un ancien ({res.status_code})")
+    token = _csrf(client, "/admin/comptes")
+    res = client.post(
+        "/admin/comptes/nouveau",
+        data={"name": "Compte Ancien", "username": "compte.ancien", "_csrf": token},
+    )
+    _expect(res.status_code == 302, "création de compte par un ancien membre")
+    # les onglets restés administrateur et la trésorerie demeurent fermés
+    for path in (
+        "/admin/equipe",
+        "/admin/journal",
+        "/admin/evenements",
+        "/equipe/tresorerie",
+        "/equipe/tresorerie/export/annuel",
+    ):
+        _expect(client.get(path).status_code == 403, f"{path} interdit aux anciens membres")
+    # menu : Comptes et Articles visibles, Trésorerie et section admin absents
+    html = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect("/admin/comptes" in html, "onglet Comptes visible pour un ancien")
+    _expect("/admin/articles" in html, "onglet Articles visible pour un ancien")
+    _expect("/equipe/tresorerie" not in html, "onglet Trésorerie masqué pour un ancien")
+    _expect("Administrateur" not in html, "section administrateur masquée pour un ancien")
 
 
 def test_purge_audit():

@@ -51,12 +51,13 @@
     <div class="card mb-4">
       <div class="card-header">Accès équipe</div>
       <div class="card-body">
+        {% set can_manage_team = current_user.team_status == 'mandat' or current_user.is_super_admin %}
         {% if u.team_status %}
           <p>Statut : <span class="badge bg-success">{{ u.team_status }}</span>{% if u.team_campus %} · campus {{ CAMPUSSES[u.team_campus] }}{% endif %}</p>
-          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.membre', user_id=u.id) }}">Gérer dans l'onglet Équipe</a>
+          {% if can_manage_team %}<a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.membre', user_id=u.id) }}">Gérer dans l'onglet Équipe</a>{% endif %}
         {% else %}
           <p class="text-muted mb-2">Ce compte n'a pas d'accès équipe.</p>
-          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.membre', user_id=u.id) }}">Attribuer un accès</a>
+          {% if can_manage_team %}<a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.membre', user_id=u.id) }}">Attribuer un accès</a>{% endif %}
         {% endif %}
       </div>
     </div>

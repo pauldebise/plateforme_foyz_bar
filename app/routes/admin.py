@@ -39,6 +39,17 @@ from app.utils import (
 
 bp = Blueprint("admin", __name__)
 
+# Pages ouvertes aux anciens membres (équipe sans admin) : tireuses, plus la
+# gestion des comptes et des articles (onglets déplacés hors de la section
+# administrateur). Tout le reste de /admin/* demeure réservé aux mandats.
+MEMBER_ENDPOINTS = (
+    "admin.tireuse",
+    "admin.keg",
+    "admin.tap",
+    "admin.compte",
+    "admin.article",
+)
+
 
 @bp.before_request
 def require_mandat():
@@ -46,8 +57,7 @@ def require_mandat():
         return redirect(url_for("auth.login", next=request.path))
     if g.current_user.team_status != "mandat" and not g.current_user.is_super_admin:
         endpoint = request.endpoint or ""
-        tireuse_endpoints = ("admin.tireuse", "admin.keg", "admin.tap")
-        if g.current_user.team_status == "ancien" and endpoint.startswith(tireuse_endpoints):
+        if g.current_user.team_status == "ancien" and endpoint.startswith(MEMBER_ENDPOINTS):
             return None
         abort(403)
     return None

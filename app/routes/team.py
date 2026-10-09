@@ -73,6 +73,13 @@ def require_write():
     return True
 
 
+def require_mandat():
+    """Garde : la trésorerie est réservée aux mandats et à l'admin global."""
+    u = g.current_user
+    if u.team_status != "mandat" and not u.is_super_admin:
+        abort(403)
+
+
 @bp.route("/paiement")
 @login_required
 def payment():
@@ -377,6 +384,7 @@ def statistiques():
 @bp.route("/tresorerie")
 @login_required
 def tresorerie():
+    require_mandat()
     c = request.args.get("campus", session["campus"])
     if c not in ("brest", "paris"):
         c = "brest"
@@ -400,6 +408,7 @@ def _csv_response(filename, header, rows):
 @bp.route("/tresorerie/export/mensuel")
 @login_required
 def tresorerie_export_mensuel():
+    require_mandat()
     c = request.args.get("campus", session["campus"])
     if c not in ("brest", "paris"):
         abort(404)
@@ -431,6 +440,7 @@ def tresorerie_export_mensuel():
 @bp.route("/tresorerie/export/annuel")
 @login_required
 def tresorerie_export_annuel():
+    require_mandat()
     c = request.args.get("campus", session["campus"])
     if c not in ("brest", "paris"):
         abort(404)
