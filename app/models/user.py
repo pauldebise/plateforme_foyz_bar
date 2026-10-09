@@ -31,7 +31,16 @@ class User(db.Model):
         db.String(10), nullable=True, default=None
     )
     blacklist: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
+    # Équipe (campus) qui a posé la blacklist : seule cette équipe peut la
+    # retirer (l'admin global est exempté). NULL est traité comme « brest »
+    # pour les blacklists antérieures au suivi d'origine (imports legacy).
+    blacklist_by: db.Mapped[str | None] = db.mapped_column(
+        db.String(10), nullable=True, default=None
+    )
     blacklist_alcohol: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
+    blacklist_alcohol_by: db.Mapped[str | None] = db.mapped_column(
+        db.String(10), nullable=True, default=None
+    )
     blacklist_reason: db.Mapped[str | None] = db.mapped_column(
         db.String(255), nullable=True, default=None
     )

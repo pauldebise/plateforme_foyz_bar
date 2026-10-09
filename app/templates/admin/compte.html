@@ -28,13 +28,23 @@
             <div class="form-text">Minuscules sans accents (prenom.nom). Uniquement pour la connexion.</div>
           </div>
           <div class="mb-3"><label class="form-label">Promotion</label><input class="form-control" name="promotion" type="number" value="{{ u.promotion if u.promotion else '' }}"></div>
+          {% set bl = blacklists.blacklist %}
           <div class="form-check form-switch mb-2">
-            <input class="form-check-input" type="checkbox" name="blacklist" id="bl" {% if u.blacklist %}checked{% endif %}>
+            <input class="form-check-input" type="checkbox" name="blacklist" id="bl" {% if u.blacklist %}checked{% endif %} {% if u.blacklist and not bl.can_lift %}disabled{% endif %}>
+            {% if u.blacklist and not bl.can_lift %}<input type="hidden" name="blacklist" value="on">{% endif %}
             <label class="form-check-label text-danger" for="bl"><strong>Blacklist</strong> — bloque tout achat et retire tous les accès équipe</label>
+            {% if u.blacklist %}
+            <div class="form-text">Posée par l'équipe de {{ CAMPUSSES[bl.origin] }} — {% if bl.can_lift %}vous pouvez la retirer avec le mot de passe administrateur{% else %}seule cette équipe peut la retirer{% endif %}.</div>
+            {% endif %}
           </div>
+          {% set ba = blacklists.blacklist_alcohol %}
           <div class="form-check form-switch mb-3">
-            <input class="form-check-input" type="checkbox" name="blacklist_alcohol" id="bla" {% if u.blacklist_alcohol %}checked{% endif %}>
+            <input class="form-check-input" type="checkbox" name="blacklist_alcohol" id="bla" {% if u.blacklist_alcohol %}checked{% endif %} {% if u.blacklist_alcohol and not ba.can_lift %}disabled{% endif %}>
+            {% if u.blacklist_alcohol and not ba.can_lift %}<input type="hidden" name="blacklist_alcohol" value="on">{% endif %}
             <label class="form-check-label text-warning" for="bla"><strong>Blacklist alcool</strong> — interdit l'achat d'alcool (mutualisé entre campus)</label>
+            {% if u.blacklist_alcohol %}
+            <div class="form-text">Posée par l'équipe de {{ CAMPUSSES[ba.origin] }} — {% if ba.can_lift %}vous pouvez la retirer avec le mot de passe administrateur{% else %}seule cette équipe peut la retirer{% endif %}.</div>
+            {% endif %}
           </div>
           <div class="mb-3">
             <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[current_campus] if current_campus else '' }} <span class="text-muted small">(requis pour retirer un statut blacklist)</span></label>

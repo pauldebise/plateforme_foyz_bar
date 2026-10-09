@@ -716,6 +716,140 @@ def test_blacklist_removal_requires_admin_password():
     auth_module._attempts.clear()
 
 
+def test_blacklist_lift_reservee_a_equipe_origine():
+    """Une blacklist posée par une équipe ne peut être levée que par celle-ci,
+    avec son mot de passe administrateur ; l'admin global est exempté et les
+    blacklists sans origine (legacy) sont rattachées à Brest."""
+    from app.routes import auth as auth_module
+
+    app = create_app()
+    with app.app_context():
+        eleve = User(name="Eleve Blacklist", username="eleve.blacklist")
+        legacy = User(name="Legacy Blacklist", username="legacy.blacklist", blacklist=True)
+        mandat_brest = User(
+            name="Mandat Brest BL",
+            username="mandat.brest.bl",
+            team_status="mandat",
+            team_campus="brest",
+            password_hash=generate_password_hash("secret123"),
+        )
+        mandat_paris = User(
+            name="Mandat Paris BL",
+            username="mandat.paris.bl",
+            team_status="mandat",
+            team_campus="paris",
+            password_hash=generate_password_hash("secret123"),
+        )
+        db.session.add_all([eleve, legacy, mandat_brest, mandat_paris])
+        db.session.commit()
+        eleve_id, legacy_id = eleve.id, legacy.id
+
+    # L'équipe de Brest pose les deux blacklists.
+    auth_module._attempts.clear()
+    client_brest = app.test_client()
+    _login(client_brest, "mandat.brest.bl", "secret123")
+    token = _csrf(client_brest.get(f"/admin/comptes/{eleve_id}").get_data(as_text=True))
+    res = client_brest.post(
+        f"/admin/comptes/{eleve_id}",
+        data={
+            "name": "Eleve Blacklist",
+            "username": "eleve.blacklist",
+            "blacklist": "on",
+            "blacklist_alcohol": "on",
+            "_csrf": token,
+        },
+    )
+    _expect(res.status_code == 302, "blacklists posées par Brest")
+    with app.app_context():
+        eleve = db.session.get(User, eleve_id)
+        _expect(eleve.blacklist and eleve.blacklist_by == "brest", "origine blacklist = brest")
+        _expect(
+            eleve.blacklist_alcohol and eleve.blacklist_alcohol_by == "brest",
+            "origine blacklist alcool = brest",
+        )
+
+    # L'équipe de Paris ne peut pas les retirer, même avec son mot de passe.
+    auth_module._attempts.clear()
+    client_paris = app.test_client()
+    _login(client_paris, "mandat.paris.bl", "secret123", campus="paris")
+    token = _csrf(client_paris.get(f"/admin/comptes/{eleve_id}").get_data(as_text=True))
+    client_paris.post(
+        f"/admin/comptes/{eleve_id}",
+        data={
+            "name": "Eleve Blacklist",
+            "username": "eleve.blacklist",
+            "admin_password": ADMIN_PASSWORD,
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        eleve = db.session.get(User, eleve_id)
+        _expect(
+            eleve.blacklist and eleve.blacklist_alcohol,
+            "un mandat de l'autre campus ne peut pas retirer la blacklist",
+        )
+        _expect(
+            eleve.blacklist_by == "brest" and eleve.blacklist_alcohol_by == "brest",
+            "origine conservée après tentative de retrait",
+        )
+
+    # La page de Paris verrouille les interrupteurs et explique l'origine.
+    page = client_paris.get(f"/admin/comptes/{eleve_id}").get_data(as_text=True)
+    _expect("Posée par l'équipe de Brest" in page, "origine affichée à l'autre équipe")
+    _expect("seule cette équipe peut la retirer" in page, "retrait verrouillé expliqué")
+    _expect('name="blacklist" value="on"' in page, "valeur conservée dans le formulaire")
+
+    # L'équipe de Brest peut les retirer avec son mot de passe.
+    token = _csrf(client_brest.get(f"/admin/comptes/{eleve_id}").get_data(as_text=True))
+    client_brest.post(
+        f"/admin/comptes/{eleve_id}",
+        data={
+            "name": "Eleve Blacklist",
+            "username": "eleve.blacklist",
+            "admin_password": ADMIN_PASSWORD,
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        eleve = db.session.get(User, eleve_id)
+        _expect(
+            not eleve.blacklist and not eleve.blacklist_alcohol,
+            "l'équipe d'origine retire ses blacklists",
+        )
+        _expect(eleve.blacklist_by is None, "origine effacée après retrait")
+
+    # Blacklist legacy sans origine : rattachée à Brest, Paris est refusé.
+    page = client_paris.get(f"/admin/comptes/{legacy_id}").get_data(as_text=True)
+    _expect("Posée par l'équipe de Brest" in page, "blacklist legacy rattachée à Brest")
+    token = _csrf(page)
+    client_paris.post(
+        f"/admin/comptes/{legacy_id}",
+        data={
+            "name": "Legacy Blacklist",
+            "username": "legacy.blacklist",
+            "admin_password": ADMIN_PASSWORD,
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        legacy = db.session.get(User, legacy_id)
+        _expect(legacy.blacklist, "blacklist legacy non levée par Paris")
+    token = _csrf(client_brest.get(f"/admin/comptes/{legacy_id}").get_data(as_text=True))
+    client_brest.post(
+        f"/admin/comptes/{legacy_id}",
+        data={
+            "name": "Legacy Blacklist",
+            "username": "legacy.blacklist",
+            "admin_password": ADMIN_PASSWORD,
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        legacy = db.session.get(User, legacy_id)
+        _expect(not legacy.blacklist, "blacklist legacy levée par Brest")
+    auth_module._attempts.clear()
+
+
 def main():
     tests = [
         (name, fn)

@@ -58,6 +58,8 @@ def ensure_dev_admin():
     # Ce n'est pas une personne consommatrice : aucune restriction possible.
     admin.blacklist = False
     admin.blacklist_alcohol = False
+    admin.blacklist_by = None
+    admin.blacklist_alcohol_by = None
     if not admin.password_hash:
         admin.password_hash = generate_password_hash(password)
     # Mot de passe administrateur : un par campus. Un ancien réglage global
@@ -124,6 +126,15 @@ def ensure_schema_upgrades():
                 conn.execute(text("ALTER TABLE users ADD COLUMN nickname VARCHAR(255)"))
             if "disabled" not in cols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN disabled BOOLEAN DEFAULT FALSE"))
+            if "blacklist_by" not in cols:
+                # Origine des blacklists (révision 0011) : les statuts posés
+                # avant le suivi de l'équipe d'origine sont rattachés à Brest.
+                conn.execute(text("ALTER TABLE users ADD COLUMN blacklist_by VARCHAR(10)"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN blacklist_alcohol_by VARCHAR(10)"))
+                conn.execute(text("UPDATE users SET blacklist_by = 'brest' WHERE blacklist"))
+                conn.execute(
+                    text("UPDATE users SET blacklist_alcohol_by = 'brest' WHERE blacklist_alcohol")
+                )
             # Retrait du trombinoscope : purge des colonnes dédiées d'une base
             # de dev antérieure (idempotent ; SQLite ≥ 3.35 requis pour DROP COLUMN).
             for col in ("trombinoscope_visible", "trombinoscope_role", "photo"):

@@ -222,6 +222,8 @@ def compte(user_id):
             u.nickname = None
             u.blacklist = False
             u.blacklist_alcohol = False
+            u.blacklist_by = None
+            u.blacklist_alcohol_by = None
         else:
             new_name = clamp_text((request.form.get("name") or "").strip(), 255)
             if new_name and new_name != u.name:
@@ -243,14 +245,41 @@ def compte(user_id):
             u.promotion = int(promotion) if promotion.isdigit() else None
             new_bl = request.form.get("blacklist") == "on"
             new_ba = request.form.get("blacklist_alcohol") == "on"
-            if (
-                (u.blacklist and not new_bl) or (u.blacklist_alcohol and not new_ba)
-            ) and not S.check_admin_password(request.form.get("admin_password", ""), own_campus()):
+            removals = [
+                (label, origin)
+                for was, now, origin, label in (
+                    (u.blacklist, new_bl, u.blacklist_by, "blacklist"),
+                    (u.blacklist_alcohol, new_ba, u.blacklist_alcohol_by, "blacklist alcool"),
+                )
+                if was and not now
+            ]
+            # Seule l'équipe qui a posé une blacklist peut la retirer (l'admin
+            # global est exempté) : l'origine est vérifiée avant le mot de passe.
+            for label, origin in removals:
+                if not _can_lift_blacklist(origin):
+                    flash(
+                        f"{label.capitalize()} posée par l'équipe de "
+                        f"{CAMPUSSES[_blacklist_origin(origin)]} : seul un membre de cette "
+                        "équipe peut la retirer.",
+                        "danger",
+                    )
+                    return redirect(url_for("admin.compte", user_id=u.id))
+            if removals and not S.check_admin_password(
+                request.form.get("admin_password", ""), own_campus()
+            ):
                 flash(
                     "Le retrait d'un statut blacklist exige le mot de passe administrateur.",
                     "danger",
                 )
                 return redirect(url_for("admin.compte", user_id=u.id))
+            if new_bl and not u.blacklist:
+                u.blacklist_by = own_campus()
+            if not new_bl:
+                u.blacklist_by = None
+            if new_ba and not u.blacklist_alcohol:
+                u.blacklist_alcohol_by = own_campus()
+            if not new_ba:
+                u.blacklist_alcohol_by = None
             u.blacklist = new_bl
             u.blacklist_alcohol = new_ba
         if u.blacklist:
@@ -268,9 +297,17 @@ def compte(user_id):
         if before["promotion"] != u.promotion:
             changes.append(f"promotion : {u.promotion if u.promotion is not None else 'aucune'}")
         if before["blacklist"] != u.blacklist:
-            changes.append(f"blacklist : {'oui' if u.blacklist else 'non'}")
+            origine = (
+                f" (par {CAMPUSSES[_blacklist_origin(u.blacklist_by)]})" if u.blacklist else ""
+            )
+            changes.append(f"blacklist : {'oui' if u.blacklist else 'non'}{origine}")
         if before["blacklist_alcohol"] != u.blacklist_alcohol:
-            changes.append(f"blacklist alcool : {'oui' if u.blacklist_alcohol else 'non'}")
+            origine = (
+                f" (par {CAMPUSSES[_blacklist_origin(u.blacklist_alcohol_by)]})"
+                if u.blacklist_alcohol
+                else ""
+            )
+            changes.append(f"blacklist alcool : {'oui' if u.blacklist_alcohol else 'non'}{origine}")
         A.record(
             "compte.modification",
             target=f"{u.display_name} ({u.username})",
@@ -279,7 +316,12 @@ def compte(user_id):
         db.session.commit()
         flash("Profil mis à jour.", "success")
         return redirect(url_for("admin.compte", user_id=u.id))
-    return render_template("admin/compte.html", u=u, warnings=_compte_warnings(u))
+    return render_template(
+        "admin/compte.html",
+        u=u,
+        warnings=_compte_warnings(u),
+        blacklists=_blacklists_view(u),
+    )
 
 
 def _compte_warnings(u):
@@ -293,6 +335,34 @@ def _compte_warnings(u):
     if verres:
         warnings.append("verres consignés non rendus (" + ", ".join(verres) + ")")
     return warnings
+
+
+def _blacklist_origin(campus_key):
+    """Équipe d'origine d'une blacklist : les statuts sans origine enregistrée
+    (imports legacy, données antérieures au suivi) sont rattachés à Brest."""
+    return campus_key or "brest"
+
+
+def _can_lift_blacklist(campus_key):
+    """Retrait d'une blacklist : réservé à l'équipe qui l'a posée, l'admin
+    global (au-dessus des équipes) étant exempté."""
+    if g.current_user is not None and g.current_user.is_super_admin:
+        return True
+    return _blacklist_origin(campus_key) == own_campus()
+
+
+def _blacklists_view(u):
+    """Origine et droit de retrait des blacklists pour la fiche compte."""
+    return {
+        flag: {
+            "origin": _blacklist_origin(getattr(u, origin_col)),
+            "can_lift": _can_lift_blacklist(getattr(u, origin_col)),
+        }
+        for flag, origin_col in (
+            ("blacklist", "blacklist_by"),
+            ("blacklist_alcohol", "blacklist_alcohol_by"),
+        )
+    }
 
 
 def _deletion_campus_ok(u):

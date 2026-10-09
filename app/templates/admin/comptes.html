@@ -32,8 +32,8 @@
           <td>{{ u.wallet('brest').balance|eur }}</td>
           <td>{{ u.wallet('paris').balance|eur }}</td>
           <td>
-            {% if u.blacklist %}<span class="badge badge-blacklist">blacklist</span>{% endif %}
-            {% if u.blacklist_alcohol %}<span class="badge badge-alcool">blacklist alcool</span>{% endif %}
+            {% if u.blacklist %}<span class="badge badge-blacklist" title="posée par l'équipe de {{ CAMPUSSES[u.blacklist_by or 'brest'] }}">blacklist</span>{% endif %}
+            {% if u.blacklist_alcohol %}<span class="badge badge-alcool" title="posée par l'équipe de {{ CAMPUSSES[u.blacklist_alcohol_by or 'brest'] }}">blacklist alcool</span>{% endif %}
             {% if not u.blacklist and not u.blacklist_alcohol %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td>
