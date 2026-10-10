@@ -25,6 +25,20 @@ class LoginLog(db.Model):
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow, index=True)
 
 
+class LoginThrottle(db.Model):
+    """Compteur d'échecs de connexion, partagé entre les workers.
+
+    Une ligne par clé : `acct:<empreinte de l'identifiant>` ou `ip:<IP, ou /64
+    pour IPv6>`. L'identifiant n'est jamais stocké en clair.
+    """
+
+    __tablename__ = "login_throttle"
+
+    key: db.Mapped[str] = db.mapped_column(db.String(80), primary_key=True)
+    failures: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
+    last_failure_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)
+
+
 class AuditLog(db.Model):
     """Journal d'audit des actions d'administration (P10).
 

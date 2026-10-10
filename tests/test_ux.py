@@ -335,7 +335,7 @@ def test_d2_article_blague():
     # Le limiteur de connexions est partagé par tout le processus de test
     # (même IP) : purge locale pour rester sous le seuil, comme les suites
     # sécurité/hardening.
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
     _login(client)
     payment = client.get("/equipe/paiement").get_data(as_text=True)
     _expect("TA GUEUELE CHOIMET" in payment, "article blague encaissable en caisse")

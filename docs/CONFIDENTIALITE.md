@@ -18,7 +18,7 @@ bureau. Contact : _(adresse e-mail à compléter)_.
 | Soldes et historique des transactions | Comptabilité du bar, justification des soldes | Intérêt légitime / obligations comptables | **Non purgé** (pièces justificatives) |
 | Verres empruntés (consignes) | Suivi du prêt de gobelets | Exécution du service | Remis à zéro à la restitution |
 | Statuts (blacklist, blacklist alcool) | Sécurité et conformité | Intérêt légitime | Jusqu'à retrait du statut |
-| Registre des connexions (nom saisi, IP, succès/échec) | Sécurité (détection d'intrusions) | Intérêt légitime (sécurité du système) | 90 jours par défaut, purge automatique |
+| Registre des connexions (identifiant du compte, IP, succès/échec) | Sécurité (détection d'intrusions) | Intérêt légitime (sécurité du système) | Affichage limité à 90 jours par défaut ; **pas de purge automatique** (purge manuelle par l'administrateur système) |
 | Fichiers téléversés (affiches, logos, photos) | Communication de l'association | Consentement des personnes concernées | Durée de publication |
 
 Les données de l'ancienne plateforme (sauvegardes de migration) sont conservées

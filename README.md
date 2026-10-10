@@ -243,9 +243,9 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 
 - Mots de passe hachés (`werkzeug`, scrypt par défaut) ; identifiants jamais en clair.
 - Protection **CSRF** sur tous les formulaires et requêtes API (jeton de session).
-- Anti-bruteforce sur la connexion (8 tentatives / 5 min par IP réelle :
-  `CF-Connecting-IP` si `TRUSTED_PROXY=cloudflare`, sinon `remote_addr` —
-  `X-Forwarded-For` brut n'est jamais utilisé ; compteurs purgés et bornés).
+- Anti-bruteforce sur la connexion (voir ci-dessous) : IP réelle =
+  `CF-Connecting-IP` si `TRUSTED_PROXY=cloudflare`, sinon `remote_addr` ;
+  `X-Forwarded-For` brut n'est jamais utilisé.
 - Sessions signées, `HttpOnly`, expiration automatique configurable (module développement).
 - **Politique de mot de passe** (8 caractères minimum, sans contrainte de
   diversité, pour l'administrateur et les membres d'équipe ; refus des mots de
@@ -271,7 +271,17 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 - Redirections `next` : chemins internes uniquement (`app.utils.is_safe_target`).
 - Annulation de transaction : réservation atomique, un seul remboursement même en
   cas d'annulations simultanées.
-- Registre des connexions (compte, campus, IP, succès/échec) avec purge automatique.
+- **Connexion** : compteur d'échecs partagé entre les workers (table `login_throttle`) :
+  10 tentatives libres par identifiant, puis un délai croissant (5 s, 10 s, 20 s…
+  plafonné à 15 min), remis à zéro par un mot de passe correct ; 30 échecs libres par
+  adresse IP (agrégée au /64 en IPv6), seuls les échecs comptant. Jamais de
+  verrouillage définitif. Le registre des connexions n'enregistre jamais la saisie
+  brute du champ identifiant (identifiant du compte, ou empreinte si inconnu).
+- **Journaux** : les durées « affichage du journal de connexion / d'audit » (Module
+  développement) filtrent l'affichage des onglets du journal ; **rien n'est
+  supprimé automatiquement**. Repasser de 1 à 365 jours fait réapparaître les entrées.
+  Réglages numériques bornés (déconnexion pour inactivité : 5 minutes minimum) ; une
+  valeur invalide est refusée et l'ancienne conservée.
 - En-têtes `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
   `Content-Security-Policy` stricte (`script-src 'self'`, aucun script inline) ;
   `Cache-Control: no-store, private` sur toutes les pages authentifiées ; HSTS
@@ -535,9 +545,9 @@ les totaux (comptes, transactions).
   managé chiffré) — l'application ne détient aucune clé de chiffrement.
 - Base SQLite : fichier en `600`, dossier `instance/` en `700` (appliqué au
   démarrage).
-- Registre des connexions (IP) : purge automatique configurable (90 jours par
-  défaut), déclenchée à chaque tentative de connexion et manuellement —
-  `flask --app wsgi.py purge-logs [--days N] [--dry-run]`.
+- Registre des connexions (IP) : aucune purge automatique ; l'affichage est limité par
+  réglage (90 jours par défaut). Purge manuelle explicite —
+  `flask --app wsgi.py purge-logs --days N [--dry-run]` (idem `purge-audit`).
 - Archives de la migration (`bdd_a_migrer/archives/`, anciennes bases) :
   destruction au-delà de `ARCHIVE_RETENTION_DAYS` (30 jours par défaut) —
   `python -m migration --purge-archives 30`.

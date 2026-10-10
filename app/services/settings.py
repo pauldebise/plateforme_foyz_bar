@@ -36,6 +36,25 @@ DEFAULTS = {
 }
 
 
+# Bornes des réglages numériques modifiables depuis l'interface : une valeur
+# hors bornes est refusée (jamais enregistrée ni tronquée en silence).
+SESSION_TIMEOUT_MIN_MINUTES = 5
+INT_BOUNDS = {
+    "max_history_days": (1, 3650),
+    # 0 = pas de limite d'affichage
+    "login_logs_retention_days": (0, 3650),
+    "audit_logs_retention_days": (0, 3650),
+    "session_timeout_minutes": (SESSION_TIMEOUT_MIN_MINUTES, 1440),
+    "max_postits_private": (0, 1000),
+    "max_postits_public": (0, 1000),
+}
+# Montants en centimes (saisis en euros) : (minimum, maximum)
+CENTS_BOUNDS = {
+    "overdraft_limit_cents": (0, 100_000),
+    "deposit_value_cents": (0, 10_000),
+}
+
+
 def get_setting(key, default=None):
     row = db.session.get(Setting, key)
     if row is not None:
@@ -105,3 +124,23 @@ def check_admin_password(password, campus):
 
 def set_admin_password(password, campus):
     set_setting(admin_password_key(campus), generate_password_hash(password))
+
+
+def session_timeout_minutes():
+    """Durée d'inactivité avant déconnexion, jamais sous le plancher."""
+    return max(SESSION_TIMEOUT_MIN_MINUTES, int_setting("session_timeout_minutes") or 30)
+
+
+def display_cutoff(key):
+    """Date au-delà de laquelle les journaux ne sont plus affichés, ou None.
+
+    Les durées `login_logs_retention_days` et `audit_logs_retention_days`
+    filtrent l'affichage sans rien supprimer : repasser de 1 à 365 jours fait
+    réapparaître les entrées.
+    """
+    from datetime import timedelta
+
+    from app.utils import utcnow
+
+    days = int_setting(key)
+    return utcnow() - timedelta(days=days) if days > 0 else None

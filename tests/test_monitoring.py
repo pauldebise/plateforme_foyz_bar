@@ -37,7 +37,6 @@ from app.extensions import db  # noqa: E402
 from app.logging_setup import JsonFormatter  # noqa: E402
 from app.models import LoginLog  # noqa: E402
 from app.utils import utcnow  # noqa: E402
-import app.routes.auth as auth  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
 
@@ -204,7 +203,7 @@ def test_purge_logs_command():
         _expect(db.session.scalars(db.select(LoginLog)).all(), "entrée récente conservée")
 
 
-def test_failed_login_still_triggers_cleanup():
+def test_login_never_purges_the_register():
     app = create_app()
     with app.app_context():
         old = LoginLog(
@@ -218,14 +217,13 @@ def test_failed_login_still_triggers_cleanup():
         db.session.commit()
         old_id = old.id
 
-    auth._last_log_cleanup = -10_000.0
     client = app.test_client()
     res = _login(client, "inconnu", "mauvais")
     _expect(res.status_code == 401, f"échec de connexion attendu ({res.status_code})")
     with app.app_context():
         _expect(
-            db.session.get(LoginLog, old_id) is None,
-            "purge déclenchée même sans connexion réussie (R13)",
+            db.session.get(LoginLog, old_id) is not None,
+            "aucune purge automatique : l'entrée ancienne reste en base",
         )
 
 

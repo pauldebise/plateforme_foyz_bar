@@ -3,7 +3,7 @@ from app.models.catalog import Article, Keg, KegPrice, Tap
 from app.models.event import Event
 from app.models.transaction import Transaction, TransactionLine, Contribution
 from app.models.note import Note
-from app.models.system import AuditLog, Setting, LoginLog, UsefulLink
+from app.models.system import AuditLog, Setting, LoginLog, LoginThrottle, UsefulLink
 
 __all__ = [
     "Article",
@@ -13,6 +13,7 @@ __all__ = [
     "Keg",
     "KegPrice",
     "LoginLog",
+    "LoginThrottle",
     "Note",
     "Setting",
     "Tap",

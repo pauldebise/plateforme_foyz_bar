@@ -1026,6 +1026,9 @@ def _journal_connexions():
     fto = request.args.get("to", "")
     fuser = request.args.get("user", "").strip()
     query = LoginLog.query
+    cutoff = S.display_cutoff("login_logs_retention_days")
+    if cutoff is not None:
+        query = query.filter(LoginLog.created_at >= cutoff)
     if ffrom:
         with contextlib.suppress(ValueError):
             query = query.filter(LoginLog.created_at >= datetime.strptime(ffrom, "%Y-%m-%d"))
@@ -1060,6 +1063,9 @@ def _journal_actions():
     ffrom = request.args.get("from", "")
     fto = request.args.get("to", "")
     stmt = select(AuditLog)
+    cutoff = S.display_cutoff("audit_logs_retention_days")
+    if cutoff is not None:
+        stmt = stmt.where(AuditLog.created_at >= cutoff)
     if faction in A.ACTION_LABELS:
         stmt = stmt.where(AuditLog.action == faction)
     if fuser:
@@ -1084,20 +1090,14 @@ def _journal_actions():
 def journal():
     """Journal unifié : onglet connexions (LoginLog) et onglet actions (AuditLog).
 
-    Chaque onglet a sa propre rétention et sa propre purge, déclenchée à la
-    consultation, comme avant la fusion des deux pages."""
+    Chaque onglet n'affiche que les N derniers jours (réglage propre à l'onglet) ;
+    rien n'est jamais supprimé par la consultation."""
     tab = request.args.get("tab", "connexions")
     if tab not in ("connexions", "actions"):
         tab = "connexions"
-    if tab == "connexions":
-        days = S.int_setting("login_logs_retention_days")
-        model = LoginLog
-    else:
-        days = S.int_setting("audit_logs_retention_days")
-        model = AuditLog
-    if days > 0:
-        db.session.query(model).filter(model.created_at < utcnow() - timedelta(days=days)).delete()
-        db.session.commit()
+    days = S.int_setting(
+        "login_logs_retention_days" if tab == "connexions" else "audit_logs_retention_days"
+    )
     data = _journal_connexions() if tab == "connexions" else _journal_actions()
     link_args = {**{k: v for k, v in request.args.items() if k != "page"}, "tab": tab}
     return render_template(
@@ -1106,6 +1106,7 @@ def journal():
         filters=request.args,
         actions=A.ACTION_LABELS,
         link_args=link_args,
+        display_days=days,
         **data,
     )
 
@@ -1167,6 +1168,18 @@ def sante():
     )
 
 
+SETTING_LABELS = {
+    "overdraft_limit_cents": "Découvert autorisé",
+    "deposit_value_cents": "Valeur de la consigne",
+    "max_history_days": "Durée d'accès aux transactions",
+    "login_logs_retention_days": "Affichage du journal de connexion",
+    "audit_logs_retention_days": "Affichage du journal d'audit",
+    "session_timeout_minutes": "Déconnexion pour inactivité",
+    "max_postits_private": "Post-it privés",
+    "max_postits_public": "Post-it publics",
+}
+
+
 @bp.route("/module-dev", methods=["GET", "POST"])
 @login_required
 def module_dev():
@@ -1174,6 +1187,7 @@ def module_dev():
     if request.method == "POST":
         action = request.form.get("action", "settings")
         if action == "settings":
+            errors = []
             for key in (
                 "overdraft_limit_cents",
                 "deposit_value_cents",
@@ -1191,27 +1205,41 @@ def module_dev():
                 "link_database",
                 "link_repository",
             ):
-                if key in request.form:
-                    value = request.form[key]
-                    # les couleurs sont injectées dans une balise <style> :
-                    # seule une valeur #rrggbb est acceptée (pas d'injection CSS)
-                    if key.startswith("theme_color"):
-                        value = safe_color(value, S.DEFAULTS.get(key, "#804db3"))
-                    S.set_setting(key, value)
+                if key not in request.form:
+                    continue
+                value = request.form[key]
+                label = SETTING_LABELS.get(key, key)
+                # Valeur invalide ou hors bornes : refusée, l'ancienne est conservée.
+                if key in S.INT_BOUNDS:
+                    low, high = S.INT_BOUNDS[key]
+                    try:
+                        number = int(value.strip())
+                    except ValueError:
+                        number = None
+                    if number is None or not low <= number <= high:
+                        errors.append(f"{label} : entier de {low} à {high} attendu.")
+                        continue
+                    value = number
+                elif key in S.CENTS_BOUNDS:
+                    low, high = S.CENTS_BOUNDS[key]
+                    try:
+                        amount = cents(value)
+                    except ValueError:
+                        amount = None
+                    if amount is None or not low <= amount <= high:
+                        errors.append(f"{label} : montant de {euros(low)} à {euros(high)} attendu.")
+                        continue
+                    value = amount
+                # les couleurs sont injectées dans une balise <style> :
+                # seule une valeur #rrggbb est acceptée (pas d'injection CSS)
+                elif key.startswith("theme_color"):
+                    value = safe_color(value, S.DEFAULTS.get(key, "#804db3"))
+                S.set_setting(key, value)
             # thème/logos/règlements par campus : seul le campus de l'équipe
             # connectée est modifiable
             key_own = f"theme_color_{own}"
             if key_own in request.form:
                 S.set_setting(key_own, safe_color(request.form[key_own], S.DEFAULTS[key_own]))
-            try:
-                S.set_setting(
-                    "overdraft_limit_cents", cents(request.form.get("overdraft_limit_cents", "0"))
-                )
-                S.set_setting(
-                    "deposit_value_cents", cents(request.form.get("deposit_value_cents", "0"))
-                )
-            except Exception:
-                pass
             pdf_own = save_upload(request.files.get(f"regulation_pdf_{own}"), allowed=(".pdf",))
             # SVG exclu volontairement : un SVG servi sur l'origine peut porter
             # du script (XSS stocké). Formats raster uniquement.
@@ -1229,7 +1257,12 @@ def module_dev():
             if payment_photo_own:
                 S.set_setting(f"payment_photo_{own}", payment_photo_own)
             A.record("reglages.modification", details=f"Campus {CAMPUSSES[own]}")
-            flash("Paramètres enregistrés.", "success")
+            for error in errors:
+                flash(error, "danger")
+            flash(
+                "Autres paramètres enregistrés." if errors else "Paramètres enregistrés.",
+                "warning" if errors else "success",
+            )
         elif action == "reset_theme_colors":
             for key in ("theme_color_public", f"theme_color_{own}"):
                 S.set_setting(key, S.DEFAULTS[key])

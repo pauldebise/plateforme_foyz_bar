@@ -369,7 +369,7 @@ def test_admin_can_reassign_member_campus():
             db.session.scalars(db.select(User).where(User.username == "membre.campus")).first().id
         )
 
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
     client = app.test_client()
     _expect(_login(client, "admin", ADMIN_PASSWORD).status_code == 302, "connexion admin")
     token = _csrf(client.get(f"/admin/equipe/{member_id}").get_data(as_text=True))
@@ -398,7 +398,7 @@ def test_admin_can_reassign_member_campus():
             db.session.get(User, member_id).team_campus == "paris",
             "campus conservé après mise à jour du mot de passe",
         )
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
 
 
 def test_mandat_cannot_reassign_member_campus():
@@ -429,7 +429,7 @@ def test_mandat_cannot_reassign_member_campus():
             db.session.scalars(db.select(User).where(User.username == "cible.mandat")).first().id
         )
 
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
     client = app.test_client()
     _expect(_login(client, "mandat.simple", "secret123").status_code == 302, "connexion mandat")
     token = _csrf(client.get(f"/admin/equipe/{target_id}").get_data(as_text=True))
@@ -443,7 +443,7 @@ def test_mandat_cannot_reassign_member_campus():
         _expect(
             target.team_campus == "brest", f"campus inchangé pour un mandat ({target.team_campus})"
         )
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
 
 
 def test_admin_password_is_per_campus():
@@ -533,7 +533,7 @@ def test_admin_account_is_standalone():
     # libère la fenêtre du limiteur de connexions (partagé par la suite de tests)
     from app.routes import auth as auth_module
 
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
 
 
 def test_admin_account_is_protected_from_team():
@@ -555,7 +555,7 @@ def test_admin_account_is_protected_from_team():
         db.session.commit()
 
     # un mandat ne peut ni modifier le profil de l'admin, ni le gérer en équipe
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
     client = app.test_client()
     _expect(_login(client, "mandat.protect", "secret123").status_code == 302, "connexion mandat")
     token = _csrf(client.get("/admin/comptes").get_data(as_text=True))
@@ -580,7 +580,7 @@ def test_admin_account_is_protected_from_team():
         )
 
     # l'admin n'est ni blacklistable ni supprimable, même par lui-même
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
     client = app.test_client()
     _expect(_login(client, "admin", ADMIN_PASSWORD).status_code == 302, "connexion admin")
     admin_html = client.get(f"/admin/comptes/{admin_id}").get_data(as_text=True)
@@ -618,7 +618,7 @@ def test_admin_account_is_protected_from_team():
     _expect(res.status_code == 403, f"admin non supprimable ({res.status_code})")
     html = client.get(f"/admin/equipe/{admin_id}").get_data(as_text=True)
     _expect("Nouveau mot de passe" not in html, "mot de passe admin non modifiable")
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
 
 
 def test_blacklist_removal_requires_admin_password():
@@ -636,7 +636,7 @@ def test_blacklist_removal_requires_admin_password():
         db.session.commit()
         user_id = user.id
 
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
     client = _client(app)
     token = _csrf(client.get(f"/admin/comptes/{user_id}").get_data(as_text=True))
 
@@ -713,7 +713,7 @@ def test_blacklist_removal_requires_admin_password():
             "_csrf": token,
         },
     )
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
 
 
 def test_blacklist_lift_reservee_a_equipe_origine():
@@ -745,7 +745,7 @@ def test_blacklist_lift_reservee_a_equipe_origine():
         eleve_id, legacy_id = eleve.id, legacy.id
 
     # L'équipe de Brest pose les deux blacklists.
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
     client_brest = app.test_client()
     _login(client_brest, "mandat.brest.bl", "secret123")
     token = _csrf(client_brest.get(f"/admin/comptes/{eleve_id}").get_data(as_text=True))
@@ -769,7 +769,7 @@ def test_blacklist_lift_reservee_a_equipe_origine():
         )
 
     # L'équipe de Paris ne peut pas les retirer, même avec son mot de passe.
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
     client_paris = app.test_client()
     _login(client_paris, "mandat.paris.bl", "secret123", campus="paris")
     token = _csrf(client_paris.get(f"/admin/comptes/{eleve_id}").get_data(as_text=True))
@@ -847,7 +847,7 @@ def test_blacklist_lift_reservee_a_equipe_origine():
     with app.app_context():
         legacy = db.session.get(User, legacy_id)
         _expect(not legacy.blacklist, "blacklist legacy levée par Brest")
-    auth_module._attempts.clear()
+    auth_module.reset_throttle(app)
 
 
 def main():

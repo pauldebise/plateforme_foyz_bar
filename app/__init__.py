@@ -410,9 +410,9 @@ def create_app():
     def _session_timeout():
         if not session.get("user_id") and not session.get("gateway_event_id"):
             return
-        from app.services.settings import int_setting
+        from app.services.settings import session_timeout_minutes
 
-        timeout_min = int_setting("session_timeout_minutes") or 30
+        timeout_min = session_timeout_minutes()
         now = time.time()
         last = session.get("last_activity", now)
         if now - last > timeout_min * 60:
@@ -723,24 +723,22 @@ def create_app():
     @click.option(
         "--days",
         type=int,
-        default=None,
-        help="Rétention en jours (défaut : réglage login_logs_retention_days).",
+        required=True,
+        help="Supprime ce qui a plus de N jours (le réglage d'affichage ne sert pas ici).",
     )
     @click.option("--dry-run", is_flag=True, help="Affiche sans supprimer.")
     def purge_logs_command(days, dry_run):
-        """Purge le registre des connexions au-delà de la rétention (D13)."""
+        """Purge manuelle du registre des connexions (aucune purge automatique)."""
         from datetime import timedelta
 
         from app.models import LoginLog
-        from app.services.settings import int_setting
         from app.utils import utcnow
 
         with app.app_context():
-            retention = days if days is not None else int_setting("login_logs_retention_days")
-            if retention <= 0:
-                print("Rétention désactivée (0) : rien à purger.")
+            if days <= 0:
+                print("Durée invalide (> 0 requis) : rien à purger.")
                 return
-            cutoff = utcnow() - timedelta(days=retention)
+            cutoff = utcnow() - timedelta(days=days)
             query = db.session.query(LoginLog).filter(LoginLog.created_at < cutoff)
             if dry_run:
                 print(
@@ -755,16 +753,16 @@ def create_app():
     @click.option(
         "--days",
         type=int,
-        default=None,
-        help="Rétention en jours (défaut : réglage audit_logs_retention_days).",
+        required=True,
+        help="Supprime ce qui a plus de N jours (le réglage d'affichage ne sert pas ici).",
     )
     @click.option("--dry-run", is_flag=True, help="Affiche sans supprimer.")
     def purge_audit_command(days, dry_run):
-        """Purge le journal d'audit au-delà de la rétention."""
+        """Purge manuelle du journal d'audit (aucune purge automatique)."""
         from app.services import audit
 
         with app.app_context():
-            removed = audit.purge(retention_days=days, dry_run=dry_run)
+            removed = audit.purge(days, dry_run=dry_run)
             if dry_run:
                 print(f"{removed} entrée(s) d'audit seraient supprimées.")
             else:

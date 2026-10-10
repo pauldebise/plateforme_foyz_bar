@@ -15,7 +15,6 @@ import re
 import sqlite3
 import sys
 import tempfile
-import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -135,26 +134,6 @@ def test_client_ip_uses_cf_only_when_trusted():
         _expect(client_ip() == "10.0.0.9", "CF-Connecting-IP invalide -> remote_addr")
 
 
-def test_limiter_purges_and_bounds_keys():
-    now = time.time()
-    with auth_module._limiter_lock:
-        auth_module._attempts.clear()
-        for i in range(auth_module._RATE_MAX_KEYS + 5):
-            auth_module._attempts[f"expired-{i}"].append(now - auth_module._RATE_WINDOW_SECONDS - 1)
-        auth_module._last_sweep = 0.0
-        auth_module._sweep_attempts(now)
-        _expect(not auth_module._attempts, "clés expirées purgées")
-        for i in range(auth_module._RATE_MAX_KEYS + 5):
-            auth_module._attempts[f"active-{i}"].append(now - (i % 100))
-        auth_module._last_sweep = 0.0
-        auth_module._sweep_attempts(now)
-        _expect(
-            len(auth_module._attempts) <= auth_module._RATE_MAX_KEYS,
-            "nombre de clés borné",
-        )
-        auth_module._attempts.clear()
-
-
 def test_sqlite_foreign_keys_and_history_after_deletion():
     if not IS_SQLITE:
         print("  (ignoré : clés étrangères SQLite)")
@@ -224,17 +203,18 @@ def test_sqlite_foreign_keys_and_history_after_deletion():
 
 def test_login_limiter_survives_forged_xff():
     app = create_app()
+    auth_module.reset_throttle(app)
     client = app.test_client()
     html = client.get("/connexion").get_data(as_text=True)
     match = re.search(r'name="_csrf" value="([^"]+)"', html)
     _expect(match is not None, "jeton CSRF présent")
     token = match.group(1)
     status = None
-    for i in range(auth_module._RATE_MAX_ATTEMPTS + 1):
+    for i in range(auth_module.LT.IP_FREE_ATTEMPTS + 1):
         status = client.post(
             "/connexion",
             data={
-                "username": "inconnu",
+                "username": f"inconnu{i}",
                 "password": "mauvais",
                 "campus": "brest",
                 "_csrf": token,
@@ -244,7 +224,7 @@ def test_login_limiter_survives_forged_xff():
         ).status_code
     _expect(
         status == 429,
-        f"9e tentative bloquée malgré un X-Forwarded-For forgé (statut {status})",
+        f"tentative suivante bloquée malgré un X-Forwarded-For forgé (statut {status})",
     )
 
 

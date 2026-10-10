@@ -3,7 +3,8 @@
 Chaque action sensible d'administration (comptes, équipe, articles, fûts,
 tireuses, événements, réglages) est enregistrée avec son acteur, sa cible,
 son campus et l'IP d'origine. Les entrées sont consultables dans l'onglet
-« Actions » de `/admin/journal` et purgées selon `audit_logs_retention_days`.
+« Actions » de `/admin/journal`. `audit_logs_retention_days` limite l'affichage
+sans rien supprimer.
 
 Le journal ne contient jamais de secret : ni mot de passe, ni jeton, ni
 empreinte. Les messages sont rédigés pour être lisibles par un humain sans
@@ -16,7 +17,6 @@ from flask import g, has_request_context, session
 
 from app.extensions import db
 from app.models import AuditLog
-from app.services.settings import int_setting
 from app.utils import clamp_text, client_ip, utcnow
 
 ACTION_LABELS = {
@@ -86,9 +86,9 @@ def record(action, target="", details="", *, commit=False, campus=None):
     return entry
 
 
-def purge(retention_days=None, dry_run=False):
-    """Supprime les entrées au-delà de la rétention ; retourne le compte."""
-    days = int_setting("audit_logs_retention_days") if retention_days is None else retention_days
+def purge(days, dry_run=False):
+    """Suppression manuelle (commande CLI) des entrées de plus de `days` jours ;
+    retourne le compte. Jamais appelée automatiquement."""
     if days <= 0:
         return 0
     cutoff = utcnow() - timedelta(days=days)

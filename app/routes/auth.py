@@ -1,9 +1,8 @@
 import hashlib
 import hmac
 import re
-import threading
 import time
-from collections import defaultdict, deque
+from math import ceil
 
 from flask import (
     Blueprint,
@@ -20,29 +19,10 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.extensions import db
 from app.models import LoginLog, User
-from app.utils import CAMPUSSES, client_ip, is_safe_target, slug_username, utcnow
+from app.services import loginthrottle as LT
+from app.utils import CAMPUSSES, client_ip, is_safe_target, slug_username
 
 bp = Blueprint("auth", __name__)
-
-_limiter_lock = threading.Lock()
-_attempts = defaultdict(deque)
-
-# Limiteur en mémoire : 8 tentatives par fenêtre glissante de 5 minutes.
-# La purge régulière et la borne du nombre de clés empêchent une croissance
-# illimitée de la mémoire (les clés proviennent d'IP, jamais de X-Forwarded-For).
-_RATE_WINDOW_SECONDS = 300
-_RATE_MAX_ATTEMPTS = 8
-_RATE_MAX_KEYS = 10_000
-_RATE_SWEEP_INTERVAL = 60
-_last_sweep = 0.0
-
-# Purge du registre des connexions : déclenchée à chaque tentative de
-# connexion mais au plus une fois par heure (les échecs aussi déclenchent la
-# purge, sinon les logs IP s'accumulent tant qu'aucune connexion ne réussit).
-_LOG_CLEANUP_INTERVAL = 3600
-# -interval : la première tentative déclenche toujours la purge, même si le
-# serveur vient de démarrer (monotonic() peut être inférieur à l'intervalle).
-_last_log_cleanup = -_LOG_CLEANUP_INTERVAL
 
 # Hash bcrypt hérité de l'ancienne plateforme (PHP password_hash) : $2a$, $2b$, $2y$
 _BCRYPT_HASH_RE = re.compile(r"^\$2[aby]\$\d{2}\$")
@@ -71,43 +51,34 @@ def _check_legacy_password(stored, password):
     return hmac.compare_digest(stored.encode(), password.encode())
 
 
-def _sweep_attempts(now):
-    """Purge les fenêtres expirées et borne le nombre de clés suivies."""
-    global _last_sweep
-    cutoff = now - _RATE_WINDOW_SECONDS
-    expensive = len(_attempts) > _RATE_MAX_KEYS
-    if not expensive and now - _last_sweep < _RATE_SWEEP_INTERVAL:
-        return
-    _last_sweep = now
-    for key in [k for k, q in _attempts.items() if not q or q[-1] <= cutoff]:
-        del _attempts[key]
-    if len(_attempts) > _RATE_MAX_KEYS:
-        # éviction des entrées les moins récemment actives
-        excess = len(_attempts) - _RATE_MAX_KEYS
-        for key in sorted(_attempts, key=lambda k: _attempts[k][-1])[:excess]:
-            del _attempts[key]
+_dummy_hash = None
 
 
-def _rate_limited(key):
-    now = time.time()
-    with _limiter_lock:
-        _sweep_attempts(now)
-        q = _attempts[key]
-        while q and now - q[0] > _RATE_WINDOW_SECONDS:
-            q.popleft()
-        if len(q) >= _RATE_MAX_ATTEMPTS:
-            return True
-        q.append(now)
-        return False
+def _burn_password_check(password):
+    """Calcule un hash pour un identifiant inconnu : le temps de réponse ne
+    révèle pas si le compte existe."""
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = generate_password_hash("identifiant-inconnu")
+    check_password_hash(_dummy_hash, password)
+
+
+def reset_throttle(app):
+    """Efface les compteurs d'échecs (tests, déblocage manuel)."""
+    with app.app_context():
+        LT.reset_all()
+
+
+def _wait_message(seconds):
+    if seconds < 60:
+        return f"Trop de tentatives. Réessayez dans {seconds} seconde(s)."
+    return f"Trop de tentatives. Réessayez dans {ceil(seconds / 60)} minute(s)."
 
 
 @bp.route("/connexion", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         ip = client_ip()
-        if _rate_limited(ip):
-            flash("Trop de tentatives. Réessayez dans quelques minutes.", "danger")
-            return render_template("auth/login.html"), 429
         identifiant = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
         campus = request.form.get("campus")
@@ -117,12 +88,23 @@ def login():
         # Le login ne reconnaît que l'identifiant prenom.nom : la saisie est
         # normalisée comme à l'import (casse, accents et séparateurs tolérés).
         slug = slug_username(identifiant)
+        acct_key, addr_key = LT.account_key(slug), LT.ip_key(ip)
+        wait = LT.remaining_seconds(acct_key, addr_key)
+        if wait:
+            current_app.logger.warning(
+                "Connexion différée (%s s) pour %s depuis %s", wait, acct_key, ip
+            )
+            flash(_wait_message(wait), "danger")
+            response = render_template("auth/login.html", campus=campus)
+            return response, 429
         user = (
             db.session.scalars(select(User).where(User.username == slug)).first() if slug else None
         )
         ok = False
         if user and user.password_hash:
             ok = check_password_hash(user.password_hash, password)
+        elif not user:
+            _burn_password_check(password)
         if not ok and user and user.legacy_password:
             ok = _check_legacy_password(user.legacy_password, password)
             if ok:
@@ -134,6 +116,7 @@ def login():
                     user.display_name,
                     user.id,
                 )
+        password_ok = bool(ok)
         if ok and user and user.disabled:
             ok = False
             reason = "Accès refusé : compte désactivé."
@@ -150,14 +133,19 @@ def login():
         db.session.add(
             LoginLog(
                 user_id=user.id if user else None,
-                name=identifiant[:120],  # LoginLog.name = VARCHAR(120)
+                # Jamais la saisie brute (un mot de passe tapé dans le mauvais
+                # champ s'y retrouverait) : identifiant du compte, sinon empreinte.
+                name=user.username if user else f"inconnu:{LT.fingerprint(slug)[:8]}",
                 campus=campus,
                 ip=ip,
                 success=bool(ok),
             )
         )
         db.session.commit()
-        _cleanup_old_logs()
+        if password_ok:
+            LT.reset(acct_key)
+        else:
+            LT.record_failure(acct_key, addr_key)
 
         if not ok:
             flash(reason, "danger")
@@ -177,26 +165,6 @@ def login():
     if request.args.get("expired"):
         flash("Session expirée pour inactivité, reconnectez-vous.", "warning")
     return render_template("auth/login.html", campus=session.get("campus", "brest"))
-
-
-def _cleanup_old_logs():
-    global _last_log_cleanup
-    now = time.monotonic()
-    if now - _last_log_cleanup < _LOG_CLEANUP_INTERVAL:
-        return
-    _last_log_cleanup = now
-
-    from datetime import timedelta
-
-    from app.services.settings import int_setting
-
-    days = int_setting("login_logs_retention_days")
-    if days <= 0:
-        return
-    db.session.query(LoginLog).filter(
-        LoginLog.created_at < utcnow() - timedelta(days=days)
-    ).delete()
-    db.session.commit()
 
 
 @bp.route("/deconnexion", methods=["POST"])

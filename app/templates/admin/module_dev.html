@@ -42,20 +42,23 @@
             <div class="row g-3">
               <div class="col-md-6">
                 <label class="form-label" for="set-max-history">Durée d'accès aux transactions (jours)</label>
-                <input class="form-control" id="set-max-history" type="number" name="max_history_days" value="{{ values['max_history_days'] }}">
+                <input class="form-control" id="set-max-history" type="number" name="max_history_days" value="{{ values['max_history_days'] }}" min="1" max="3650">
                 <div class="form-text">Les données restent en base mais ne sont plus visibles sur le site après ce délai.</div>
               </div>
               <div class="col-md-6">
-                <label class="form-label" for="set-login-retention">Conservation des journaux de connexion (jours)</label>
-                <input class="form-control" id="set-login-retention" type="number" name="login_logs_retention_days" value="{{ values['login_logs_retention_days'] }}">
+                <label class="form-label" for="set-login-retention">Affichage du journal de connexion (jours)</label>
+                <input class="form-control" id="set-login-retention" type="number" name="login_logs_retention_days" value="{{ values['login_logs_retention_days'] }}" min="0" max="3650">
+                <div class="form-text">Seules les N dernières journées sont affichées ; rien n'est supprimé. 0 = tout afficher.</div>
               </div>
               <div class="col-md-6">
-                <label class="form-label" for="set-audit-retention">Conservation du journal d'audit (jours)</label>
-                <input class="form-control" id="set-audit-retention" type="number" name="audit_logs_retention_days" value="{{ values['audit_logs_retention_days'] }}">
+                <label class="form-label" for="set-audit-retention">Affichage du journal d'audit (jours)</label>
+                <input class="form-control" id="set-audit-retention" type="number" name="audit_logs_retention_days" value="{{ values['audit_logs_retention_days'] }}" min="0" max="3650">
+                <div class="form-text">Seules les N dernières journées sont affichées ; rien n'est supprimé. 0 = tout afficher.</div>
               </div>
               <div class="col-md-6">
                 <label class="form-label" for="set-session-timeout">Déconnexion pour inactivité (minutes)</label>
-                <input class="form-control" id="set-session-timeout" type="number" name="session_timeout_minutes" value="{{ values['session_timeout_minutes'] }}">
+                <input class="form-control" id="set-session-timeout" type="number" name="session_timeout_minutes" value="{{ values['session_timeout_minutes'] }}" min="5" max="1440">
+                <div class="form-text">Minimum 5 minutes.</div>
               </div>
             </div>
           </section>

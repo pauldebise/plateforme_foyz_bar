@@ -20,7 +20,7 @@ help:
 	@echo "make restore-list   liste les sauvegardes disponibles"
 	@echo "make health         interroge /health (supervision)"
 	@echo "make purge-archives detruit les archives de migration > $(ARCHIVE_DAYS) jours"
-	@echo "make purge-logs     purge le registre des connexions (retention configuree)"
+	@echo "make purge-logs     purge manuelle des connexions : make purge-logs DAYS=365"
 	@echo "make tests          execute toutes les suites (SQLite)"
 	@echo "make tests-postgres memes suites sur PostgreSQL jetable ($(PG_TEST_URL))"
 	@echo "make lint           ruff check (lint) + ruff format --check (format)"
@@ -60,7 +60,8 @@ purge-archives:
 	$(PYTHON) -m migration --purge-archives $(ARCHIVE_DAYS)
 
 purge-logs:
-	$(PYTHON) -m flask --app wsgi.py purge-logs
+	@test -n "$(DAYS)" || { echo "usage : make purge-logs DAYS=365"; exit 1; }
+	$(PYTHON) -m flask --app wsgi.py purge-logs --days $(DAYS)
 
 tests:
 	$(PYTHON) -m tests.run_all
