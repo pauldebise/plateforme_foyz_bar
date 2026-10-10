@@ -265,22 +265,16 @@ def compte(user_id):
                         "danger",
                     )
                     return redirect(url_for("admin.compte", user_id=u.id))
-            if removals:
-                try:
-                    removal_ok = AP.verify(
-                        request.form.get("admin_password", ""),
-                        own_campus(),
-                        f"retrait de blacklist pour {u.display_name} ({u.username})",
-                    )
-                except AP.AdminPasswordLocked as exc:
-                    flash(str(exc), "danger")
-                    return redirect(url_for("admin.compte", user_id=u.id))
-                if not removal_ok:
-                    flash(
-                        "Le retrait d'un statut blacklist exige le mot de passe administrateur.",
-                        "danger",
-                    )
-                    return redirect(url_for("admin.compte", user_id=u.id))
+            if removals and not AP.verify(
+                request.form.get("admin_password", ""),
+                own_campus(),
+                f"retrait de blacklist pour {u.display_name} ({u.username})",
+            ):
+                flash(
+                    "Le retrait d'un statut blacklist exige le mot de passe administrateur.",
+                    "danger",
+                )
+                return redirect(url_for("admin.compte", user_id=u.id))
             if new_bl and not u.blacklist:
                 u.blacklist_by = own_campus()
             if not new_bl:
@@ -399,16 +393,11 @@ def compte_supprimer(user_id):
     # Le compte d'administration ne peut jamais être supprimé.
     if u.is_super_admin:
         abort(403)
-    try:
-        deletion_ok = AP.verify(
-            request.form.get("admin_password", ""),
-            own_campus(),
-            f"suppression du compte {u.display_name} ({u.username})",
-        )
-    except AP.AdminPasswordLocked as exc:
-        flash(str(exc), "danger")
-        return redirect(url_for("admin.compte", user_id=u.id))
-    if not deletion_ok:
+    if not AP.verify(
+        request.form.get("admin_password", ""),
+        own_campus(),
+        f"suppression du compte {u.display_name} ({u.username})",
+    ):
         flash("La suppression d'un compte exige le mot de passe administrateur.", "danger")
         return redirect(url_for("admin.compte", user_id=u.id))
     if not _deletion_campus_ok(u):
@@ -1276,16 +1265,9 @@ def module_dev():
             problem = passwords.validate(
                 new, username="admin", name="administrateur", require_diversity=False
             )
-            try:
-                current_ok = AP.verify(
-                    current, own, f"changement du mot de passe administrateur ({CAMPUSSES[own]})"
-                )
-                locked = None
-            except AP.AdminPasswordLocked as exc:
-                current_ok, locked = False, exc
-            if locked is not None:
-                flash(str(locked), "danger")
-            elif not current_ok:
+            if not AP.verify(
+                current, own, f"changement du mot de passe administrateur ({CAMPUSSES[own]})"
+            ):
                 flash(
                     f"Mot de passe administrateur actuel incorrect ({CAMPUSSES[own]}).",
                     "danger",

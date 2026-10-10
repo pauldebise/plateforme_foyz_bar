@@ -11,12 +11,14 @@ from app.utils import CAMPUSSES, client_ip
 bp = Blueprint("api", __name__)
 
 # Depuis une session passerelle (lien sans compte) : recherche d'au moins
-# 3 caractères, informations réduites au strict nécessaire pour encaisser, et
-# limiteurs dédiés (par événement et par IP) contre l'aspiration de l'annuaire.
+# 3 caractères, informations réduites au strict nécessaire pour encaisser (pas
+# d'identifiant de connexion ; le statut équipe reste exposé, il détermine le
+# tarif affiché) et limiteurs dédiés (par événement et par IP) contre
+# l'aspiration de l'annuaire.
 GATEWAY_MIN_QUERY = 3
 _gateway_search_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=120)
 _gateway_wallet_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=30)
-_GATEWAY_HIDDEN_FIELDS = ("username", "is_team")
+_GATEWAY_HIDDEN_FIELDS = ("username",)
 
 
 def _gateway_limited(limiter):
@@ -115,8 +117,6 @@ def wallet(user_id):
         "blacklist_alcohol": u.blacklist_alcohol,
         "is_team": u.is_team,
     }
-    if in_gateway:
-        data.pop("is_team")
     return jsonify(data)
 
 

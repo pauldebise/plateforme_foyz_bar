@@ -313,14 +313,9 @@ def annuler():
         flash("Aucune transaction sélectionnée.", "danger")
         return redirect(url_for("team.historique"))
     password = request.form.get("admin_password", "")
-    try:
-        password_ok = AP.verify(
-            password, own_campus(), f"annulation de {len(ids)} transaction(s) depuis l'historique"
-        )
-    except AP.AdminPasswordLocked as exc:
-        flash(str(exc), "danger")
-        return redirect(url_for("team.historique"))
-    if not password_ok:
+    if not AP.verify(
+        password, own_campus(), f"annulation de {len(ids)} transaction(s) depuis l'historique"
+    ):
         flash("Mot de passe administrateur requis pour annuler une transaction.", "danger")
         return redirect(url_for("team.historique"))
     cancelled, errors = 0, []

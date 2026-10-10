@@ -3,8 +3,8 @@
 Exécutable sans pytest : python -m tests.test_securite_caisse
 
 Couvre :
-- B1 : limiteur d'échecs du mot de passe administrateur par campus, échecs et
-  succès au journal d'audit, `admin_password` refusé sur la passerelle ;
+- B1 : échecs et succès du mot de passe administrateur au journal d'audit, sans
+  jamais bloquer un campus, `admin_password` refusé sur la passerelle ;
 - B2 : plafonds de la passerelle, informations réduites de /api/students et
   /api/wallet, recherche de 3 caractères minimum, validité bornée, jeton
   masqué des journaux, page passerelle absente du cache du Service Worker ;
@@ -48,6 +48,7 @@ from app.services import transactions as T  # noqa: E402
 from app.utils import is_safe_target, parse_amount, redact_secrets, utcnow  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
+FAILURES = 12
 _seq = itertools.count(1)
 
 
@@ -148,7 +149,7 @@ def _audit_count(action):
 # --------------------------------------------------------------------------- B1
 
 
-def test_b1_limiteur_mot_de_passe_admin_et_audit():
+def test_b1_echecs_journalises_sans_jamais_bloquer():
     app = create_app()
     _reset_audit(app)
     client, csrf = _team_client(app)
@@ -174,7 +175,7 @@ def test_b1_limiteur_mot_de_passe_admin_et_audit():
     with app.app_context():
         _expect(_audit_count(adminpw.ACTION_FAILURE) == 0, "mot de passe absent : pas un échec")
 
-    for i in range(adminpw.MAX_FAILURES):
+    for i in range(FAILURES):
         res = buy("mauvais-mot-de-passe", f"b1-echec-{i}")
         _expect(
             res.status_code == 400 and res.get_json()["code"] == "admin_password_required",
@@ -182,7 +183,7 @@ def test_b1_limiteur_mot_de_passe_admin_et_audit():
         )
     with app.app_context():
         _expect(
-            _audit_count(adminpw.ACTION_FAILURE) == adminpw.MAX_FAILURES,
+            _audit_count(adminpw.ACTION_FAILURE) == FAILURES,
             "chaque échec figure au journal d'audit",
         )
         failure = db.session.scalars(
@@ -191,22 +192,12 @@ def test_b1_limiteur_mot_de_passe_admin_et_audit():
         _expect(failure.user_id is not None and failure.campus == "brest", "échec attribué")
         _expect(failure.ip != "", "échec journalisé avec l'IP")
 
-    res = buy(ADMIN_PASSWORD, "b1-bloque")
-    _expect(
-        res.status_code == 400 and res.get_json()["code"] == "admin_password_locked",
-        f"campus bloqué même avec le bon mot de passe ({res.get_json()})",
-    )
-    with app.app_context():
-        _expect(_audit_count(adminpw.ACTION_SUCCESS) == 0, "blocage : aucun succès enregistré")
-        _expect(db.session.get(User, student_id).wallet("brest").balance == -100, "solde intact")
-
-    # Les échecs sortent de la fenêtre : le blocage est temporaire.
-    with app.app_context():
-        for row in db.session.scalars(select(AuditLog)).all():
-            row.created_at = utcnow() - adminpw.LOCK_WINDOW - timedelta(minutes=1)
-        db.session.commit()
+    # Jamais de blocage : le bon mot de passe passe, quel que soit le nombre d'échecs.
     res = buy(ADMIN_PASSWORD, "b1-ok")
-    _expect(res.status_code == 200 and res.get_json()["ok"], f"déblocage ({res.get_json()})")
+    _expect(
+        res.status_code == 200 and res.get_json()["ok"],
+        f"le campus n'est jamais bloqué ({res.get_json()})",
+    )
     with app.app_context():
         success = db.session.scalars(
             select(AuditLog).where(AuditLog.action == adminpw.ACTION_SUCCESS)
@@ -216,21 +207,19 @@ def test_b1_limiteur_mot_de_passe_admin_et_audit():
         _expect(db.session.get(User, student_id).wallet("brest").balance == -200, "achat passé")
 
 
-def test_b1_blocage_isole_par_campus():
+def test_b1_service_ne_bloque_jamais():
     app = create_app()
     _reset_audit(app)
     with app.app_context():
-        for _ in range(adminpw.MAX_FAILURES):
-            adminpw.verify("faux", "brest", "test")
-        try:
-            adminpw.verify(ADMIN_PASSWORD, "brest", "test")
-            raise AssertionError("échec : Brest devrait être bloqué")
-        except adminpw.AdminPasswordLocked:
-            pass
-        _expect(adminpw.verify(ADMIN_PASSWORD, "paris", "test"), "Paris non affecté par Brest")
+        for _ in range(FAILURES):
+            _expect(not adminpw.verify("faux", "brest", "test"), "mauvais mot de passe refusé")
+        _expect(adminpw.verify(ADMIN_PASSWORD, "brest", "test"), "Brest jamais bloqué")
+        _expect(adminpw.verify(ADMIN_PASSWORD, "paris", "test"), "Paris non affecté")
+        _expect(_audit_count(adminpw.ACTION_FAILURE) == FAILURES, "échecs journalisés")
+        _expect(_audit_count(adminpw.ACTION_SUCCESS) == 2, "succès journalisés")
 
 
-def test_b1_annulation_historique_bloquee_et_journalisee():
+def test_b1_annulation_historique_toujours_possible_apres_echecs():
     app = create_app()
     _reset_audit(app)
     client, csrf = _team_client(app)
@@ -246,20 +235,22 @@ def test_b1_annulation_historique_bloquee_et_journalisee():
         tid = t.id
     page = client.get("/equipe/historique").get_data(as_text=True)
     form_csrf = _csrf_form(page) if 'name="_csrf"' in page else csrf
-    for _ in range(adminpw.MAX_FAILURES):
+    for _ in range(FAILURES):
         client.post(
             "/equipe/historique/annuler",
             data={"transaction_id": str(tid), "admin_password": "faux", "_csrf": form_csrf},
         )
-    res = client.post(
+    with app.app_context():
+        _expect(db.session.get(Transaction, tid).cancelled is False, "échecs : pas d'annulation")
+        _expect(_audit_count(adminpw.ACTION_FAILURE) == FAILURES, "échecs journalisés")
+    client.post(
         "/equipe/historique/annuler",
         data={"transaction_id": str(tid), "admin_password": ADMIN_PASSWORD, "_csrf": form_csrf},
         follow_redirects=True,
     )
-    _expect("réessayez dans" in res.get_data(as_text=True), "message de blocage affiché")
     with app.app_context():
-        _expect(db.session.get(Transaction, tid).cancelled is False, "transaction non annulée")
-        _expect(_audit_count(adminpw.ACTION_FAILURE) == adminpw.MAX_FAILURES, "échecs journalisés")
+        _expect(db.session.get(Transaction, tid).cancelled is True, "bon mot de passe : annulée")
+        _expect(_audit_count(adminpw.ACTION_SUCCESS) == 1, "succès journalisé")
 
 
 def test_b1_passerelle_refuse_admin_password():
@@ -352,10 +343,10 @@ def test_b2_api_passerelle_reduite():
     found = [s for s in results if s["id"] == member_id]
     _expect(len(found) == 1, "recherche d'au moins 3 caractères fonctionnelle")
     _expect("username" not in found[0], "pas d'identifiant de connexion en passerelle")
-    _expect("is_team" not in found[0], "pas de statut équipe en passerelle")
+    _expect(found[0]["is_team"] is True, "statut équipe exposé : il détermine le tarif affiché")
     _expect("balance" in found[0] and "blacklist" in found[0], "champs utiles conservés")
     wallet = client.get(f"/api/wallet/{member_id}").get_json()
-    _expect("is_team" not in wallet, "portefeuille passerelle sans statut équipe")
+    _expect("username" not in wallet and wallet["is_team"] is True, "portefeuille passerelle")
 
     res = client.post(
         f"/passerelle/{token}/encaisser",
@@ -365,7 +356,7 @@ def test_b2_api_passerelle_reduite():
         },
         headers={"X-CSRFToken": csrf},
     )
-    _expect(res.status_code == 200 and res.get_json()["total"] == 300, "tarif public en passerelle")
+    _expect(res.status_code == 200 and res.get_json()["total"] == 150, "tarif équipe en passerelle")
 
     from app.routes.api import _gateway_wallet_limiter
 
@@ -380,6 +371,34 @@ def test_b2_api_passerelle_reduite():
         any("username" in s and "is_team" in s for s in full),
         "l'équipe conserve les champs complets",
     )
+
+
+def test_b2_passerelle_tarif_equipe_seulement_si_tous_equipe():
+    app = create_app()
+    with app.app_context():
+        ev = _event()
+        article = _article(300, event_id=ev.id)
+        member = _user(team=True, balance=5000)
+        other = _user(balance=5000)
+        token, article_id, member_id, other_id = ev.token, article.id, member.id, other.id
+    client = app.test_client()
+    csrf = _csrf_meta(client.get(f"/passerelle/{token}").get_data(as_text=True))
+
+    def pay(contributors):
+        res = client.post(
+            f"/passerelle/{token}/encaisser",
+            json={
+                "items": [{"article_id": article_id, "quantity": 2}],
+                "contributors": contributors,
+            },
+            headers={"X-CSRFToken": csrf},
+        )
+        _expect(res.status_code == 200 and res.get_json()["ok"], f"encaissement ({res.get_json()})")
+        return res.get_json()["total"]
+
+    _expect(pay([member_id]) == 300, "membre de l'équipe seul : 2 x 1,50 € (tarif équipe)")
+    _expect(pay([other_id]) == 600, "étudiant : tarif public")
+    _expect(pay([member_id, other_id]) == 600, "équipe + étudiant : tarif public (comme en caisse)")
 
 
 def test_b2_validite_passerelle_bornee():

@@ -59,11 +59,8 @@ def _int_or_invalid(value, message="Valeur numérique invalide."):
 
 
 def _verify_admin(password, campus, context):
-    """Vérifie le mot de passe administrateur (limiteur + audit, voir adminpw)."""
-    try:
-        return AP.verify(password, campus, context)
-    except AP.AdminPasswordLocked as exc:
-        raise OperationError("admin_password_locked", str(exc)) from exc
+    """Vérifie le mot de passe administrateur (avec audit, voir adminpw)."""
+    return AP.verify(password, campus, context)
 
 
 def _check_operation_amount(amount):
@@ -338,9 +335,9 @@ def create_purchase(
     """Encaisse un panier.
 
     `gateway=True` (passerelle, sans compte) : plafonds de quantité et de
-    montant plus bas, tarif public uniquement et aucun contournement du
-    découvert par mot de passe administrateur (il ne se saisit jamais depuis
-    un simple lien).
+    montant plus bas et aucun contournement du découvert par mot de passe
+    administrateur (il ne se saisit jamais depuis un simple lien). Le tarif
+    équipe s'applique comme en caisse.
     """
     if idempotency_key is not None and (
         not isinstance(idempotency_key, str) or len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH
@@ -414,7 +411,7 @@ def create_purchase(
                     f"{u.display_name} est blacklist alcool : commande avec alcool refusée.",
                 )
 
-    all_team = (not direct) and not gateway and users and all(u.is_team for u in users)
+    all_team = (not direct) and users and all(u.is_team for u in users)
     cart = []
     keg_volumes = defaultdict(float)
     article_total = 0
