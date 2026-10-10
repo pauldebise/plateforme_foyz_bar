@@ -3,11 +3,31 @@ from flask import Blueprint, abort, g, jsonify, request, session
 from app.extensions import db
 from app.models import Event, User
 from app.services import transactions as T
+from app.services.ratelimit import SlidingWindowLimiter
 from app.services.stats import sales_stats
 from app.services.treasury import treasury
-from app.utils import CAMPUSSES
+from app.utils import CAMPUSSES, client_ip
 
 bp = Blueprint("api", __name__)
+
+# Depuis une session passerelle (lien sans compte) : recherche d'au moins
+# 3 caractères, informations réduites au strict nécessaire pour encaisser, et
+# limiteurs dédiés (par événement et par IP) contre l'aspiration de l'annuaire.
+GATEWAY_MIN_QUERY = 3
+_gateway_search_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=120)
+_gateway_wallet_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=30)
+_GATEWAY_HIDDEN_FIELDS = ("username", "is_team")
+
+
+def _gateway_limited(limiter):
+    return limiter.limited(f"{g.gateway_event.id}:{client_ip()}")
+
+
+def _json_payload():
+    """Corps JSON de la requête : un objet, sinon un dictionnaire vide."""
+    payload = request.get_json(silent=True)
+    return payload if isinstance(payload, dict) else {}
+
 
 # Seuls endpoints lisibles depuis une session passerelle (campus de
 # l'événement, aucune écriture : l'encaissement passe par la route dédiée
@@ -61,30 +81,48 @@ def write_campus():
 
 @bp.route("/students")
 def students():
-    return jsonify(T.search_students(request.args.get("q", ""), campus=read_campus()))
+    query = request.args.get("q", "")
+    if getattr(g, "gateway_event", None) is None:
+        return jsonify(T.search_students(query, campus=read_campus()))
+    if _gateway_limited(_gateway_search_limiter):
+        return jsonify(ok=False, error="Trop de requêtes, patientez un instant."), 429
+    if len(query.strip()) < GATEWAY_MIN_QUERY:
+        return jsonify([])
+    return jsonify(
+        [
+            {k: v for k, v in student.items() if k not in _GATEWAY_HIDDEN_FIELDS}
+            for student in T.search_students(query, campus=read_campus())
+        ]
+    )
 
 
 @bp.route("/wallet/<int:user_id>")
 def wallet(user_id):
+    in_gateway = getattr(g, "gateway_event", None) is not None
+    if in_gateway and _gateway_limited(_gateway_wallet_limiter):
+        return jsonify(ok=False, error="Trop de requêtes, patientez un instant."), 429
     u = db.session.get(User, user_id)
     if u is None:
         return jsonify(ok=False, error="Étudiant introuvable."), 404
     # lecture seule : on ne crée pas de portefeuille pour l'autre campus
     w = T.wallet_view(u, read_campus())
-    return jsonify(
-        id=u.id,
-        name=u.display_name,
-        balance=w.balance if w else 0,
-        glasses=w.glasses_outstanding if w else 0,
-        blacklist=u.blacklist,
-        blacklist_alcohol=u.blacklist_alcohol,
-        is_team=u.is_team,
-    )
+    data = {
+        "id": u.id,
+        "name": u.display_name,
+        "balance": w.balance if w else 0,
+        "glasses": w.glasses_outstanding if w else 0,
+        "blacklist": u.blacklist,
+        "blacklist_alcohol": u.blacklist_alcohol,
+        "is_team": u.is_team,
+    }
+    if in_gateway:
+        data.pop("is_team")
+    return jsonify(data)
 
 
 @bp.route("/purchase", methods=["POST"])
 def purchase():
-    payload = request.get_json(silent=True) or {}
+    payload = _json_payload()
     campus = write_campus()
     if campus is None:
         return jsonify(
@@ -110,10 +148,10 @@ def purchase():
 
 @bp.route("/glasses/return", methods=["POST"])
 def glasses_return():
-    payload = request.get_json(silent=True) or {}
+    payload = _json_payload()
     try:
         uid = int(payload.get("user_id"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return jsonify(ok=False, error="Étudiant introuvable."), 404
     u = db.session.get(User, uid)
     if u is None:

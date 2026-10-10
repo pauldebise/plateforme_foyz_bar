@@ -8,6 +8,9 @@ if TYPE_CHECKING:
     from app.models.catalog import Article
 
 GATEWAY_MARGIN = timedelta(hours=12)
+# Le lien passerelle n'est pas authentifié : sa validité est bornée côté
+# serveur, quelle que soit la fin saisie pour l'événement.
+GATEWAY_MAX_DURATION = timedelta(hours=72)
 
 
 class Event(db.Model):
@@ -33,8 +36,16 @@ class Event(db.Model):
     )
 
     @property
+    def gateway_deadline(self):
+        """Fin effective de la passerelle : fin de l'événement, au plus
+        GATEWAY_MAX_DURATION après son début."""
+        return min(self.ends_at, self.starts_at + GATEWAY_MAX_DURATION)
+
+    @property
     def is_running(self):
-        return (not self.closed) and self.starts_at - GATEWAY_MARGIN <= utcnow() <= self.ends_at
+        return (not self.closed) and (
+            self.starts_at - GATEWAY_MARGIN <= utcnow() <= self.gateway_deadline
+        )
 
     @property
     def is_upcoming_or_running(self):

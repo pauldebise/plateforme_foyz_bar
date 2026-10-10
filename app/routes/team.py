@@ -20,10 +20,20 @@ from app.extensions import db
 from app.models import Article, Contribution, Note, Transaction, User
 from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
-from app.services.settings import check_admin_password, int_setting
+from app.services import adminpw as AP
+from app.services.settings import int_setting
 from app.services.stats import sales_stats, students_stats, top_article_ids, top_articles_stats
 from app.services.treasury import treasury
-from app.utils import ARTICLE_TYPES, CAMPUSSES, PAYMENT_METHODS, clamp_text, login_required, utcnow
+from app.utils import (
+    ARTICLE_TYPES,
+    CAMPUSSES,
+    PAYMENT_METHODS,
+    clamp_text,
+    is_safe_target,
+    login_required,
+    parse_amount,
+    utcnow,
+)
 
 bp = Blueprint("team", __name__)
 
@@ -126,7 +136,7 @@ def rechargement():
             return redirect(url_for("team.rechargement"))
         try:
             user = _get_user_or_fail(request.form.get("user_id"))
-            amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
+            amount = parse_amount(request.form.get("amount", ""))
             t = T.create_reload(
                 operator_label=operator(),
                 campus=campus(),
@@ -152,7 +162,7 @@ def retrait():
             return redirect(url_for("team.retrait"))
         try:
             user = _get_user_or_fail(request.form.get("user_id"))
-            amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
+            amount = parse_amount(request.form.get("amount", ""))
             T.create_withdrawal(
                 operator_label=operator(), campus=campus(), user=user, amount_cents=amount
             )
@@ -174,7 +184,7 @@ def transfert():
         try:
             srcs = [_get_user_or_fail(raw) for raw in request.form.getlist("from_id")]
             dsts = [_get_user_or_fail(raw) for raw in request.form.getlist("to_id")]
-            amount = int(float(request.form.get("amount", "0").replace(",", ".")) * 100)
+            amount = parse_amount(request.form.get("amount", ""))
             T.create_transfer(
                 operator_label=operator(),
                 campus=campus(),
@@ -193,6 +203,12 @@ def transfert():
     return render_template("team/operation.html", op="transfert", read_only=not can_write())
 
 
+def _next_target():
+    """Cible `next` d'un formulaire, uniquement si c'est un chemin interne sûr."""
+    target = request.form.get("next")
+    return target if is_safe_target(target) else url_for("team.payment")
+
+
 def _get_user_or_fail(raw_id):
     try:
         uid = int(raw_id)
@@ -208,7 +224,7 @@ def _get_user_or_fail(raw_id):
 @login_required
 def consigne_return():
     if require_write():
-        return redirect(request.form.get("next") or url_for("team.payment"))
+        return redirect(_next_target())
     try:
         user = _get_user_or_fail(request.form.get("user_id"))
         count = int(request.form.get("count", "1"))
@@ -219,7 +235,7 @@ def consigne_return():
         )
     except (T.OperationError, ValueError) as e:
         flash(getattr(e, "message", "Erreur."), "danger")
-    return redirect(request.form.get("next") or url_for("team.payment"))
+    return redirect(_next_target())
 
 
 @bp.route("/historique")
@@ -297,7 +313,14 @@ def annuler():
         flash("Aucune transaction sélectionnée.", "danger")
         return redirect(url_for("team.historique"))
     password = request.form.get("admin_password", "")
-    if not check_admin_password(password, own_campus()):
+    try:
+        password_ok = AP.verify(
+            password, own_campus(), f"annulation de {len(ids)} transaction(s) depuis l'historique"
+        )
+    except AP.AdminPasswordLocked as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("team.historique"))
+    if not password_ok:
         flash("Mot de passe administrateur requis pour annuler une transaction.", "danger")
         return redirect(url_for("team.historique"))
     cancelled, errors = 0, []
@@ -313,7 +336,7 @@ def annuler():
             errors.append(f"#{tid} : autre campus")
             continue
         try:
-            T.cancel_transaction(t, password)
+            T.cancel_transaction(t, None, verified=True)
             cancelled += 1
         except T.OperationError as e:
             errors.append(f"#{tid} : {e.message}")

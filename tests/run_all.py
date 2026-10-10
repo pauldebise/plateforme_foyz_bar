@@ -23,6 +23,7 @@ SQLITE_SUITES = [
     "tests.test_identifiers",
     "tests.test_caisse",
     "tests.test_gateway",
+    "tests.test_securite_caisse",
     "tests.test_integrity",
     "tests.test_concurrency",
     "tests.test_hardening",
@@ -45,6 +46,7 @@ SQLITE_SUITES = [
 POSTGRES_SUITES = [
     "tests.test_caisse",
     "tests.test_gateway",
+    "tests.test_securite_caisse",
     "tests.test_integrity",
     "tests.test_concurrency",
     "tests.test_hardening",

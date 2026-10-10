@@ -5,6 +5,7 @@ import secrets
 import unicodedata
 from datetime import datetime, UTC
 from functools import wraps
+from urllib.parse import unquote, urlsplit
 from zoneinfo import ZoneInfo
 
 from flask import current_app, redirect, request, url_for, g
@@ -73,6 +74,12 @@ def euros(cents):
 # et évite les débordements d'entiers sur les colonnes de prix.
 MAX_CENTS = 100_000_000
 
+# Plafond d'une opération de caisse saisie à la main (rechargement, retrait,
+# transfert) : 5 000,00 €.
+MAX_OPERATION_CENTS = 500_000
+
+_MAX_AMOUNT_INPUT_LENGTH = 32
+
 
 def cents(value):
     """Convertit une saisie (« 12,50 ») en centimes entiers.
@@ -93,6 +100,31 @@ def cents(value):
     if abs(amount) > MAX_CENTS:
         raise ValueError("montant hors limites")
     return amount
+
+
+def parse_amount(value, *, minimum=1, maximum=MAX_OPERATION_CENTS):
+    """Montant saisi (« 12,50 ») -> centimes entiers bornés [minimum, maximum].
+
+    Point d'entrée unique pour les rechargements, retraits et transferts : même
+    arrondi que `cents()` (0,29 -> 29 centimes), refus de `inf`/`nan`/`1e999`,
+    des booléens et des saisies démesurées. Lève ValueError, jamais d'autre
+    exception : les appelants en font un message utilisateur ou une 400.
+    """
+    if isinstance(value, bool) or len(str(value)) > _MAX_AMOUNT_INPUT_LENGTH:
+        raise ValueError("montant invalide")
+    amount = cents(value)
+    if amount < minimum or amount > maximum:
+        raise ValueError("montant hors limites")
+    return amount
+
+
+_SECRET_PATH_RE = re.compile(r"(/passerelle/)[^/?#\s\"]+")
+
+
+def redact_secrets(text):
+    """Masque le jeton d'un lien passerelle (secret au porteur) dans un texte
+    destiné aux journaux : « /passerelle/<jeton>/encaisser » -> « /passerelle/***/encaisser »."""
+    return _SECRET_PATH_RE.sub(r"\1***", text) if isinstance(text, str) else text
 
 
 def clamp_text(value, max_length):
@@ -141,7 +173,24 @@ def login_required(view):
 
 
 def is_safe_target(target):
-    return target and target.startswith("/") and not target.startswith("//")
+    """Redirection interne uniquement : un chemin absolu du site, rien d'autre.
+
+    Refuse les URL absolues ou sans schéma, le contre-oblique (les navigateurs
+    le lisent comme une barre oblique : « /\\hote » vaut « //hote »), les
+    caractères de contrôle (tabulations et sauts de ligne sont ignorés par les
+    navigateurs, « /<tab>/hote » redevient « //hote ») et leurs variantes encodées.
+    """
+    if not target or not isinstance(target, str) or len(target) > 2048:
+        return False
+    if not target.startswith("/") or target[1:2] in ("/", "\\"):
+        return False
+    for candidate in (target, unquote(target)):
+        if "\\" in candidate or any(ord(ch) < 32 or ord(ch) == 127 for ch in candidate):
+            return False
+        if candidate.startswith("//"):
+            return False
+    parts = urlsplit(target)
+    return not parts.scheme and not parts.netloc
 
 
 def client_ip():

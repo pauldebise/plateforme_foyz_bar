@@ -254,6 +254,23 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 - Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
   annulations de transactions, retrait des statuts blacklist (réservé à l'équipe
   d'origine de la blacklist, admin global excepté).
+- **Mot de passe administrateur** : au bout de 5 échecs en 15 minutes sur un campus,
+  toute vérification est refusée jusqu'à la sortie des échecs de la fenêtre ; les
+  échecs **et** les succès sont journalisés (« Actions » de `/admin/journal` :
+  opérateur, opération protégée, IP). Le champ `admin_password` est refusé par la
+  passerelle.
+- **Passerelle** (lien sans compte) : quantité limitée à 20 par article et montant à
+  150 € par transaction, tarif public uniquement, jamais d'encaissement sur un
+  compte déjà à découvert ; recherche d'au moins 3 caractères, sans identifiant de
+  connexion ni statut équipe, avec limiteurs dédiés ; validité bornée à 72 h après
+  le début de l'événement ; page absente du cache du Service Worker ; jeton masqué
+  dans les journaux (application et accès Gunicorn, `app/gunicorn_logging.py`).
+- Montants saisis (rechargement, retrait, transfert) : un seul parseur
+  (`app.utils.parse_amount`), de 0,01 € à 5 000 € ; types et bornes des charges JSON
+  de l'API validés (refus 400, jamais d'erreur serveur).
+- Redirections `next` : chemins internes uniquement (`app.utils.is_safe_target`).
+- Annulation de transaction : réservation atomique, un seul remboursement même en
+  cas d'annulations simultanées.
 - Registre des connexions (compte, campus, IP, succès/échec) avec purge automatique.
 - En-têtes `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
   `Content-Security-Policy` stricte (`script-src 'self'`, aucun script inline) ;

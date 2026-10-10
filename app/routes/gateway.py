@@ -1,3 +1,5 @@
+import hashlib
+
 from flask import (
     Blueprint,
     abort,
@@ -32,10 +34,16 @@ def _limiter_key(token):
     return f"{token}:{client_ip()}"
 
 
+def token_ref(token):
+    """Référence non réversible d'un jeton, pour les journaux : l'URL de la
+    passerelle est un secret, elle ne doit jamais y apparaître."""
+    return hashlib.sha256(token.encode()).hexdigest()[:8]
+
+
 def _too_many(limiter, token, action):
     if limiter.limited(_limiter_key(token)):
         current_app.logger.warning(
-            "Passerelle %s : seuil de %s atteint depuis %s", token, action, client_ip()
+            "Passerelle %s : seuil de %s atteint depuis %s", token_ref(token), action, client_ip()
         )
         return True
     return False
@@ -138,7 +146,17 @@ def encaisser(token):
     ev = _event_from_token(token)
     if not ev.is_running:
         return jsonify(ok=False, error="Événement non accessible."), 403
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        payload = {}
+    # Le mot de passe administrateur ne se saisit jamais depuis un simple lien :
+    # accepter ce champ ferait de la passerelle un oracle pour le deviner.
+    if "admin_password" in payload:
+        return jsonify(
+            ok=False,
+            code="admin_password_refused",
+            error="Le mot de passe administrateur n'est pas accepté via la passerelle.",
+        ), 400
     try:
         t = T.create_purchase(
             operator_label=f"Passerelle · {ev.name}",
@@ -149,8 +167,8 @@ def encaisser(token):
             direct=bool(payload.get("direct")),
             payment_method=payload.get("payment_method"),
             event_id=ev.id,
-            admin_password=payload.get("admin_password"),
             idempotency_key=payload.get("idempotency_key"),
+            gateway=True,
         )
         return jsonify(ok=True, transaction_id=t.id, total=t.total)
     except T.OperationError as e:

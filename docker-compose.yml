@@ -33,7 +33,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    command: sh -c "flask --app wsgi.py init-db && gunicorn --workers 4 --bind 0.0.0.0:8000 --access-logfile - --error-logfile - --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 100 wsgi:app"
+    command: sh -c "flask --app wsgi.py init-db && gunicorn --workers 4 --bind 0.0.0.0:8000 --logger-class app.gunicorn_logging.MaskingLogger --access-logfile - --error-logfile - --timeout 60 --graceful-timeout 30 --max-requests 1000 --max-requests-jitter 100 wsgi:app"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200"]

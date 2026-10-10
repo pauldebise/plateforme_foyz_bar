@@ -30,6 +30,7 @@ from app.utils import (
     PAYMENT_METHODS,
     TRANSACTION_TYPES,
     euros,
+    redact_secrets,
     safe_color,
     to_paris,
 )
@@ -653,7 +654,7 @@ def create_app():
             "bad_request",
             extra={
                 "event": "bad_request",
-                "path": request.path[:255],
+                "path": redact_secrets(request.path)[:255],
                 "method": request.method,
                 "endpoint": request.endpoint or "",
             },
@@ -673,7 +674,7 @@ def create_app():
         original = getattr(e, "original_exception", None)
         extra = {
             "event": "unhandled_error",
-            "path": request.path[:255],
+            "path": redact_secrets(request.path)[:255],
             "method": request.method,
             "endpoint": request.endpoint or "",
             "user_id": session.get("user_id"),

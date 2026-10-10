@@ -12,7 +12,7 @@ avoir à croiser d'autres tables.
 
 from datetime import timedelta
 
-from flask import g, session
+from flask import g, has_request_context, session
 
 from app.extensions import db
 from app.models import AuditLog
@@ -44,6 +44,8 @@ ACTION_LABELS = {
     "reglages.modification": "Modification des réglages",
     "reglages.couleurs": "Réinitialisation des couleurs",
     "reglages.mot_de_passe": "Changement du mot de passe administrateur",
+    "mot_de_passe_admin.succes": "Mot de passe administrateur accepté",
+    "mot_de_passe_admin.echec": "Mot de passe administrateur refusé",
     "lien.ajout": "Ajout d'un lien utile",
     "lien.suppression": "Suppression d'un lien utile",
 }
@@ -53,23 +55,30 @@ def label(action):
     return ACTION_LABELS.get(action, action)
 
 
-def record(action, target="", details="", *, commit=False):
+def record(action, target="", details="", *, commit=False, campus=None):
     """Ajoute une entrée d'audit à la session courante.
 
     `target` désigne l'objet touché (nom, identifiant, libellé) ; `details`
     résume la modification. L'appelant commite (ou passe commit=True quand
     sa route ne fait aucun commit). Ne lève jamais pour un problème de
-    contenu : les champs sont tronqués aux tailles de colonnes.
+    contenu : les champs sont tronqués aux tailles de colonnes. `campus`
+    force le campus de l'entrée (sinon celui de la session de l'acteur).
     """
-    actor = getattr(g, "current_user", None)
+    # Hors requête HTTP (commande CLI, service appelé directement) : pas
+    # d'acteur ni d'IP, l'entrée est tout de même écrite.
+    in_request = has_request_context()
+    actor = getattr(g, "current_user", None) if in_request else None
     entry = AuditLog(
         user_id=actor.id if actor else None,
         actor=clamp_text(actor.display_name, 160) if actor else "",
-        campus=session.get("campus") or (actor.team_campus if actor else "") or "",
+        campus=campus
+        or (session.get("campus") if in_request else None)
+        or (actor.team_campus if actor else "")
+        or "",
         action=clamp_text(action, 60),
         target=clamp_text(target or "", 160),
         details=clamp_text(details or "", 2000),
-        ip=client_ip(),
+        ip=client_ip() if in_request else "",
     )
     db.session.add(entry)
     if commit:

@@ -1,13 +1,13 @@
 /* Service worker : coquille hors ligne de la caisse (P10-6).
    - pré-cache des assets statiques et de la page /hors-ligne ;
-   - pages HTML de caisse : réseau d'abord, copie en cache pour la reprise
-     hors ligne (les autres pages authentifiées ne sont jamais mises en
-     cache) ;
+   - page de caisse de l'équipe : réseau d'abord, copie en cache pour la
+     reprise hors ligne (les autres pages authentifiées ne sont jamais mises
+     en cache ; la page passerelle non plus : son URL est un secret) ;
    - les POST (encaissements) ne sont jamais interceptés : la file d'attente
      est gérée par offline.js avec la clé d'idempotence côté serveur. */
 'use strict';
 
-const VERSION = 'foyz-v1';
+const VERSION = 'foyz-v2';
 const OFFLINE_URL = '/hors-ligne';
 const PRECACHE = [
   OFFLINE_URL,
@@ -43,7 +43,7 @@ self.addEventListener('activate', (event) => {
 });
 
 function isCaisse(path) {
-  return path.startsWith('/equipe/paiement') || path.startsWith('/passerelle/');
+  return path.startsWith('/equipe/paiement');
 }
 
 async function networkFirst(request, cacheable) {

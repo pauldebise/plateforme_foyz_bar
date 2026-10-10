@@ -2,7 +2,7 @@ import time
 from collections import defaultdict
 from datetime import timedelta
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
@@ -17,12 +17,26 @@ from app.models import (
     User,
     Wallet,
 )
+from app.services import adminpw as AP
 from app.services import settings as S
 from app.utils import (
     ALCOHOL_TYPES,
+    MAX_OPERATION_CENTS,
     PAYMENT_METHODS,
+    euros,
     utcnow,
 )
+
+# Bornes de saisie (API caisse et passerelle) : une valeur hors bornes est un
+# refus métier (400), jamais une erreur serveur.
+MAX_LINES = 100
+MAX_LINE_QUANTITY = 200
+MAX_CONTRIBUTORS = 50
+MAX_GLASSES = 100
+MAX_IDEMPOTENCY_KEY_LENGTH = 64
+# La passerelle n'est pas authentifiée (le lien fait foi) : plafonds plus bas.
+GATEWAY_MAX_LINE_QUANTITY = 20
+GATEWAY_MAX_TOTAL_CENTS = 15_000
 
 
 class OperationError(Exception):
@@ -36,10 +50,27 @@ class OperationError(Exception):
 def _int_or_invalid(value, message="Valeur numérique invalide."):
     """Conversion défensive : une entrée non numérique est un refus métier,
     jamais une erreur serveur (500)."""
+    if isinstance(value, bool) or (isinstance(value, str) and len(value) > 18):
+        raise OperationError("invalid", message)
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise OperationError("invalid", message) from None
+
+
+def _verify_admin(password, campus, context):
+    """Vérifie le mot de passe administrateur (limiteur + audit, voir adminpw)."""
+    try:
+        return AP.verify(password, campus, context)
+    except AP.AdminPasswordLocked as exc:
+        raise OperationError("admin_password_locked", str(exc)) from exc
+
+
+def _check_operation_amount(amount):
+    if amount <= 0 or amount > MAX_OPERATION_CENTS:
+        raise OperationError(
+            "invalid", f"Montant invalide (de 0,01 € à {euros(MAX_OPERATION_CENTS)})."
+        )
 
 
 def _get_wallet(user, campus):
@@ -243,21 +274,24 @@ def search_students(query, campus=None, limit=15):
     return results
 
 
-def _resolve_items(items, event_id=None, campus=None, allow_standard=False):
+def _resolve_items(
+    items, event_id=None, campus=None, allow_standard=False, max_quantity=MAX_LINE_QUANTITY
+):
     if not items:
         raise OperationError("invalid", "Aucun article sélectionné.")
+    if not isinstance(items, list) or len(items) > MAX_LINES:
+        raise OperationError("invalid", "Commande invalide.")
     merged = {}
     for it in items:
         if not isinstance(it, dict):
             raise OperationError("invalid", "Commande invalide.")
-        try:
-            aid = int(it.get("article_id"))
-            qty = int(it.get("quantity", 0))
-        except (TypeError, ValueError):
-            raise OperationError("invalid", "Commande invalide.") from None
+        aid = _int_or_invalid(it.get("article_id"), "Commande invalide.")
+        qty = _int_or_invalid(it.get("quantity", 0), "Commande invalide.")
         if qty <= 0:
             continue
         merged[aid] = merged.get(aid, 0) + qty
+        if merged[aid] > max_quantity:
+            raise OperationError("invalid", f"Quantité maximale par article : {max_quantity}.")
     if not merged:
         raise OperationError("invalid", "Aucun article sélectionné.")
 
@@ -299,7 +333,19 @@ def create_purchase(
     event_id=None,
     admin_password=None,
     idempotency_key=None,
+    gateway=False,
 ):
+    """Encaisse un panier.
+
+    `gateway=True` (passerelle, sans compte) : plafonds de quantité et de
+    montant plus bas, tarif public uniquement et aucun contournement du
+    découvert par mot de passe administrateur (il ne se saisit jamais depuis
+    un simple lien).
+    """
+    if idempotency_key is not None and (
+        not isinstance(idempotency_key, str) or len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH
+    ):
+        raise OperationError("invalid", "Clé d'idempotence invalide.")
     # Rejeu d'un encaissement déjà traité : on renvoie la transaction existante
     # plutôt que d'en créer une seconde (double soumission, retentative réseau).
     existing = _existing_by_key(idempotency_key)
@@ -315,9 +361,11 @@ def create_purchase(
         contributor_ids = []
         deposit_glasses = 0
     else:
-        contributor_ids = [
-            _int_or_invalid(x, "Étudiant introuvable.") for x in (contributor_ids or [])
-        ]
+        if contributor_ids is None:
+            contributor_ids = []
+        if not isinstance(contributor_ids, list) or len(contributor_ids) > MAX_CONTRIBUTORS:
+            raise OperationError("invalid", "Liste d'étudiants invalide.")
+        contributor_ids = [_int_or_invalid(x, "Étudiant introuvable.") for x in contributor_ids]
         if not contributor_ids:
             raise OperationError("invalid", "Aucun étudiant sélectionné.")
 
@@ -330,7 +378,13 @@ def create_purchase(
             raise OperationError("invalid", "Événement introuvable.")
         allow_standard = event.allow_standard_articles
 
-    lines = _resolve_items(items, event_id=event_id, campus=campus, allow_standard=allow_standard)
+    lines = _resolve_items(
+        items,
+        event_id=event_id,
+        campus=campus,
+        allow_standard=allow_standard,
+        max_quantity=GATEWAY_MAX_LINE_QUANTITY if gateway else MAX_LINE_QUANTITY,
+    )
     users = []
     if not direct:
         seen = set()
@@ -360,12 +414,14 @@ def create_purchase(
                     f"{u.display_name} est blacklist alcool : commande avec alcool refusée.",
                 )
 
-    all_team = (not direct) and users and all(u.is_team for u in users)
+    all_team = (not direct) and not gateway and users and all(u.is_team for u in users)
     cart = []
     keg_volumes = defaultdict(float)
     article_total = 0
     for a, qty in lines:
         unit = a.price_for(campus, team=all_team)
+        if unit < 0:
+            raise OperationError("invalid", "Article indisponible.")
         line_total = unit * qty
         article_total += line_total
         cart.append({"article": a, "quantity": qty, "unit_price": unit, "line_total": line_total})
@@ -377,6 +433,8 @@ def create_purchase(
     primary = users[0] if users else None
     if not direct and deposit_glasses:
         glasses = max(0, _int_or_invalid(deposit_glasses, "Nombre de consignes invalide."))
+        if glasses > MAX_GLASSES:
+            raise OperationError("invalid", "Nombre de consignes invalide.")
         if glasses > 0:
             if not S.deposit_enabled():
                 raise OperationError("invalid", "La consigne est désactivée.")
@@ -385,6 +443,9 @@ def create_purchase(
     total = article_total + deposit_total
     if total <= 0:
         raise OperationError("invalid", "Montant nul.")
+    max_total = GATEWAY_MAX_TOTAL_CENTS if gateway else MAX_OPERATION_CENTS
+    if total > max_total:
+        raise OperationError("invalid", f"Montant maximal par transaction : {euros(max_total)}.")
 
     n = len(users) if users else 1
     shares = _split_shares(total, n)
@@ -406,7 +467,18 @@ def create_purchase(
                 )
             if w.balance < 0:
                 already_negative.append(u)
-        if already_negative and not S.check_admin_password(admin_password, campus):
+        if already_negative and gateway:
+            raise OperationError(
+                "gateway_negative_balance",
+                "Un étudiant est déjà dans le négatif : paiement impossible via la "
+                "passerelle, voyez l'équipe du bar.",
+            )
+        if already_negative and not _verify_admin(
+            admin_password,
+            campus,
+            "encaissement sur compte déjà à découvert : "
+            + ", ".join(u.display_name for u in already_negative),
+        ):
             raise OperationError(
                 "admin_password_required",
                 "Un étudiant est déjà dans le négatif : mot de passe administrateur requis.",
@@ -555,7 +627,7 @@ def _reactivate_keg_articles(keg, tap_numbers):
 
 def return_glasses(*, operator_label, campus, user, count):
     count = _int_or_invalid(count or 0, "Nombre de verres invalide.")
-    if count <= 0:
+    if count <= 0 or count > MAX_GLASSES:
         raise OperationError("invalid", "Nombre de verres invalide.")
     w = _lock_wallets(campus, [user])[user.id]
     if w.glasses_outstanding < count:
@@ -598,8 +670,7 @@ def return_glasses(*, operator_label, campus, user, count):
 
 def create_reload(*, operator_label, campus, user, amount_cents, payment_method):
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
-    if amount <= 0:
-        raise OperationError("invalid", "Montant invalide.")
+    _check_operation_amount(amount)
     if payment_method not in PAYMENT_METHODS:
         raise OperationError("invalid", "Moyen de paiement invalide.")
     w = _lock_wallets(campus, [user])[user.id]
@@ -629,8 +700,7 @@ def create_reload(*, operator_label, campus, user, amount_cents, payment_method)
 
 def create_withdrawal(*, operator_label, campus, user, amount_cents):
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
-    if amount <= 0:
-        raise OperationError("invalid", "Montant invalide.")
+    _check_operation_amount(amount)
     w = _lock_wallets(campus, [user])[user.id]
     if amount > w.balance:
         raise OperationError("solde", f"Solde insuffisant ({w.balance} < {amount}).")
@@ -669,8 +739,7 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     débitée et la somme créditée valent donc exactement ``amount``.
     """
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
-    if amount <= 0:
-        raise OperationError("invalid", "Montant invalide.")
+    _check_operation_amount(amount)
     donors = _unique_users(from_users, "Sélectionnez au moins un donneur.")
     recipients = _unique_users(to_users, "Sélectionnez au moins un receveur.")
     donor_ids = {u.id for u in donors}
@@ -746,11 +815,33 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     return t
 
 
-def cancel_transaction(transaction, admin_password):
+def cancel_transaction(transaction, admin_password, *, verified=False):
+    """Annule une transaction et rétablit soldes, consignes et fûts.
+
+    `verified=True` : l'appelant a déjà vérifié le mot de passe administrateur
+    (annulation en lot, une seule vérification journalisée).
+    """
     if transaction.cancelled:
         raise OperationError("invalid", "Transaction déjà annulée.")
-    if not S.check_admin_password(admin_password, transaction.campus):
+    if not verified and not _verify_admin(
+        admin_password, transaction.campus, f"annulation de la transaction #{transaction.id}"
+    ):
         raise OperationError("admin_password_required", "Mot de passe administrateur requis.")
+
+    # Réservation atomique : une seule annulation peut faire passer `cancelled`
+    # de faux à vrai. Deux annulations simultanées (double clic, deux onglets,
+    # deux mandats) lisent toutes deux « non annulée » avant les verrous ; la
+    # seconde attend ici que la première valide, ne trouve plus aucune ligne et
+    # s'arrête avant de toucher un portefeuille (pas de double remboursement).
+    claimed = db.session.execute(
+        update(Transaction)
+        .where(Transaction.id == transaction.id, Transaction.cancelled.is_(False))
+        .values(cancelled=True, cancelled_at=utcnow())
+        .execution_options(synchronize_session=False)
+    ).rowcount
+    if claimed != 1:
+        db.session.rollback()
+        raise OperationError("invalid", "Transaction déjà annulée.")
 
     # Portefeuilles concernés : regroupés par campus puis verrouillés par id
     # croissant (même ordre que les autres opérations, pas d'interblocage).
@@ -849,8 +940,6 @@ def cancel_transaction(transaction, admin_password):
         if keg is not None:
             _reactivate_keg_articles(keg, numbers)
 
-    transaction.cancelled = True
-    transaction.cancelled_at = utcnow()
     db.session.commit()
     _invalidate_activity_cache()
 

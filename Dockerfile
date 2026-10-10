@@ -27,4 +27,4 @@ EXPOSE 8000
 # --max-requests : les workers sont recyclés (fuites mémoire des agrégations,
 #   cf. phase Performance) ; --timeout : pas de requête bloquée indéfiniment ;
 #   --error-logfile - : erreurs et traces dans les journaux du conteneur.
-CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-", "--timeout", "60", "--graceful-timeout", "30", "--max-requests", "1000", "--max-requests-jitter", "100", "wsgi:app"]
+CMD ["gunicorn", "--workers", "4", "--bind", "0.0.0.0:8000", "--logger-class", "app.gunicorn_logging.MaskingLogger", "--access-logfile", "-", "--error-logfile", "-", "--timeout", "60", "--graceful-timeout", "30", "--max-requests", "1000", "--max-requests-jitter", "100", "wsgi:app"]
