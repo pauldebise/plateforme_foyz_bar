@@ -39,7 +39,8 @@ if ! ssh "$SSH_HOST" "test -f '$REMOTE_DIR/.env' && test -f '$REMOTE_DIR/caddy/c
 fi
 
 echo "==> Synchronisation du code source"
-# Exclus : dépôt, environnements virtuels, caches, données locales, secrets.
+# Exclus : dépôt, environnements virtuels, caches, données locales, secrets,
+# documents d'infrastructure non suivis (AGENT.md, plan de bascule).
 # caddy/ et docker-compose.override.yml sont gérés séparément (server-only).
 rsync -az --delete \
   --exclude='.git/' --exclude='.venv/' --exclude='venv/' \
@@ -48,6 +49,7 @@ rsync -az --delete \
   --exclude='instance/' --exclude='bdd_a_migrer/' --exclude='archives/' \
   --exclude='.env' --exclude='caddy/' --exclude='docker-compose.override.yml' \
   --exclude='*.log' --exclude='nohup.out' --exclude='.DS_Store' \
+  --exclude='AGENT.md' --exclude='docs/PLAN_BASCULE_PROD.md' \
   ./ "$SSH_HOST:$REMOTE_DIR/"
 
 echo "==> Mise à jour de la configuration de reverse-proxy"
