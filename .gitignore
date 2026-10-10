@@ -16,3 +16,7 @@ bdd_a_migrer/
 # Documents supprimés : ne plus jamais suivre
 docs/Cahier_des_charge_site_Foy_z\ \(1\).pdf
 docs/main.tex
+
+# Documents d'infrastructure : non suivis (depot public)
+AGENT.md
+docs/PLAN_BASCULE_PROD.md
