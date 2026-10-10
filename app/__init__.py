@@ -336,13 +336,24 @@ def create_app():
         # SQLite (dev/tests) : schéma appliqué au démarrage. PostgreSQL
         # (production) : uniquement des révisions Alembic, via `init-db`
         # ou `upgrade-db` — aucun DDL à l'import de l'application.
-        from app.schema import is_sqlite, tables_present
+        from app.schema import current_revision, head_revision, is_sqlite, tables_present
 
         if is_sqlite():
             db.create_all()
             ensure_schema_upgrades()
             _restrict_instance_permissions(app)
-        if tables_present():
+        # Schéma en retard (révision Alembic en attente) : les modèles peuvent
+        # référencer des colonnes absentes, toute requête échouerait et le
+        # démarrage planterait avant même que `init-db` n'applique la migration.
+        # On n'interroge donc la base qu'une fois le schéma à jour.
+        schema_ready = is_sqlite() or current_revision() == head_revision()
+        if tables_present() and not schema_ready:
+            app.logger.warning(
+                "Schéma en retard (%s, attendu %s) : exécuter `flask upgrade-db`.",
+                current_revision(),
+                head_revision(),
+            )
+        if tables_present() and schema_ready:
             ensure_dev_admin()
             from app.services.legacy_passwords import audit as legacy_audit
 

@@ -149,6 +149,34 @@ def test_backups_info():
         _expect(not H.backups_info()["exists"], "absence signalée")
 
 
+def test_demarrage_avec_schema_en_retard():
+    """Une révision Alembic en attente ne doit pas faire planter le démarrage :
+    `init-db` (au lancement du conteneur) applique la migration ensuite."""
+    if IS_SQLITE:
+        print("  (PostgreSQL uniquement : SQLite est migré au démarrage)")
+        return
+    from alembic import command
+
+    from app.schema import alembic_config, current_revision, head_revision
+
+    app = create_app()
+    cfg = alembic_config()
+    with app.app_context():
+        command.downgrade(cfg, "-1")
+        _expect(current_revision() != head_revision(), "schéma volontairement en retard")
+    try:
+        late_app = create_app()
+        res = late_app.test_client().get("/health")
+        _expect(res.status_code == 200, f"le démarrage n'échoue pas ({res.status_code})")
+        _expect("outdated" in res.get_json()["schema"], "/health signale le retard de schéma")
+    finally:
+        with app.app_context():
+            command.upgrade(cfg, "head")
+    with app.app_context():
+        _expect(current_revision() == head_revision(), "schéma remis à jour")
+    _expect(create_app().test_client().get("/health").status_code == 200, "démarrage normal")
+
+
 def main():
     tests = [
         (name, fn)
