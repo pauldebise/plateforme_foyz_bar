@@ -23,6 +23,7 @@ from app.utils import (
     ALCOHOL_TYPES,
     MAX_OPERATION_CENTS,
     PAYMENT_METHODS,
+    clamp_text,
     euros,
     utcnow,
 )
@@ -487,7 +488,7 @@ def create_purchase(
         type=ttype,
         campus=campus,
         total=total,
-        operator_label=operator_label or "",
+        operator_label=clamp_text(operator_label or "", 255),
         payment_method=payment_method if direct else None,
         event_id=event_id,
         deposit_glasses=glasses,
@@ -636,7 +637,7 @@ def return_glasses(*, operator_label, campus, user, count):
         type="consigne",
         campus=campus,
         total=credit,
-        operator_label=operator_label or "",
+        operator_label=clamp_text(operator_label or "", 255),
         deposit_glasses=count,
         deposit_user_id=user.id,
         note=f"Retour de {count} verre(s) consigné(s)",
@@ -675,7 +676,7 @@ def create_reload(*, operator_label, campus, user, amount_cents, payment_method)
         type="rechargement",
         campus=campus,
         total=amount,
-        operator_label=operator_label or "",
+        operator_label=clamp_text(operator_label or "", 255),
         payment_method=payment_method,
     )
     db.session.add(t)
@@ -705,7 +706,7 @@ def create_withdrawal(*, operator_label, campus, user, amount_cents):
         type="retrait",
         campus=campus,
         total=amount,
-        operator_label=operator_label or "",
+        operator_label=clamp_text(operator_label or "", 255),
     )
     db.session.add(t)
     db.session.flush()
@@ -764,7 +765,7 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
         type="transfert",
         campus=campus,
         total=amount,
-        operator_label=operator_label or "",
+        operator_label=clamp_text(operator_label or "", 255),
         # Conservés pour l'affichage/l'historique quand le transfert est simple.
         from_user_id=donors[0].id if len(donors) == 1 else None,
         to_user_id=recipients[0].id if len(recipients) == 1 else None,

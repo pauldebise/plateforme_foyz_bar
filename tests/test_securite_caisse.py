@@ -685,6 +685,66 @@ def test_b5_api_types_json_valides():
     _expect(res.status_code == 200 and res.get_json()["ok"], "payload valide accepté")
 
 
+def test_operateur_au_surnom_tres_long():
+    """Les surnoms importés peuvent atteindre ~245 caractères : le libellé de
+    l'opérateur (nom + surnom) dépasse alors VARCHAR(255). PostgreSQL rejette
+    (SQLite tronque en silence) : la caisse ne doit jamais répondre 500."""
+    app = create_app()
+    with app.app_context():
+        member = _user(team=True, balance=5000)
+        member.nickname = "x" * 245
+        student = _user(balance=5000)
+        student.wallet("brest").glasses_outstanding = 1
+        other = _user(balance=5000)
+        article = _article(100)
+        db.session.commit()
+        username = member.username
+        student_id, other_id, article_id = student.id, other.id, article.id
+        label = member.display_name
+        _expect(len(label) > 255, f"libellé d'opérateur trop long pour la colonne ({len(label)})")
+    client = app.test_client()
+    _expect(_login(client, username).status_code == 302, "connexion de l'opérateur")
+    csrf = _csrf_meta(client.get("/equipe/paiement").get_data(as_text=True))
+    res = client.post(
+        "/api/purchase",
+        json={
+            "items": [{"article_id": article_id, "quantity": 1}],
+            "contributors": [student_id],
+            "idempotency_key": "surnom-long-achat",
+        },
+        headers={"X-CSRFToken": csrf},
+    )
+    _expect(
+        res.status_code == 200 and res.get_json()["ok"],
+        f"achat par l'opérateur ({res.status_code})",
+    )
+    with app.app_context():
+        student = db.session.get(User, student_id)
+        other = db.session.get(User, other_id)
+        for t in (
+            T.create_reload(
+                operator_label=label,
+                campus="brest",
+                user=student,
+                amount_cents=500,
+                payment_method="especes",
+            ),
+            T.create_withdrawal(
+                operator_label=label, campus="brest", user=student, amount_cents=100
+            ),
+            T.create_transfer(
+                operator_label=label,
+                campus="brest",
+                from_users=[student],
+                to_users=[other],
+                amount_cents=100,
+            ),
+            T.return_glasses(operator_label=label, campus="brest", user=student, count=1),
+        ):
+            _expect(len(t.operator_label) == 255, "libellé tronqué à la longueur de la colonne")
+            _expect(t.operator_label == label[:255], "début du libellé conservé")
+
+
 def main():
     tests = [
         (name, fn)
