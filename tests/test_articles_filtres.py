@@ -197,6 +197,58 @@ def test_fiche_article_derniere_vente():
     _expect("aucun enregistré" in after, "vente annulée ignorée")
 
 
+def _form_token(html):
+    match = re.search(r'name="_csrf" value="([^"]+)"', html)
+    _expect(match is not None, "jeton CSRF présent")
+    return match.group(1)
+
+
+def test_filtres_conserves_apres_modification_et_suppression():
+    """Modifier ou supprimer un article ramène sur la liste filtrée et triée."""
+    client = _setup()
+    args = "q=Zart&type=biere&volume=25&prix_max=9&tri=prix_desc"
+    with create_app().app_context():
+        extra = _article("Modif Suppr Test", "snack", None, 100)
+        db.session.commit()
+        extra_id = extra.id
+    client.get(f"/admin/articles?campus=brest&{args}")
+
+    def _same_view(location, label):
+        for part in ("q=Zart", "type=biere", "volume=25", "prix_max=9", "tri=prix_desc"):
+            _expect(part in location, f"{label} : {part} conservé ({location})")
+
+    fiche = client.get(f"/admin/articles/{extra_id}?campus=brest").get_data(as_text=True)
+    _expect("tri=prix_desc" in fiche, "lien Retour de la fiche conserve les filtres")
+    token = _form_token(fiche)
+    res = client.post(
+        f"/admin/articles/{extra_id}",
+        data={
+            "_csrf": token,
+            "name": "Modif Suppr Test 2",
+            "article_type": "snack",
+            "price_std": "1",
+            "price_team": "1",
+        },
+    )
+    _expect(res.status_code == 302, f"modification acceptée ({res.status_code})")
+    _same_view(res.headers["Location"], "après modification")
+
+    liste = client.get(res.headers["Location"]).get_data(as_text=True)
+    token = _form_token(liste)
+    res = client.post(f"/admin/articles/{extra_id}/supprimer", data={"_csrf": token})
+    _expect(res.status_code == 302, f"suppression acceptée ({res.status_code})")
+    _same_view(res.headers["Location"], "après suppression")
+
+    # Une nouvelle consultation sans filtre remet la mémoire à zéro.
+    client.get("/admin/articles?campus=brest")
+    with create_app().app_context():
+        extra = _article("Modif Suppr Test 3", "snack", None, 100)
+        db.session.commit()
+        extra_id = extra.id
+    res = client.post(f"/admin/articles/{extra_id}/supprimer", data={"_csrf": token})
+    _expect("tri=" not in res.headers["Location"], "liste vierge : aucun filtre restitué")
+
+
 def main():
     tests = [
         (name, fn)

@@ -121,6 +121,36 @@ def view_campus():
     return session_campus()
 
 
+# Mémoire de la dernière liste consultée (filtres, tri, page) : après une
+# modification ou une suppression, on revient sur la même vue au lieu de
+# repartir d'une liste vierge. Liste blanche, valeurs courtes : jamais d'URL
+# libre (pas de redirection ouverte) et un cookie de session qui reste petit.
+LIST_KEYS = {
+    "comptes": ("q", "promo", "equipe", "restriction", "tri", "page", "campus"),
+    "articles": ("q", "type", "volume", "prix_min", "prix_max", "tri", "campus"),
+}
+
+
+def _remember_list(name):
+    session[f"liste_{name}"] = {
+        key: value[:100] for key in LIST_KEYS[name] if (value := request.args.get(key, "").strip())
+    }
+
+
+@bp.app_template_global("list_url")
+def list_url(name):
+    """URL de la liste `name` avec les filtres de la dernière consultation."""
+    saved = session.get(f"liste_{name}")
+    args = {}
+    if isinstance(saved, dict):
+        args = {
+            key: value
+            for key, value in saved.items()
+            if key in LIST_KEYS[name] and isinstance(value, str)
+        }
+    return url_for(f"admin.{name}", **args)
+
+
 @bp.route("/campus/<campus>")
 @login_required
 def changer_campus(campus):
@@ -158,6 +188,7 @@ COMPTES_TRI = {
 @bp.route("/comptes")
 @login_required
 def comptes():
+    _remember_list("comptes")
     q = request.args.get("q", "").strip()
     equipe = request.args.get("equipe", "")
     restriction = request.args.get("restriction", "")
@@ -260,16 +291,16 @@ def comptes_nouveau():
     promotion = request.form.get("promotion", "").strip()
     if not name:
         flash("Nom obligatoire.", "danger")
-        return redirect(url_for("admin.comptes"))
+        return redirect(list_url("comptes"))
     # Identifiant fourni, sinon déduit du nom ; toujours normalisé (slug).
     username = slug_username(raw_username or name)
     if not username:
         flash("Identifiant invalide (lettres et chiffres uniquement).", "danger")
-        return redirect(url_for("admin.comptes"))
+        return redirect(list_url("comptes"))
     existing = db.session.scalars(select(User).where(User.username == username)).first()
     if existing:
         flash(f"L'identifiant « {username} » est déjà utilisé.", "danger")
-        return redirect(url_for("admin.comptes"))
+        return redirect(list_url("comptes"))
     u = User(
         name=name,
         nickname=nickname,
@@ -522,7 +553,7 @@ def compte_supprimer(user_id):
         "conservé (les libellés d'opérations passées peuvent encore porter le nom).",
         "success",
     )
-    return redirect(url_for("admin.comptes"))
+    return redirect(list_url("comptes"))
 
 
 @bp.route("/equipe")
@@ -638,6 +669,7 @@ def _filter_cents(value):
 @bp.route("/articles")
 @login_required
 def articles():
+    _remember_list("articles")
     campus = view_campus()
     q = request.args.get("q", "").strip()
     article_type = request.args.get("type", "")
@@ -740,7 +772,7 @@ def article_nouveau():
         )
         db.session.commit()
         flash("Article créé.", "success")
-        return redirect(url_for("admin.articles"))
+        return redirect(list_url("articles"))
     return render_template("admin/article_form.html", a=None, own=own_campus(), writable=True)
 
 
@@ -752,7 +784,7 @@ def article(article_id):
         abort(404)
     if a.is_tap or a.event_id:
         flash("Les articles tireuse et évènement se gèrent dans leurs onglets dédiés.", "warning")
-        return redirect(url_for("admin.articles"))
+        return redirect(list_url("articles"))
     # chaque campus gère ses propres articles ; l'autre campus est consultable
     # en lecture seule (l'admin global écrit sur le campus consulté)
     writable = a.campus == own_campus()
@@ -774,7 +806,7 @@ def article(article_id):
         )
         db.session.commit()
         flash("Article mis à jour.", "success")
-        return redirect(url_for("admin.articles"))
+        return redirect(list_url("articles"))
     last_sale = db.session.scalar(
         select(func.max(Transaction.created_at))
         .join(TransactionLine, TransactionLine.transaction_id == Transaction.id)
@@ -804,7 +836,7 @@ def article_supprimer(article_id):
         A.record("article.suppression", target=name)
         db.session.commit()
         flash("Article supprimé. L'historique des ventes est conservé.", "success")
-    return redirect(url_for("admin.articles"))
+    return redirect(list_url("articles"))
 
 
 def _optional_int(value, maximum=1_000_000):

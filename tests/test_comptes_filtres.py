@@ -159,6 +159,35 @@ def test_pagination_conserve_filtres_et_tri():
     _expect(names2 == [f"Zpag {i:02d}" for i in range(4, -1, -1)], f"page 2 ({names2})")
 
 
+def test_filtres_conserves_apres_suppression_et_retour():
+    """Retour à la liste et suppression d'un compte conservent filtres, tri et page."""
+    client = _setup()
+    args = "q=Zpag&promo=2031&tri=brest_desc&page=2"
+    with _app.app_context():
+        victim = _make("Zpag Suppr", promo=2031, brest=0)
+        db.session.commit()
+        victim_id = victim.id
+    client.get(f"/admin/comptes?{args}")
+    fiche = client.get(f"/admin/comptes/{victim_id}").get_data(as_text=True)
+    _expect("Retour à la liste" in fiche, "bouton de retour présent")
+    for part in ("q=Zpag", "promo=2031", "tri=brest_desc", "page=2"):
+        _expect(part in fiche, f"retour conserve {part}")
+    token = re.search(r'name="_csrf" value="([^"]+)"', fiche).group(1)
+    res = client.post(
+        f"/admin/comptes/{victim_id}/supprimer",
+        data={"_csrf": token, "admin_password": ADMIN_PASSWORD},
+    )
+    _expect(res.status_code == 302, f"suppression acceptée ({res.status_code})")
+    location = res.headers["Location"]
+    for part in ("q=Zpag", "promo=2031", "tri=brest_desc"):
+        _expect(part in location, f"après suppression : {part} conservé ({location})")
+    with _app.app_context():
+        _expect(db.session.get(User, victim_id) is None, "compte supprimé")
+    client.get("/admin/comptes")
+    fiche = client.get("/admin/comptes/1").get_data(as_text=True)
+    _expect("tri=brest_desc" not in fiche, "liste vierge : aucun filtre restitué")
+
+
 def main():
     tests = [
         (name, fn)
