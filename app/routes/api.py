@@ -98,7 +98,7 @@ def students():
     )
 
 
-@bp.route("/wallet/<int:user_id>")
+@bp.route("/wallet/<int(max=2147483647):user_id>")
 def wallet(user_id):
     in_gateway = getattr(g, "gateway_event", None) is not None
     if in_gateway and _gateway_limited(_gateway_wallet_limiter):
@@ -150,8 +150,8 @@ def purchase():
 def glasses_return():
     payload = _json_payload()
     try:
-        uid = int(payload.get("user_id"))
-    except (TypeError, ValueError, OverflowError):
+        uid = T.id_or_invalid(payload.get("user_id"), "Étudiant introuvable.")
+    except T.OperationError:
         return jsonify(ok=False, error="Étudiant introuvable."), 404
     u = db.session.get(User, uid)
     if u is None:

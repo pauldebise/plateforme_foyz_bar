@@ -202,10 +202,7 @@ def comptes():
     if tri not in COMPTES_TRI:
         tri = "nom"
     if promo != "aucune":
-        try:
-            promo = str(int(promo))
-        except ValueError:
-            promo = ""
+        promo = str(_optional_int(promo, maximum=3000) or "")
 
     stmt = select(User)
     if q:
@@ -306,7 +303,7 @@ def comptes_nouveau():
         name=name,
         nickname=nickname,
         username=username,
-        promotion=int(promotion) if promotion.isdigit() else None,
+        promotion=_optional_int(promotion, maximum=3000),
     )
     db.session.add(u)
     db.session.flush()
@@ -325,7 +322,7 @@ def comptes_nouveau():
     return redirect(url_for("admin.compte", user_id=u.id))
 
 
-@bp.route("/comptes/<int:user_id>", methods=["GET", "POST"])
+@bp.route("/comptes/<int(max=2147483647):user_id>", methods=["GET", "POST"])
 @login_required
 def compte(user_id):
     u = db.session.get(User, user_id)
@@ -374,7 +371,7 @@ def compte(user_id):
                     return redirect(url_for("admin.compte", user_id=u.id))
                 u.username = new_username
             promotion = request.form.get("promotion", "").strip()
-            u.promotion = int(promotion) if promotion.isdigit() else None
+            u.promotion = _optional_int(promotion, maximum=3000)
             new_bl = request.form.get("blacklist") == "on"
             new_ba = request.form.get("blacklist_alcohol") == "on"
             removals = [
@@ -515,7 +512,7 @@ def _deletion_campus_ok(u):
     return not any(w.campus != own and (w.balance != 0 or w.glasses_outstanding) for w in u.wallets)
 
 
-@bp.route("/comptes/<int:user_id>/supprimer", methods=["POST"])
+@bp.route("/comptes/<int(max=2147483647):user_id>/supprimer", methods=["POST"])
 @login_required
 def compte_supprimer(user_id):
     u = db.session.get(User, user_id)
@@ -575,7 +572,7 @@ def equipe():
     return render_template("admin/equipe.html", members=members, own_campus=own_campus(), q=q)
 
 
-@bp.route("/equipe/<int:user_id>", methods=["GET", "POST"])
+@bp.route("/equipe/<int(max=2147483647):user_id>", methods=["GET", "POST"])
 @login_required
 def membre(user_id):
     u = db.session.get(User, user_id)
@@ -777,7 +774,7 @@ def article_nouveau():
     return render_template("admin/article_form.html", a=None, own=own_campus(), writable=True)
 
 
-@bp.route("/articles/<int:article_id>", methods=["GET", "POST"])
+@bp.route("/articles/<int(max=2147483647):article_id>", methods=["GET", "POST"])
 @login_required
 def article(article_id):
     a = db.session.get(Article, article_id)
@@ -822,7 +819,7 @@ def article(article_id):
     )
 
 
-@bp.route("/articles/<int:article_id>/supprimer", methods=["POST"])
+@bp.route("/articles/<int(max=2147483647):article_id>/supprimer", methods=["POST"])
 @login_required
 def article_supprimer(article_id):
     a = db.session.get(Article, article_id)
@@ -844,7 +841,9 @@ def _optional_int(value, maximum=1_000_000):
     """Paramètre facultatif (volume) : vide, non entier ou hors bornes -> None.
     Ne lève jamais : une valeur géante ferait déborder la colonne entière."""
     raw = (value or "").strip()
-    if not raw.isdigit():
+    # ASCII seulement : « ² » ou « ٣ » passent isdigit() mais int() les refuse
+    # (ou les lit autrement) ; hors bornes -> ignoré.
+    if not (raw.isascii() and raw.isdigit()) or len(raw) > 9:
         return None
     number = int(raw)
     return number if number <= maximum else None
@@ -912,7 +911,7 @@ def keg_nouveau():
     return redirect(url_for("admin.tireuses"))
 
 
-@bp.route("/tireuses/kegs/<int:keg_id>", methods=["GET", "POST"])
+@bp.route("/tireuses/kegs/<int(max=2147483647):keg_id>", methods=["GET", "POST"])
 @login_required
 def keg(keg_id):
     keg = db.session.get(Keg, keg_id)
@@ -938,7 +937,7 @@ def keg(keg_id):
     return render_template("admin/keg_form.html", keg=keg, own=own_campus())
 
 
-@bp.route("/tireuses/kegs/<int:keg_id>/supprimer", methods=["POST"])
+@bp.route("/tireuses/kegs/<int(max=2147483647):keg_id>/supprimer", methods=["POST"])
 @login_required
 def keg_supprimer(keg_id):
     keg = db.session.get(Keg, keg_id)
@@ -1003,7 +1002,7 @@ def _keg_from_form(k, writable_campus):
 @bp.route("/tireuses/taps/nouveau", methods=["POST"])
 @login_required
 def tap_nouveau():
-    name = (request.form.get("name") or "").strip()
+    name = clamp_text((request.form.get("name") or "").strip(), 255)
     campus = own_campus()
     if not name:
         flash("Le nom de la tireuse est obligatoire.", "danger")
@@ -1028,11 +1027,11 @@ def _campus_tap_or_404(tap_id):
     return tap
 
 
-@bp.route("/tireuses/taps/<int:tap_id>/renommer", methods=["POST"])
+@bp.route("/tireuses/taps/<int(max=2147483647):tap_id>/renommer", methods=["POST"])
 @login_required
 def tap_renommer(tap_id):
     tap = _campus_tap_or_404(tap_id)
-    name = (request.form.get("name") or "").strip()
+    name = clamp_text((request.form.get("name") or "").strip(), 255)
     if tap is None:
         abort(404)
     if not name:
@@ -1056,11 +1055,12 @@ def tap_renommer(tap_id):
     return redirect(url_for("admin.tireuses"))
 
 
-@bp.route("/tireuses/taps/<int:tap_id>/assigner", methods=["POST"])
+@bp.route("/tireuses/taps/<int(max=2147483647):tap_id>/assigner", methods=["POST"])
 @login_required
 def tap_assigner(tap_id):
     tap = _campus_tap_or_404(tap_id)
-    keg = db.session.get(Keg, request.form.get("keg_id", ""))
+    keg_id = _optional_int(request.form.get("keg_id"), maximum=999_999_999)
+    keg = db.session.get(Keg, keg_id) if keg_id is not None else None
     if tap and keg:
         C.assign_keg(tap, keg)
         A.record(
@@ -1070,7 +1070,7 @@ def tap_assigner(tap_id):
     return redirect(url_for("admin.tireuses"))
 
 
-@bp.route("/tireuses/taps/<int:tap_id>/detacher", methods=["POST"])
+@bp.route("/tireuses/taps/<int(max=2147483647):tap_id>/detacher", methods=["POST"])
 @login_required
 def tap_detacher(tap_id):
     tap = _campus_tap_or_404(tap_id)
@@ -1081,7 +1081,7 @@ def tap_detacher(tap_id):
     return redirect(url_for("admin.tireuses"))
 
 
-@bp.route("/tireuses/taps/<int:tap_id>/supprimer", methods=["POST"])
+@bp.route("/tireuses/taps/<int(max=2147483647):tap_id>/supprimer", methods=["POST"])
 @login_required
 def tap_supprimer(tap_id):
     tap = _campus_tap_or_404(tap_id)
@@ -1148,7 +1148,7 @@ def evenement_nouveau():
     return redirect(url_for("admin.evenement", event_id=ev.id))
 
 
-@bp.route("/evenements/<int:event_id>", methods=["GET", "POST"])
+@bp.route("/evenements/<int(max=2147483647):event_id>", methods=["GET", "POST"])
 @login_required
 def evenement(event_id):
     ev = db.session.get(Event, event_id)
@@ -1197,7 +1197,8 @@ def evenement(event_id):
             db.session.add(a)
             A.record("evenement.article_ajout", target=a.name, details=f"Événement {ev.name}")
         elif action == "del_article":
-            a = db.session.get(Article, request.form.get("article_id", ""))
+            article_id = _optional_int(request.form.get("article_id"), maximum=999_999_999)
+            a = db.session.get(Article, article_id) if article_id is not None else None
             if a and a.event_id == ev.id:
                 A.record(
                     "evenement.article_suppression", target=a.name, details=f"Événement {ev.name}"
@@ -1537,15 +1538,13 @@ def module_dev():
                     position = int(request.form.get("position") or 0)
                 except (TypeError, ValueError):
                     position = 0
+                position = max(-1_000_000, min(1_000_000, position))
                 db.session.add(UsefulLink(label=label, url=url, position=position))
                 A.record("lien.ajout", target=label, details=url)
                 db.session.commit()
                 flash("Lien ajouté.", "success")
         elif action == "del_link":
-            try:
-                link_id = int(request.form.get("link_id", ""))
-            except (TypeError, ValueError):
-                link_id = None
+            link_id = _optional_int(request.form.get("link_id"), maximum=999_999_999)
             link = db.session.get(UsefulLink, link_id) if link_id is not None else None
             if link:
                 A.record("lien.suppression", target=link.label, details=link.url)

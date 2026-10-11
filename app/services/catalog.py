@@ -2,7 +2,7 @@ from sqlalchemy import select
 
 from app.extensions import db
 from app.models import Article, Note, Tap
-from app.utils import TAP_SIZES
+from app.utils import TAP_SIZES, clamp_text
 
 
 def assign_keg(tap, keg):
@@ -22,7 +22,7 @@ def assign_keg(tap, keg):
         tap_label = tap.name or f"tireuse {tap.number}"
         db.session.add(
             Article(
-                name=f"{label} de {tap_label} ({keg.name})",
+                name=clamp_text(f"{label} de {tap_label} ({keg.name})", 255),
                 article_type="biere",
                 volume_cl=vol,
                 campus=tap.campus,

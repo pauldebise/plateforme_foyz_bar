@@ -212,8 +212,8 @@ def _next_target():
 
 def _get_user_or_fail(raw_id):
     try:
-        uid = int(raw_id)
-    except (TypeError, ValueError):
+        uid = T.id_or_invalid(raw_id, "Sélectionnez un étudiant dans la liste.")
+    except T.OperationError:
         raise T.OperationError("invalid", "Sélectionnez un étudiant dans la liste.") from None
     u = db.session.get(User, uid)
     if u is None:
@@ -309,9 +309,11 @@ def annuler():
     """Annulation d'une ou plusieurs transactions (sélection multiple, U8)."""
     raw_ids = request.form.getlist("transaction_ids")
     single = request.form.get("transaction_id", "")
-    if not raw_ids and single.isdigit():
+    if not raw_ids and single.isascii() and single.isdigit():
         raw_ids = [single]
-    ids = [int(x) for x in raw_ids if x.isdigit()][:50]
+    # ASCII et longueur bornée : « ² » passe isdigit() mais int() le refuse, et
+    # un entier géant déborderait la colonne PostgreSQL.
+    ids = [int(x) for x in raw_ids if x.isascii() and x.isdigit() and len(x) <= 9][:50]
     if not ids:
         flash("Aucune transaction sélectionnée.", "danger")
         return redirect(url_for("team.historique"))
@@ -563,7 +565,11 @@ def notes_action():
     scope_public = request.form.get("scope") == "public"
     content = clamp_text((request.form.get("content") or "").strip(), 2000)
     note_id = request.form.get("note_id", "")
-    note = db.session.get(Note, int(note_id)) if note_id.isdigit() else None
+    note = (
+        db.session.get(Note, int(note_id))
+        if note_id.isascii() and note_id.isdigit() and len(note_id) <= 9
+        else None
+    )
 
     if action == "create":
         if content:

@@ -1,3 +1,4 @@
+import contextlib
 import os
 import secrets
 import time
@@ -380,8 +381,30 @@ def create_app():
     app.register_blueprint(gateway_bp)
     app.register_blueprint(api_bp, url_prefix="/api")
 
+    def _contains_nul(value):
+        """Octet nul dans une saisie : PostgreSQL le refuse (« A string literal
+        cannot contain NUL ») et l'échec arriverait en 500 depuis n'importe quel
+        champ texte, filtre de liste ou paramètre d'URL."""
+        if isinstance(value, str):
+            return "\x00" in value
+        if hasattr(value, "lists"):  # MultiDict : toutes les valeurs d'une clé
+            return any(_contains_nul(k) or _contains_nul(v) for k, v in value.lists())
+        if isinstance(value, dict):
+            return any(_contains_nul(k) or _contains_nul(v) for k, v in value.items())
+        if isinstance(value, (list, tuple)):
+            return any(_contains_nul(v) for v in value)
+        return False
+
+    def _reject_nul():
+        sources = [request.path, request.args, request.form]
+        if request.is_json:
+            sources.append(request.get_json(silent=True))
+        if any(_contains_nul(source) for source in sources):
+            abort(400, "Caractère interdit dans la requête.")
+
     @app.before_request
     def security_pipeline():
+        _reject_nul()
         rv = _csrf_check()
         if rv is not None:
             return rv
@@ -683,6 +706,10 @@ def create_app():
     @app.errorhandler(500)
     def server_error(e):
         original = getattr(e, "original_exception", None)
+        # Transaction PostgreSQL abandonnée par l'erreur : sans rollback, la page
+        # d'erreur (qui lit des réglages en base) échouerait à son tour.
+        with contextlib.suppress(Exception):
+            db.session.rollback()
         extra = {
             "event": "unhandled_error",
             "path": redact_secrets(request.path)[:255],

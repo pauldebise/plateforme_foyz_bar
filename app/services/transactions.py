@@ -35,6 +35,7 @@ MAX_LINE_QUANTITY = 200
 MAX_CONTRIBUTORS = 50
 MAX_GLASSES = 100
 MAX_IDEMPOTENCY_KEY_LENGTH = 64
+MAX_ROW_ID = 2_147_483_647  # borne des colonnes entières (clés primaires)
 # La passerelle n'est pas authentifiée (le lien fait foi) : plafonds plus bas.
 GATEWAY_MAX_LINE_QUANTITY = 20
 GATEWAY_MAX_TOTAL_CENTS = 15_000
@@ -57,6 +58,15 @@ def _int_or_invalid(value, message="Valeur numérique invalide."):
         return int(value)
     except (TypeError, ValueError, OverflowError):
         raise OperationError("invalid", message) from None
+
+
+def id_or_invalid(value, message):
+    """Identifiant (article, étudiant) : entier strictement positif tenant dans
+    la colonne ; sinon refus métier (aucune requête SQL avec une valeur géante)."""
+    number = _int_or_invalid(value, message)
+    if not 0 < number <= MAX_ROW_ID:
+        raise OperationError("invalid", message)
+    return number
 
 
 def _verify_admin(password, campus, context):
@@ -283,7 +293,7 @@ def _resolve_items(
     for it in items:
         if not isinstance(it, dict):
             raise OperationError("invalid", "Commande invalide.")
-        aid = _int_or_invalid(it.get("article_id"), "Commande invalide.")
+        aid = id_or_invalid(it.get("article_id"), "Commande invalide.")
         qty = _int_or_invalid(it.get("quantity", 0), "Commande invalide.")
         if qty <= 0:
             continue
@@ -363,7 +373,7 @@ def create_purchase(
             contributor_ids = []
         if not isinstance(contributor_ids, list) or len(contributor_ids) > MAX_CONTRIBUTORS:
             raise OperationError("invalid", "Liste d'étudiants invalide.")
-        contributor_ids = [_int_or_invalid(x, "Étudiant introuvable.") for x in contributor_ids]
+        contributor_ids = [id_or_invalid(x, "Étudiant introuvable.") for x in contributor_ids]
         if not contributor_ids:
             raise OperationError("invalid", "Aucun étudiant sélectionné.")
 
