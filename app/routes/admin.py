@@ -15,11 +15,22 @@ from flask import (
     session,
     url_for,
 )
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import aliased
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
-from app.models import Article, AuditLog, Event, Keg, LoginLog, Tap, UsefulLink, User
+from app.models import (
+    Article,
+    AuditLog,
+    Event,
+    Keg,
+    LoginLog,
+    Tap,
+    UsefulLink,
+    User,
+    Wallet,
+)
 from app.services import adminpw as AP
 from app.services import audit as A
 from app.services import catalog as C
@@ -118,11 +129,50 @@ def changer_campus(campus):
     return redirect(url_for("team.payment"))
 
 
+COMPTES_EQUIPE = {
+    "": "Tous",
+    "membre": "Équipe (mandat ou ancien)",
+    "mandat": "Mandat en cours",
+    "ancien": "Anciens",
+    "aucun": "Non membres",
+}
+COMPTES_RESTRICTION = {
+    "": "Toutes",
+    "oui": "Au moins une restriction",
+    "blacklist": "Blacklist",
+    "alcool": "Blacklist alcool",
+    "aucune": "Aucune restriction",
+}
+COMPTES_TRI = {
+    "nom": "Nom (A → Z)",
+    "brest_asc": "Solde Brest croissant",
+    "brest_desc": "Solde Brest décroissant",
+    "paris_asc": "Solde Paris croissant",
+    "paris_desc": "Solde Paris décroissant",
+}
+
+
 @bp.route("/comptes")
 @login_required
 def comptes():
     q = request.args.get("q", "").strip()
-    stmt = select(User).order_by(User.name)
+    equipe = request.args.get("equipe", "")
+    restriction = request.args.get("restriction", "")
+    tri = request.args.get("tri", "nom")
+    promo = request.args.get("promo", "").strip()
+    if equipe not in COMPTES_EQUIPE:
+        equipe = ""
+    if restriction not in COMPTES_RESTRICTION:
+        restriction = ""
+    if tri not in COMPTES_TRI:
+        tri = "nom"
+    if promo != "aucune":
+        try:
+            promo = str(int(promo))
+        except ValueError:
+            promo = ""
+
+    stmt = select(User)
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
@@ -132,23 +182,69 @@ def comptes():
                 User.username.ilike(like),
             )
         )
+    if promo == "aucune":
+        stmt = stmt.where(User.promotion.is_(None))
+    elif promo:
+        stmt = stmt.where(User.promotion == int(promo))
+    if equipe == "membre":
+        stmt = stmt.where(User.team_status.in_(("mandat", "ancien")))
+    elif equipe in ("mandat", "ancien"):
+        stmt = stmt.where(User.team_status == equipe)
+    elif equipe == "aucun":
+        stmt = stmt.where(
+            or_(User.team_status.is_(None), User.team_status.notin_(("mandat", "ancien")))
+        )
+    if restriction == "oui":
+        stmt = stmt.where(or_(User.blacklist.is_(True), User.blacklist_alcohol.is_(True)))
+    elif restriction == "blacklist":
+        stmt = stmt.where(User.blacklist.is_(True))
+    elif restriction == "alcool":
+        stmt = stmt.where(User.blacklist_alcohol.is_(True))
+    elif restriction == "aucune":
+        stmt = stmt.where(User.blacklist.is_(False), User.blacklist_alcohol.is_(False))
+
+    if tri == "nom":
+        stmt = stmt.order_by(User.name, User.id)
+    else:
+        campus, sens = tri.split("_")
+        # Jointure externe : un compte sans portefeuille sur ce campus compte pour 0.
+        wallet = aliased(Wallet)
+        stmt = stmt.outerjoin(wallet, and_(wallet.user_id == User.id, wallet.campus == campus))
+        solde = func.coalesce(wallet.balance, 0)
+        stmt = stmt.order_by(solde.asc() if sens == "asc" else solde.desc(), User.name, User.id)
+
     try:
         page = max(1, int(request.args.get("page", 1)))
     except ValueError:
         page = 1
     per_page = 50
-    total = db.session.scalar(select(func.count()).select_from(stmt.subquery()))
+    total = db.session.scalar(select(func.count()).select_from(stmt.order_by(None).subquery()))
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
     users = db.session.scalars(stmt.offset((page - 1) * per_page).limit(per_page)).unique().all()
+    promotions = db.session.scalars(
+        select(User.promotion)
+        .where(User.promotion.is_not(None))
+        .distinct()
+        .order_by(User.promotion.desc())
+    ).all()
     return render_template(
         "admin/comptes.html",
         users=users,
         q=q,
+        equipe=equipe,
+        restriction=restriction,
+        tri=tri,
+        promo=promo,
+        promotions=promotions,
+        options_equipe=COMPTES_EQUIPE,
+        options_restriction=COMPTES_RESTRICTION,
+        options_tri=COMPTES_TRI,
+        filtres_actifs=bool(q or equipe or restriction or promo or tri != "nom"),
         page=page,
         pages=pages,
         total=total,
-        link_args={k: v for k, v in request.args.items() if k != "page"},
+        link_args={k: v for k, v in request.args.items() if k != "page" and v != ""},
     )
 
 

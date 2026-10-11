@@ -7,14 +7,40 @@
   <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#new-account-modal"><i class="bi bi-person-plus"></i> Nouveau compte</button>
 </div>
 
-<form class="card mb-3">
+<form class="card mb-3" method="get">
   <div class="card-body row g-2 align-items-end">
-    <div class="col-md-8">
-      <label class="form-label small">Recherche globale</label>
-      <input class="form-control" name="q" value="{{ q }}" placeholder="Ex : Dupont, Flavie…">
+    <div class="col-lg-4">
+      <label class="form-label small" for="f-q">Recherche (nom, surnom, identifiant)</label>
+      <input class="form-control" id="f-q" name="q" value="{{ q }}" placeholder="Ex : Dupont, Flavie…">
     </div>
-    <div class="col-md-2 d-grid"><button class="btn btn-primary"><i class="bi bi-search"></i> Rechercher</button></div>
-    <div class="col-md-2 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.comptes') }}">Réinitialiser</a></div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label small" for="f-promo">Promotion</label>
+      <select class="form-select" id="f-promo" name="promo">
+        <option value="">Toutes</option>
+        {% for y in promotions %}<option value="{{ y }}" {{ 'selected' if promo == y|string }}>{{ y }}</option>{% endfor %}
+        <option value="aucune" {{ 'selected' if promo == 'aucune' }}>Sans promotion</option>
+      </select>
+    </div>
+    <div class="col-6 col-lg-3">
+      <label class="form-label small" for="f-equipe">Statut équipe</label>
+      <select class="form-select" id="f-equipe" name="equipe">
+        {% for key, label in options_equipe.items() %}<option value="{{ key }}" {{ 'selected' if equipe == key }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-3">
+      <label class="form-label small" for="f-restriction">Blacklist</label>
+      <select class="form-select" id="f-restriction" name="restriction">
+        {% for key, label in options_restriction.items() %}<option value="{{ key }}" {{ 'selected' if restriction == key }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-4">
+      <label class="form-label small" for="f-tri">Trier par</label>
+      <select class="form-select" id="f-tri" name="tri">
+        {% for key, label in options_tri.items() %}<option value="{{ key }}" {{ 'selected' if tri == key }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-4 d-grid"><button class="btn btn-primary"><i class="bi bi-funnel"></i> Appliquer</button></div>
+    <div class="col-12 col-lg-4 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.comptes') }}">Réinitialiser</a></div>
   </div>
 </form>
 
@@ -48,12 +74,10 @@
       </tbody>
     </table>
   </div>
-  {% if pages > 1 %}
   <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="small text-muted">{{ total }} compte{{ 's' if total > 1 }} · page {{ page }} / {{ pages }}</span>
+    <span class="small text-muted">{{ total }} compte{{ 's' if total > 1 }}{{ ' (filtrés)' if filtres_actifs }}{% if pages > 1 %} · page {{ page }} / {{ pages }}{% endif %}</span>
     {{ pg.pagination(page, pages, 'admin.comptes', link_args) }}
   </div>
-  {% endif %}
 </div>
 
 <div class="modal fade" id="new-account-modal" tabindex="-1">
