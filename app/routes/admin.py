@@ -27,6 +27,8 @@ from app.models import (
     Keg,
     LoginLog,
     Tap,
+    Transaction,
+    TransactionLine,
     UsefulLink,
     User,
     Wallet,
@@ -773,7 +775,18 @@ def article(article_id):
         db.session.commit()
         flash("Article mis à jour.", "success")
         return redirect(url_for("admin.articles"))
-    return render_template("admin/article_form.html", a=a, own=a.campus, writable=writable)
+    last_sale = db.session.scalar(
+        select(func.max(Transaction.created_at))
+        .join(TransactionLine, TransactionLine.transaction_id == Transaction.id)
+        .where(
+            TransactionLine.article_id == a.id,
+            Transaction.type.in_(("achat", "direct")),
+            Transaction.cancelled.is_(False),
+        )
+    )
+    return render_template(
+        "admin/article_form.html", a=a, own=a.campus, writable=writable, last_sale=last_sale
+    )
 
 
 @bp.route("/articles/<int:article_id>/supprimer", methods=["POST"])

@@ -34,6 +34,7 @@ from app.services import transactions as T  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
 _client = None
+_ids = {}
 
 
 def _expect(cond, label):
@@ -64,7 +65,7 @@ def _setup():
     with app.app_context():
         a = _article("Zart A", "biere", 25, 300)
         b = _article("Zart B", "biere", 50, 500)
-        _article("Zart C", "cidre", 25, 300)
+        c = _article("Zart C", "cidre", 25, 300)
         d = _article("Zart D", "snack", None, 100)
         _article("Zart E", "vin", 75, 900)
         _article("Zart P", "biere", 33, 400, campus="paris")
@@ -77,6 +78,7 @@ def _setup():
         db.session.flush()
         buyer.wallet("brest").balance = 1_000_000
         db.session.commit()
+        _ids.update(A=a.id, B=b.id, C=c.id, D=d.id)
         for article, qty in ((a, 2), (b, 7), (d, 3)):
             T.create_purchase(
                 operator_label="test",
@@ -162,6 +164,37 @@ def test_parametres_invalides_ignores():
         "valeurs ignorées",
     )
     _expect(_names("volume=%27%3B--&prix_min=1e999") == list("ABCDE"), "injection ignorée")
+
+
+def test_fiche_article_derniere_vente():
+    """La fiche indique la date du dernier encaissement non annulé, s'il existe."""
+    client = _setup()
+    sold = client.get(f"/admin/articles/{_ids['A']}?campus=brest").get_data(as_text=True)
+    _expect("Dernier encaissement" in sold, "ligne présente sur la fiche")
+    _expect(
+        re.search(r"<strong>\d{2}/\d{2}/\d{4} \d{2}:\d{2}</strong>", sold) is not None,
+        "date affichée",
+    )
+    never = client.get(f"/admin/articles/{_ids['C']}?campus=brest").get_data(as_text=True)
+    _expect("aucun enregistré" in never, "article jamais vendu")
+    # Une vente annulée ne compte pas : article dédié, une seule vente puis annulation.
+    with create_app().app_context():
+        extra = _article("Dernier encaissement test", "snack", None, 100)
+        buyer = db.session.query(User).filter_by(username="zart.acheteur").one()
+        db.session.commit()
+        sale = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": extra.id, "quantity": 1}],
+            contributor_ids=[buyer.id],
+        )
+        extra_id = extra.id
+        page = client.get(f"/admin/articles/{extra_id}?campus=brest").get_data(as_text=True)
+        _expect("aucun enregistré" not in page, "vente non annulée comptée")
+        T.cancel_transaction(sale, None, verified=True)
+        db.session.commit()
+    after = client.get(f"/admin/articles/{extra_id}?campus=brest").get_data(as_text=True)
+    _expect("aucun enregistré" in after, "vente annulée ignorée")
 
 
 def main():
