@@ -7,6 +7,11 @@ services:
       TRUSTED_PROXY: ${TRUSTED_PROXY:-cloudflare}
       PROXY_FIX_X_FOR: ${PROXY_FIX_X_FOR:-1}
       APP_VERSION: ${APP_VERSION:-dev}
+      BACKUP_DIR: /app/backups
+    volumes:
+      # Sauvegardes de l'hote, en lecture seule : la page Sante les liste
+      # (fichiers en 600 et chiffres, le conteneur ne peut pas les lire).
+      - /home/deploy/backups/foyz:/app/backups:ro
 
   caddy:
     image: caddy:2-alpine

@@ -84,14 +84,22 @@ def disk_info(path):
 
 
 def database_size():
-    """Taille du fichier SQLite, ou None (PostgreSQL : voir pg_database_size)."""
+    """Taille de la base en octets : fichier SQLite ou pg_database_size()."""
+    from sqlalchemy import text
     from sqlalchemy.engine import make_url
 
     try:
         url = make_url(current_app.config["SQLALCHEMY_DATABASE_URI"])
     except Exception:
         return None
-    if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
+    backend = url.get_backend_name()
+    if backend == "postgresql":
+        try:
+            return db.session.execute(text("SELECT pg_database_size(current_database())")).scalar()
+        except Exception:
+            db.session.rollback()
+            return None
+    if backend != "sqlite" or not url.database or url.database == ":memory:":
         return None
     path = Path(url.database)
     return path.stat().st_size if path.is_file() else None

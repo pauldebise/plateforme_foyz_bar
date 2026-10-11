@@ -107,7 +107,7 @@ def test_system_checks_and_health_agree():
         if IS_SQLITE:
             _expect(size and size > 0, "taille du fichier SQLite")
         else:
-            _expect(size is None, "pas de fichier SQLite en PostgreSQL")
+            _expect(size and size > 0, "taille de la base PostgreSQL (pg_database_size)")
     payload = app.test_client().get("/health").get_json()
     _expect(payload["status"] == "ok", "sonde /health cohérente")
 
