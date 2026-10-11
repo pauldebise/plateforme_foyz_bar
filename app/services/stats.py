@@ -291,11 +291,16 @@ _TOP_ARTICLES_TTL_SECONDS = 30
 _top_articles_cache = {}
 
 
-def top_article_ids(campus=None, limit=None, days=45):
+TOP_ARTICLES_DAYS = 45
+
+
+def top_article_sales(campus=None, limit=None, days=TOP_ARTICLES_DAYS):
     """Classement des articles par popularité récente, comme le tri des
-    étudiants : quantités vendues sur les `days` derniers jours (décroissant),
-    puis date de la dernière vente (décroissante). Les articles sans vente
-    récente n'apparaissent pas."""
+    étudiants : liste de (article_id, quantité vendue) sur les `days` derniers
+    jours, quantité décroissante puis date de la dernière vente décroissante.
+    Les articles sans vente récente n'apparaissent pas. Résultat mis en cache
+    (génération d'encaissement + TTL) : partagé par la caisse, la passerelle et
+    l'onglet Articles de l'administration."""
     generation = ranking_generation()
     key = (campus, limit, days)
     now = time.monotonic()
@@ -330,6 +335,11 @@ def top_article_ids(campus=None, limit=None, days=45):
     )
     if limit:
         stmt = stmt.limit(limit)
-    ids = [aid for aid in db.session.scalars(stmt)]
-    _top_articles_cache[key] = (now + _TOP_ARTICLES_TTL_SECONDS, generation, ids)
-    return ids
+    ranking = [(aid, _int(qty)) for aid, qty in db.session.execute(stmt)]
+    _top_articles_cache[key] = (now + _TOP_ARTICLES_TTL_SECONDS, generation, ranking)
+    return ranking
+
+
+def top_article_ids(campus=None, limit=None, days=TOP_ARTICLES_DAYS):
+    """Identifiants des articles populaires, du plus au moins vendu."""
+    return [aid for aid, _qty in top_article_sales(campus, limit, days)]

@@ -35,6 +35,7 @@ from app.services import adminpw as AP
 from app.services import audit as A
 from app.services import catalog as C
 from app.services import settings as S
+from app.services.stats import TOP_ARTICLES_DAYS, top_article_sales
 from app.utils import (
     ARTICLE_TYPES,
     CAMPUSSES,
@@ -609,21 +610,114 @@ def membre(user_id):
     return render_template("admin/membre.html", u=u, editable=editable, own_campus=own, admin=admin)
 
 
+ARTICLES_TRI = {
+    "nom": "Nom (A → Z)",
+    "prix_asc": "Prix standard croissant",
+    "prix_desc": "Prix standard décroissant",
+    "volume_asc": "Volume croissant",
+    "volume_desc": "Volume décroissant",
+    "tendance_desc": "Tendances : les plus vendus d'abord",
+    "tendance_asc": "Tendances : les moins vendus d'abord",
+}
+
+
+def _filter_cents(value):
+    """Prix saisi dans un filtre : vide, invalide ou négatif -> None (ignoré)."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        amount = cents(raw)
+    except ValueError:
+        return None
+    return amount if amount >= 0 else None
+
+
 @bp.route("/articles")
 @login_required
 def articles():
     campus = view_campus()
     q = request.args.get("q", "").strip()
+    article_type = request.args.get("type", "")
+    volume = request.args.get("volume", "").strip()
+    prix_min_raw = request.args.get("prix_min", "").strip()
+    prix_max_raw = request.args.get("prix_max", "").strip()
+    tri = request.args.get("tri", "nom")
+    if article_type not in ARTICLE_TYPES:
+        article_type = ""
+    if tri not in ARTICLES_TRI:
+        tri = "nom"
+    if volume != "aucun":
+        volume = str(_optional_int(volume) or "")
+    prix_min = _filter_cents(prix_min_raw)
+    prix_max = _filter_cents(prix_max_raw)
+
     stmt = select(Article).where(Article.campus == campus)
     if q:
         stmt = stmt.where(Article.name.ilike(f"%{q}%"))
-    articles = db.session.scalars(stmt.order_by(Article.is_tap, Article.name)).all()
+    if article_type:
+        stmt = stmt.where(Article.article_type == article_type)
+    if volume == "aucun":
+        stmt = stmt.where(or_(Article.volume_cl.is_(None), Article.volume_cl == 0))
+    elif volume:
+        stmt = stmt.where(Article.volume_cl == int(volume))
+    if prix_min is not None:
+        stmt = stmt.where(Article.price_std >= prix_min)
+    if prix_max is not None:
+        stmt = stmt.where(Article.price_std <= prix_max)
+
+    if tri == "nom":
+        stmt = stmt.order_by(Article.is_tap, Article.name, Article.id)
+    elif tri.startswith("prix"):
+        price = Article.price_std.asc() if tri == "prix_asc" else Article.price_std.desc()
+        stmt = stmt.order_by(price, Article.name, Article.id)
+    elif tri.startswith("volume"):
+        # Articles sans volume toujours en dernier, quel que soit le sens.
+        no_volume = func.coalesce(Article.volume_cl, 0) == 0
+        vol = Article.volume_cl.asc() if tri == "volume_asc" else Article.volume_cl.desc()
+        stmt = stmt.order_by(no_volume, vol, Article.name, Article.id)
+    else:
+        stmt = stmt.order_by(Article.name, Article.id)
+    items = db.session.scalars(stmt).all()
+
+    # Tendances : même classement mis en cache que le catalogue de la caisse.
+    ranking = top_article_sales(campus)
+    sales = dict(ranking)
+    if tri.startswith("tendance"):
+        rank_of = {aid: i for i, (aid, _qty) in enumerate(ranking)}
+        sold = sorted((a for a in items if a.id in rank_of), key=lambda a: rank_of[a.id])
+        unsold = [a for a in items if a.id not in rank_of]
+        items = sold + unsold if tri == "tendance_desc" else unsold + sold[::-1]
+
+    volumes = db.session.scalars(
+        select(Article.volume_cl)
+        .where(Article.campus == campus, Article.volume_cl.is_not(None), Article.volume_cl > 0)
+        .distinct()
+        .order_by(Article.volume_cl)
+    ).all()
     return render_template(
         "admin/articles.html",
-        articles=articles,
+        articles=items,
         campus=campus,
         writable=campus == own_campus(),
         q=q,
+        article_type=article_type,
+        volume=volume,
+        volumes=volumes,
+        prix_min=prix_min_raw if prix_min is not None else "",
+        prix_max=prix_max_raw if prix_max is not None else "",
+        tri=tri,
+        options_tri=ARTICLES_TRI,
+        sales=sales,
+        sales_days=TOP_ARTICLES_DAYS,
+        filtres_actifs=bool(
+            q
+            or article_type
+            or volume
+            or prix_min is not None
+            or prix_max is not None
+            or tri != "nom"
+        ),
     )
 
 

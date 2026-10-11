@@ -14,12 +14,42 @@
 <form class="card mb-3" method="get" action="{{ url_for('admin.articles') }}">
   <input type="hidden" name="campus" value="{{ campus }}">
   <div class="card-body row g-2 align-items-end">
-    <div class="col-md-8">
-      <label class="form-label small">Recherche</label>
-      <input class="form-control" name="q" value="{{ q }}" placeholder="Ex : Pinte, Coca…">
+    <div class="col-lg-4">
+      <label class="form-label small" for="f-q">Recherche (nom)</label>
+      <input class="form-control" id="f-q" name="q" value="{{ q }}" placeholder="Ex : Pinte, Coca…">
     </div>
-    <div class="col-md-2 d-grid"><button class="btn btn-primary"><i class="bi bi-search"></i> Rechercher</button></div>
-    <div class="col-md-2 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.articles', campus=campus) }}">Réinitialiser</a></div>
+    <div class="col-6 col-lg-3">
+      <label class="form-label small" for="f-type">Type</label>
+      <select class="form-select" id="f-type" name="type">
+        <option value="">Tous</option>
+        {% for key, label in ARTICLE_TYPES.items() %}<option value="{{ key }}" {{ 'selected' if article_type == key }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label small" for="f-volume">Volume</label>
+      <select class="form-select" id="f-volume" name="volume">
+        <option value="">Tous</option>
+        {% for v in volumes %}<option value="{{ v }}" {{ 'selected' if volume == v|string }}>{{ v }} cl</option>{% endfor %}
+        <option value="aucun" {{ 'selected' if volume == 'aucun' }}>Sans volume</option>
+      </select>
+    </div>
+    <div class="col-6 col-lg-1">
+      <label class="form-label small" for="f-pmin">Prix min €</label>
+      <input class="form-control" id="f-pmin" name="prix_min" inputmode="decimal" value="{{ prix_min }}" placeholder="0">
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label small" for="f-pmax">Prix max € <span class="text-muted">(standard)</span></label>
+      <input class="form-control" id="f-pmax" name="prix_max" inputmode="decimal" value="{{ prix_max }}" placeholder="∞">
+    </div>
+    <div class="col-12 col-lg-5">
+      <label class="form-label small" for="f-tri">Trier par</label>
+      <select class="form-select" id="f-tri" name="tri">
+        {% for key, label in options_tri.items() %}<option value="{{ key }}" {{ 'selected' if tri == key }}>{{ label }}</option>{% endfor %}
+      </select>
+      <div class="form-text">Tendances : quantités vendues sur les {{ sales_days }} derniers jours ({{ CAMPUSSES[campus] }}), comme dans la caisse.</div>
+    </div>
+    <div class="col-6 col-lg-3 d-grid"><button class="btn btn-primary"><i class="bi bi-funnel"></i> Appliquer</button></div>
+    <div class="col-6 col-lg-4 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.articles', campus=campus) }}">Réinitialiser</a></div>
   </div>
 </form>
 
@@ -39,6 +69,7 @@
           <th>Article</th><th>Type</th><th>Volume</th>
           <th class="text-end">Prix standard</th>
           <th class="text-end">Prix équipe</th>
+          <th class="text-end" title="Quantités vendues sur les {{ sales_days }} derniers jours">Ventes ({{ sales_days }} j)</th>
           <th></th>
         </tr>
       </thead>
@@ -50,6 +81,7 @@
           <td>{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
           <td class="text-end">{{ a.price_std|eur }}</td>
           <td class="text-end text-muted">{{ a.price_team|eur }}</td>
+          <td class="text-end">{% if sales.get(a.id) %}<strong>{{ sales[a.id] }}</strong>{% else %}<span class="text-muted">0</span>{% endif %}</td>
           <td class="text-end text-nowrap">
             {% if a.is_tap %}
               <span class="small text-muted">géré dans Tireuses</span>
@@ -63,10 +95,11 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">{% if q %}Aucun article ne correspond à « {{ q }} ».{% else %}Aucun article sur ce campus.{% endif %}</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">{% if q %}Aucun article ne correspond à « {{ q }} »{{ ' avec ces filtres' if filtres_actifs and (article_type or volume or prix_min or prix_max) }}.{% elif filtres_actifs %}Aucun article ne correspond à ces critères.{% else %}Aucun article sur ce campus.{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  <div class="card-footer small text-muted">{{ articles|length }} article{{ 's' if articles|length > 1 }}{{ ' (filtrés)' if filtres_actifs }}</div>
 </div>
 {% endblock %}
