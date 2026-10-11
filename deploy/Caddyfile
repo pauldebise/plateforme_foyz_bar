@@ -2,8 +2,8 @@
 	admin off
 }
 
-dev.foyz.fr {
-	# Accès origine restreint à Cloudflare (Authenticated Origin Pulls per-hostname) :
+foyz.fr, www.foyz.fr {
+	# Accès origine restreint à Cloudflare (Authenticated Origin Pulls) :
 	# Cloudflare présente un certificat client que Caddy vérifie. Exige la présence
 	# de /certs/origin-pull-ca.pem sur le serveur (CA de confiance, hors dépôt) ;
 	# sans ce fichier Caddy refuse de démarrer. Voir ~/.config/foyz-aop/ (local).
@@ -15,4 +15,16 @@ dev.foyz.fr {
 	}
 	encode gzip
 	reverse_proxy web:8000
+}
+
+# Ancien domaine de développement : redirigé vers la production (temporaire,
+# pour ne pas figer la redirection dans les navigateurs).
+dev.foyz.fr {
+	tls /certs/cert.pem /certs/key.pem {
+		client_auth {
+			mode require_and_verify
+			trust_pool file /certs/origin-pull-ca.pem
+		}
+	}
+	redir https://foyz.fr{uri} 302
 }
