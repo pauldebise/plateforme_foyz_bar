@@ -59,12 +59,18 @@
       <ul class="list-group list-group-flush">
         {% for disk in disks %}
         <li class="list-group-item">
-          <div class="d-flex justify-content-between">
-            <span>{{ disk.label }} <span class="text-muted small">{{ disk.path }}</span></span>
-            <span class="small">{{ (disk.free / 1073741824)|round(1) }} Go libres / {{ (disk.total / 1073741824)|round(1) }} Go</span>
+          <div class="d-flex justify-content-between align-items-baseline">
+            <strong>{{ "Disque du serveur" if disks|length == 1 else "Disque " ~ loop.index }}</strong>
+            <span class="{{ 'text-danger fw-bold' if disk.percent >= 90 else ('text-warning-emphasis fw-bold' if disk.percent >= 75 else 'text-success fw-bold') }}">
+              {{ (disk.free / 1073741824)|round(1) }} Go libres
+            </span>
           </div>
-          <div class="progress mt-1" style="height: 6px;" role="progressbar" aria-label="Occupation {{ disk.label }}" aria-valuenow="{{ disk.percent }}" aria-valuemin="0" aria-valuemax="100">
-            <div class="progress-bar {{ 'bg-danger' if disk.percent >= 90 else 'bg-primary' }}" style="width: {{ disk.percent }}%"></div>
+          <div class="progress mt-2" style="height: 18px;" role="progressbar" aria-label="Occupation du disque" aria-valuenow="{{ disk.percent }}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar {{ 'bg-danger' if disk.percent >= 90 else ('bg-warning text-dark' if disk.percent >= 75 else 'bg-primary') }}" style="width: {{ [disk.percent, 8]|max }}%">{{ disk.percent }} %</div>
+          </div>
+          <div class="small text-muted mt-1">
+            {{ (disk.used / 1073741824)|round(1) }} Go utilisés sur {{ (disk.total / 1073741824)|round(1) }} Go.
+            Contient : {{ disk.labels|join(", ")|lower }}.
           </div>
         </li>
         {% else %}

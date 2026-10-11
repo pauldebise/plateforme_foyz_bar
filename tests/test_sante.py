@@ -75,6 +75,24 @@ def test_page_sante():
         "Sauvegardes",
     ):
         _expect(marker in page, f"section « {marker} » présente")
+    # Une seule jauge par disque physique, pas une par dossier.
+    from app.config import INSTANCE_DIR
+
+    with app.app_context():
+        devices = {
+            info["device"]
+            for info in (
+                H.disk_info(path)
+                for path in (
+                    app.config["UPLOAD_FOLDER"],
+                    INSTANCE_DIR,
+                    app.config["BACKUP_DIR"],
+                )
+            )
+            if info
+        }
+    _expect(page.count("Go libres") == len(devices), "une jauge par disque physique")
+    _expect("Contient :" in page, "dossiers contenus dans la jauge indiqués")
 
 
 def test_sante_reservee_aux_mandats():

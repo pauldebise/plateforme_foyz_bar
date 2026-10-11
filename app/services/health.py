@@ -75,7 +75,12 @@ def disk_info(path):
     except OSError:
         return None
     percent = round(usage.used / usage.total * 100) if usage.total else 0
+    try:
+        device = os.stat(path).st_dev
+    except OSError:
+        device = None
     return {
+        "device": device,
         "total": usage.total,
         "used": usage.used,
         "free": usage.free,

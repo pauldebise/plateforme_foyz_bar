@@ -1125,14 +1125,23 @@ def sante():
     checks = H.system_checks()
     schema = H.schema_state()
     disks = []
+    by_device = {}
     for label, path in (
         ("Téléversements", current_app.config["UPLOAD_FOLDER"]),
         ("Dossier instance", INSTANCE_DIR),
         ("Sauvegardes", current_app.config["BACKUP_DIR"]),
     ):
         info = H.disk_info(path)
-        if info:
-            disks.append({"label": label, "path": str(path), **info})
+        if not info:
+            continue
+        # Plusieurs dossiers sur la même partition : une seule jauge.
+        known = by_device.get(info["device"]) if info["device"] is not None else None
+        if known:
+            known["labels"].append(label)
+            continue
+        info["labels"] = [label]
+        by_device[info["device"]] = info
+        disks.append(info)
     activity = {
         "comptes": db.session.scalar(select(func.count()).select_from(User)),
         "membres": db.session.scalar(
