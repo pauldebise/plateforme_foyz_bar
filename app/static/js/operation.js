@@ -20,7 +20,7 @@ document.querySelectorAll('.op-search').forEach((input) => {
     info.appendChild(document.createTextNode(' '));
     info.appendChild(makeEl('strong', '', selected.name));
     info.appendChild(document.createTextNode(' '));
-    info.appendChild(makeEl('span', 'badge bg-light text-dark', `${(selected.balance / 100).toFixed(2)} €`));
+    info.appendChild(balanceBadge(selected.balance));
     const badges = [];
     if (selected.blacklist) badges.push(['badge-blacklist', 'blacklist']);
     if (selected.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
@@ -78,7 +78,7 @@ function initTransferMultiSelect({ searchId, resultsId, inputsId, listId }) {
       info.appendChild(document.createTextNode(' '));
       info.appendChild(makeEl('strong', '', u.name));
       info.appendChild(document.createTextNode(' '));
-      info.appendChild(makeEl('span', 'badge bg-light text-dark', `${(u.balance / 100).toFixed(2)} €`));
+      info.appendChild(balanceBadge(u.balance));
       const badges = [];
       if (u.blacklist) badges.push(['badge-blacklist', 'blacklist']);
       if (u.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);

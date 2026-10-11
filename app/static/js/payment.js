@@ -78,7 +78,7 @@ function renderContributors() {
     info.appendChild(document.createTextNode(' '));
     info.appendChild(makeEl('strong', '', c.name));
     info.appendChild(document.createTextNode(' '));
-    info.appendChild(makeEl('span', 'badge bg-light text-dark', `${(c.balance / 100).toFixed(2)} €`));
+    info.appendChild(balanceBadge(c.balance));
     const badges = [];
     if (c.blacklist) badges.push(['badge-blacklist', 'blacklist']);
     if (c.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);

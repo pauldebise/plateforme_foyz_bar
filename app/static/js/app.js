@@ -18,6 +18,13 @@ function appendBadges(parent, badges) {
   });
 }
 
+// Pastille de solde : rouge et en gras quand le solde est négatif, pour que
+// l'opérateur voie tout de suite que l'étudiant doit recharger.
+function balanceBadge(cents, extraClass) {
+  const tone = cents < 0 ? 'bg-danger text-white fw-bold' : 'bg-light text-dark';
+  return makeEl('span', `badge ${tone}${extraClass ? ` ${extraClass}` : ''}`, `${(cents / 100).toFixed(2)} €`);
+}
+
 async function apiFetch(url, options = {}) {
   const opts = Object.assign({ headers: { 'X-CSRFToken': csrfToken() } }, options);
   if (opts.json !== undefined) {
@@ -146,9 +153,7 @@ function initStudentSearch(inputEl, listEl, onPick, options = {}) {
       const info = document.createElement('div');
       info.appendChild(makeEl('strong', '', r.name));
       if (r.promotion) info.appendChild(makeEl('span', 'text-muted small', ` · promo ${r.promotion}`));
-      info.appendChild(makeEl(
-        'span', 'balance-chip badge bg-light text-dark ms-1', `${(r.balance / 100).toFixed(2)} €`,
-      ));
+      info.appendChild(balanceBadge(r.balance, 'balance-chip ms-1'));
       const badges = [];
       if (r.blacklist) badges.push(['badge-blacklist', 'blacklist']);
       if (r.blacklist_alcohol) badges.push(['badge-alcool', 'blacklist alcool']);
