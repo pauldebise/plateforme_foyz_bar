@@ -37,6 +37,7 @@ from app.services import adminpw as AP
 from app.services import audit as A
 from app.services import catalog as C
 from app.services import settings as S
+from app.services.names import plain_names
 from app.services.stats import TOP_ARTICLES_DAYS, top_article_sales
 from app.utils import (
     ARTICLE_TYPES,
@@ -1306,7 +1307,13 @@ def _journal_actions():
             )
     stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
     rows, page, pages, total = _journal_pagination(stmt)
-    return {"logs": rows, "page": page, "pages": pages, "total": total}
+    return {
+        "logs": rows,
+        "page": page,
+        "pages": pages,
+        "total": total,
+        "plain": plain_names({v for r in rows for v in (r.actor, r.target)}, 160),
+    }
 
 
 @bp.route("/journal")

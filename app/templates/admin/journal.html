@@ -98,9 +98,9 @@
         {% for log in logs %}
         <tr>
           <td class="text-nowrap">{{ log.created_at|dt }}</td>
-          <td>{{ log.actor or '—' }}{% if log.campus %} <span class="text-muted small">({{ CAMPUSSES.get(log.campus, log.campus) }})</span>{% endif %}</td>
+          <td>{{ plain.get(log.actor, log.actor) or '—' }}{% if log.campus %} <span class="text-muted small">({{ CAMPUSSES.get(log.campus, log.campus) }})</span>{% endif %}</td>
           <td><span class="badge bg-light text-dark">{{ actions.get(log.action, log.action) }}</span></td>
-          <td>{{ log.target or '—' }}</td>
+          <td>{{ plain.get(log.target, log.target) or '—' }}</td>
           <td class="small text-muted">{{ log.details }}</td>
           <td class="small text-muted">{{ log.ip }}</td>
         </tr>

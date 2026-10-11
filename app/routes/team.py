@@ -22,6 +22,7 @@ from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
 from app.services import adminpw as AP
 from app.services.settings import int_setting
+from app.services.names import plain_names
 from app.services.stats import sales_stats, students_stats, top_article_ids, top_articles_stats
 from app.services.treasury import treasury
 from app.utils import (
@@ -288,11 +289,13 @@ def historique():
     pages = max(1, (total + per_page - 1) // per_page)
     page = min(page, pages)
     rows = query.offset((page - 1) * per_page).limit(per_page).all()
+    operators = plain_names({t.operator_label for t in rows}, 255)
     return render_template(
         "team/historique.html",
         rows=rows,
         filters=request.args,
-        describe=T.describe_transaction,
+        operators=operators,
+        describe=lambda t: T.describe_transaction(t, plain=True),
         page=page,
         pages=pages,
         total=total,

@@ -953,11 +953,16 @@ def visible_transactions():
     )
 
 
-def describe_transaction(t):
+def describe_transaction(t, plain=False):
+    """Libellé de l'opération ; `plain=True` : noms seuls, sans surnom."""
+
+    def who(user):
+        return user.name if plain else user.display_name
+
     # Tolérant aux contributions orphelines (compte supprimé avant l'activation
     # des clés étrangères SQLite) : l'historique doit rester consultable.
     names = [
-        c.user.display_name if c.user is not None else "Compte supprimé"
+        who(c.user) if c.user is not None else "Compte supprimé"
         for c in t.contributions
         if c.user_id is not None
     ]
@@ -982,11 +987,9 @@ def describe_transaction(t):
     elif t.type == "retrait":
         label = "Retrait — " + ", ".join(names)
     elif t.type == "transfert":
-        donors = [
-            c.user.display_name for c in t.contributions if c.user_id is not None and c.amount < 0
-        ]
+        donors = [who(c.user) for c in t.contributions if c.user_id is not None and c.amount < 0]
         recipients = [
-            c.user.display_name for c in t.contributions if c.user_id is not None and c.amount > 0
+            who(c.user) for c in t.contributions if c.user_id is not None and c.amount > 0
         ]
         if donors or recipients:
             label = "Transfert — " + ", ".join(donors) + " → " + ", ".join(recipients)
