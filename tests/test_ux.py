@@ -494,6 +494,28 @@ def test_h_raccourcis_caisse():
     _expect("modalOpen()" in payment_js, "raccourcis suspendus pendant une modale")
 
 
+def test_enchainement_apres_encaissement():
+    """Après un encaissement : recherche d'articles vidée, curseur dans la
+    recherche d'étudiant, soldes affichés sans bloquer la saisie suivante."""
+    app = create_app()
+    client = app.test_client()
+    _login(client)
+    js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    reset = js[js.index("function resetCartState()") : js.index("function clearOrder()")]
+    _expect("els.catalogSearch.value = ''" in reset, "recherche d'articles vidée après la commande")
+    _expect("focusStudentSearch();" in reset, "focus rendu à la recherche d'étudiant")
+    _expect("els.search.focus(" in js, "focus de la recherche d'étudiant")
+    _expect("focus: false" in js, "la confirmation ne prend pas le focus")
+    _expect(
+        ".modal.show:not(#success-modal)" in js, "la confirmation ne suspend pas les raccourcis"
+    )
+    _expect("showSuccess(res.total, res.balances)" in js, "soldes transmis à la confirmation")
+    _expect("balanceBadge(b.balance, 'fs-6')" in js, "solde négatif en rouge dans la confirmation")
+    for url in ("/equipe/paiement",):
+        page = client.get(url).get_data(as_text=True)
+        _expect('id="success-balances"' in page, "zone des soldes dans la confirmation")
+
+
 def test_i_modale_decouvert():
     """Modale découvert : mot de passe focalisé à l'ouverture, Entrée valide."""
     app = create_app()

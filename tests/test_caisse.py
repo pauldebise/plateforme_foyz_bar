@@ -935,6 +935,50 @@ def test_api_validation_400_pas_500():
     _expect(res.status_code == 404, f"utilisateur inconnu -> 404 (obtenu {res.status_code})")
 
 
+def test_api_achat_renvoie_les_soldes_apres_operation():
+    """La fenêtre de confirmation affiche le nouveau solde de chaque étudiant."""
+    app = create_app()
+    with app.app_context():
+        operateur = _user(team=True, balance=0)
+        a = _user(balance=1000)
+        b = _user(balance=500)
+        article = _article(std=300)
+        login_name, a_id, b_id, article_id = operateur.username, a.id, b.id, article.id
+        a_name = a.display_name
+    client = app.test_client()
+    _login(client, login_name, "secret123")
+    csrf = _csrf(client.get("/equipe/paiement").get_data(as_text=True), "csrf-token")
+    headers = {"X-CSRFToken": csrf}
+    payload = {
+        "items": [{"article_id": article_id, "quantity": 1}],
+        "contributors": [a_id, b_id],
+        "idempotency_key": "soldes-1",
+    }
+    res = client.post("/api/purchase", json=payload, headers=headers)
+    data = res.get_json()
+    _expect(res.status_code == 200 and data["ok"], "achat partagé accepté")
+    balances = {row["id"]: row for row in data["balances"]}
+    _expect(set(balances) == {a_id, b_id}, "un solde par étudiant")
+    _expect(balances[a_id]["balance"] == 850, f"solde de A : {balances[a_id]}")
+    _expect(balances[b_id]["balance"] == 350, f"solde de B : {balances[b_id]}")
+    _expect(balances[a_id]["name"] == a_name, "nom affiché")
+    replay = client.post("/api/purchase", json=payload, headers=headers).get_json()
+    _expect(
+        {r["id"]: r["balance"] for r in replay["balances"]} == {a_id: 850, b_id: 350},
+        "rejeu : mêmes soldes, pas de second débit",
+    )
+    direct = client.post(
+        "/api/purchase",
+        json={
+            "items": [{"article_id": article_id, "quantity": 1}],
+            "direct": True,
+            "payment_method": "cb",
+        },
+        headers=headers,
+    ).get_json()
+    _expect(direct["ok"] and direct["balances"] == [], "encaissement direct : aucun solde")
+
+
 def test_recherche_etudiants_classement_et_cache():
     """Recherche : tri par activité récente, rafraîchi dès un achat (cache)."""
     app = create_app()

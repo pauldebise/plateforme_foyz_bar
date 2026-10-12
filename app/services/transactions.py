@@ -596,6 +596,16 @@ def create_purchase(
     return t
 
 
+def balances_after(transaction):
+    """Solde de chaque étudiant juste après l'opération (affiché dans la fenêtre
+    de confirmation de la caisse). Vide pour un encaissement direct."""
+    return [
+        {"id": c.user_id, "name": c.user.display_name, "balance": c.balance_after}
+        for c in transaction.contributions
+        if c.user_id is not None and c.user is not None
+    ]
+
+
 def _drain_tap(keg):
     for tap in db.session.scalars(select(Tap).where(Tap.keg_id == keg.id)):
         tap.keg_id = None

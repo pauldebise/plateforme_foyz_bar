@@ -27,7 +27,11 @@ const els = {
   directSwitch: $('direct-switch'),
   directMethods: $('direct-methods'),
   adminModal: $('admin-modal') ? new bootstrap.Modal($('admin-modal')) : null,
-  successModal: $('success-modal') ? new bootstrap.Modal($('success-modal')) : null,
+  // Sans prise de focus : la recherche d'étudiant garde le clavier, la
+  // commande suivante se tape pendant que la confirmation est affichée.
+  successModal: $('success-modal')
+    ? new bootstrap.Modal($('success-modal'), { focus: false })
+    : null,
   rgSearch: $('glasses-search'),
   rgResults: $('glasses-results'),
   rgPanel: $('glasses-panel'),
@@ -524,7 +528,7 @@ async function pay(adminPassword) {
   try {
     payload.idempotency_key = orderKeyFor(payload);
     const res = await apiFetch(GATEWAY ? location.pathname + '/encaisser' : '/api/purchase', { json: payload });
-    showSuccess(res.total);
+    showSuccess(res.total, res.balances);
   } catch (e) {
     // Échec réseau (fetch rejette) : la vente est mise en file locale et sera
     // rejouée avec la même clé d'idempotence — le serveur ne débitera qu'une fois.
@@ -563,9 +567,17 @@ function resetCartState() {
   if (directCard) directCard.classList.add('d-none');
   orderKey = null;
   orderSignature = null;
+  // La recherche d'articles de la commande terminée ne doit pas gêner la suivante.
+  if (els.catalogSearch) els.catalogSearch.value = '';
   renderContributors();
   renderCart();
   renderCatalog();
+  focusStudentSearch();
+}
+
+// Commande suivante : le curseur revient dans la recherche d'étudiant.
+function focusStudentSearch() {
+  if (els.search) els.search.focus({ preventScroll: true });
 }
 
 // Raccourci Échap : vide la commande en cours (articles et étudiants) sans
@@ -600,23 +612,46 @@ function isTypingTarget(el) {
 }
 
 function modalOpen() {
-  return !!document.querySelector('.modal.show');
+  // La confirmation d'encaissement ne bloque pas la saisie suivante.
+  return !!document.querySelector('.modal.show:not(#success-modal)');
 }
 
-function showSuccess(total) {
+function renderSuccessBalances(balances) {
+  const box = $('success-balances');
+  if (!box) return;
+  box.innerHTML = '';
+  (balances || []).forEach((b) => {
+    const line = makeEl('div', '', `${b.name} : `);
+    line.appendChild(balanceBadge(b.balance, 'fs-6'));
+    box.appendChild(line);
+  });
+  box.classList.toggle('d-none', !box.children.length);
+}
+
+function showSuccess(total, balances) {
   if (!els.successModal) return;
   $('success-total').textContent = (total / 100).toFixed(2) + ' €';
+  renderSuccessBalances(balances);
   // Pas de rechargement : l'état (panier, contributeurs, défilement) est déjà
   // remis à zéro, la page reste en place (U4).
   resetCartState();
   els.successModal.show();
   clearTimeout(successTimer);
-  successTimer = setTimeout(() => els.successModal.hide(), 2000);
+  // Un peu plus long quand des soldes sont à lire.
+  successTimer = setTimeout(() => els.successModal.hide(), balances && balances.length ? 3000 : 2000);
 }
 
 // Modale découvert : le champ mot de passe prend le focus à l'ouverture et la
 // touche Entrée — clavier physique ou bouton « Go » du clavier mobile —
 // valide la commande via la soumission du formulaire.
+if ($('success-modal')) {
+  // Filet : si le focus s'est perdu (fermeture d'une autre fenêtre), il revient
+  // dans la recherche d'étudiant.
+  $('success-modal').addEventListener('hidden.bs.modal', () => {
+    if (!document.activeElement || document.activeElement === document.body) focusStudentSearch();
+  });
+}
+
 if (els.adminModal) {
   $('admin-modal').addEventListener('shown.bs.modal', () => {
     $('admin-password-input').focus();

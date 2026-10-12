@@ -141,7 +141,7 @@ def purchase():
             admin_password=payload.get("admin_password"),
             idempotency_key=payload.get("idempotency_key"),
         )
-        return jsonify(ok=True, transaction_id=t.id, total=t.total)
+        return jsonify(ok=True, transaction_id=t.id, total=t.total, balances=T.balances_after(t))
     except T.OperationError as e:
         return jsonify(ok=False, code=e.code, error=e.message, extra=e.extra), 400
 
