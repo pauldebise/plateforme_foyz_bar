@@ -446,12 +446,13 @@ def tresorerie_export_mensuel():
     rows = [[f"Rapport mensuel — {site_label()} — {CAMPUSSES[c]} — {entry['label']}"], []]
     for key, label in PAYMENT_METHODS.items():
         rows.append(["Rechargements", label, f"{entry['reloads_by_method'][key] / 100:.2f}"])
+    rows.append(["Rechargements", "Total rechargements", f"{entry['reloads_total'] / 100:.2f}"])
     for key, label in ARTICLE_TYPES.items():
-        rows.append(["Ventes", label, f"{entry['sales_by_type'][key] / 100:.2f}"])
-    rows.append(["Ventes", "Total consommation virtuelle", f"{entry['sales_total'] / 100:.2f}"])
-    rows.append(["Événements", "Recettes", f"{entry['events_total'] / 100:.2f}"])
+        rows.append(["Ventes par type", label, f"{entry['sales_by_type'][key] / 100:.2f}"])
+    rows.append(["Ventes", "Hors évènements/soirées", f"{entry['sales_other'] / 100:.2f}"])
+    rows.append(["Ventes", "Évènements/soirées", f"{entry['sales_events'] / 100:.2f}"])
     rows.append(
-        ["Total entrées", "Rechargements + événements", f"{entry['grand_total'] / 100:.2f}"]
+        ["Ventes", "Total ventes (consommation virtuelle)", f"{entry['sales_total'] / 100:.2f}"]
     )
     return _csv_response(
         f"rapport_mensuel_{c}_{year}-{month:02d}.csv",
@@ -471,35 +472,37 @@ def tresorerie_export_annuel():
     rows = []
     totals = {k: 0 for k in PAYMENT_METHODS}
     totals_type = {k: 0 for k in ARTICLE_TYPES}
-    tot_reload = tot_sales = tot_events = tot_entries = 0
+    tot_reload = tot_other = tot_events = tot_sales = 0
     for e in report:
         row = [e["label"]]
         for key in PAYMENT_METHODS:
             v = e["reloads_by_method"][key]
             totals[key] += v
             row.append(f"{v / 100:.2f}")
+        row.append(f"{e['reloads_total'] / 100:.2f}")
         for key in ARTICLE_TYPES:
             v = e["sales_by_type"][key]
             totals_type[key] += v
             row.append(f"{v / 100:.2f}")
         tot_reload += e["reloads_total"]
+        tot_other += e["sales_other"]
+        tot_events += e["sales_events"]
         tot_sales += e["sales_total"]
-        tot_events += e["events_total"]
-        tot_entries += e["grand_total"]
         row += [
+            f"{e['sales_other'] / 100:.2f}",
+            f"{e['sales_events'] / 100:.2f}",
             f"{e['sales_total'] / 100:.2f}",
-            f"{e['events_total'] / 100:.2f}",
-            f"{e['grand_total'] / 100:.2f}",
         ]
         rows.append(row)
     rows.append(
         [
             "TOTAL (12 mois)",
             *[f"{totals[k] / 100:.2f}" for k in PAYMENT_METHODS],
+            f"{tot_reload / 100:.2f}",
             *[f"{totals_type[k] / 100:.2f}" for k in ARTICLE_TYPES],
-            f"{tot_sales / 100:.2f}",
+            f"{tot_other / 100:.2f}",
             f"{tot_events / 100:.2f}",
-            f"{tot_entries / 100:.2f}",
+            f"{tot_sales / 100:.2f}",
         ]
     )
     return _csv_response(
@@ -507,10 +510,11 @@ def tresorerie_export_annuel():
         [
             "Mois",
             *[PAYMENT_METHODS[k] for k in PAYMENT_METHODS],
+            "Rechargements (total)",
             *[ARTICLE_TYPES[k] for k in ARTICLE_TYPES],
+            "Ventes hors évènements/soirées",
+            "Ventes évènements/soirées",
             "Ventes (total)",
-            "Événements",
-            "Total entrées",
         ],
         rows,
     )

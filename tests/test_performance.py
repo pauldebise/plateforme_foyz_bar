@@ -277,20 +277,28 @@ def test_a_sql_aggregates_match_reference():
         _expect(names == ["Pinte", "Crêpe maison", "Chips"], f"classement articles ({names})")
         _expect(articles[0]["qty"] == 4 and articles[0]["revenue"] == 1200, "Pinte agrégée")
 
-        # --- Trésorerie (Brest) : rechargement 1000 (janvier), ventes 1700,
-        # événement 200 (hors ventes par type)
+        # --- Trésorerie (Brest) : rechargement 1000 (janvier) ; ventes du mois :
+        # 1400 ordinaires + 200 via la passerelle d'un événement
         report = treasury("brest")
         by_label = {e["label"]: e for e in report}
         winter_entry = by_label[f"{winter.month:02d}/{winter.year}"]
         _expect(winter_entry["reloads_total"] == 1000, "rechargement au bon mois (TZ Paris)")
         _expect(winter_entry["reloads_by_method"]["cb"] == 1000, "rechargement par CB")
         current_entry = by_label[f"{now.month:02d}/{now.year}"]
-        _expect(current_entry["sales_total"] == 1400, "consommation virtuelle")
+        _expect(current_entry["sales_total"] == 1600, "consommation virtuelle totale")
+        _expect(current_entry["sales_other"] == 1400, "ventes hors évènements/soirées")
+        _expect(current_entry["sales_events"] == 200, "ventes évènements/soirées")
         _expect(current_entry["sales_by_type"]["biere"] == 900, "ventes bière du mois")
-        _expect(current_entry["sales_by_type"]["snack"] == 500, "ventes snack du mois")
-        _expect(current_entry["events_total"] == 200, "recettes événement")
-        _expect(current_entry["grand_total"] == 200, "entrées du mois = événement")
-        _expect(winter_entry["grand_total"] == 1000, "entrées de janvier = rechargement")
+        _expect(
+            current_entry["sales_by_type"]["snack"] == 700,
+            "ventes snack du mois (500 + 200 via l'événement)",
+        )
+        _expect(
+            sum(current_entry["sales_by_type"].values()) == current_entry["sales_total"],
+            "le détail par type se somme au total des ventes",
+        )
+        _expect(winter_entry["reloads_total"] == 1000, "rechargements de janvier")
+        _expect(winter_entry["sales_total"] == 0, "pas de vente en janvier")
 
 
 def test_b_index_and_pagination():

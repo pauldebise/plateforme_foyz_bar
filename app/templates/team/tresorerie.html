@@ -13,7 +13,7 @@
 <div class="card mb-4">
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span>Douze mois glissants</span>
-    <span class="small text-muted fw-normal">Barres = entrées réelles de trésorerie · Courbe = consommation de la monnaie virtuelle (déjà encaissée lors des rechargements)</span>
+    <span class="small text-muted fw-normal">Pour chaque mois : rechargements (argent encaissé) à côté des ventes (consommation de la monnaie virtuelle)</span>
   </div>
   <div class="card-body"><canvas id="chart-treasury" height="110"></canvas></div>
 </div>
@@ -30,15 +30,14 @@
       <thead class="table-light">
         <tr>
           <th rowspan="2">Mois</th>
-          <th colspan="5" class="text-center border-start">Rechargements</th>
-          <th colspan="{{ ARTICLE_TYPES|length }}" class="text-center border-start">Ventes (détail par type)</th>
-          <th rowspan="2" class="text-end border-start">Événements</th>
-          <th rowspan="2" class="text-end">Total entrées</th>
-          <th rowspan="2" class="text-center">Rapport</th>
+          <th colspan="{{ PAYMENT_METHODS|length }}" class="text-center border-start">Rechargements</th>
+          <th colspan="2" class="text-center border-start">Ventes</th>
+          <th rowspan="2" class="text-center border-start">Rapport</th>
         </tr>
         <tr class="small text-muted">
           {% for m in PAYMENT_METHODS.values() %}<th class="border-start">{{ m }}</th>{% endfor %}
-          {% for t in ARTICLE_TYPES.values() %}<th class="border-start">{{ t }}</th>{% endfor %}
+          <th class="border-start">Hors évènements/soirées</th>
+          <th class="border-start">Évènements/soirées</th>
         </tr>
       </thead>
       <tbody>
@@ -46,10 +45,9 @@
         <tr>
           <td class="fw-semibold">{{ e.label }}</td>
           {% for key in PAYMENT_METHODS %}<td class="text-end border-start">{{ e.reloads_by_method[key]|eur }}</td>{% endfor %}
-          {% for key in ARTICLE_TYPES %}<td class="text-end border-start">{{ e.sales_by_type[key]|eur }}</td>{% endfor %}
-          <td class="text-end border-start fw-semibold">{{ e.events_total|eur }}</td>
-          <td class="text-end fw-bold">{{ e.grand_total|eur }}</td>
-          <td class="text-center">
+          <td class="text-end border-start">{{ e.sales_other|eur }}</td>
+          <td class="text-end border-start">{{ e.sales_events|eur }}</td>
+          <td class="text-center border-start">
             <a class="btn btn-sm btn-outline-secondary" title="Télécharger le rapport mensuel (CSV)"
                href="{{ url_for('team.tresorerie_export_mensuel', campus=campus, year=e.year, month=e.month) }}">
               <i class="bi bi-download"></i>
@@ -61,9 +59,9 @@
     </table>
   </div>
   <div class="card-footer small text-muted">
-    Total entrées = rechargements + recettes d'événements. Les ventes bar détaillées ci-dessus correspondent à la
-    consommation de la monnaie virtuelle : cette somme a déjà été encaissée lors des rechargements et n'est pas
-    comptée une seconde fois dans le total.
+    Les ventes correspondent à la consommation de la monnaie virtuelle : cette somme a déjà été encaissée lors des
+    rechargements, il ne faut donc pas l'additionner à eux. Le détail des ventes par type d'article (bière, cidre,
+    snacks…) est disponible dans les rapports CSV.
   </div>
 </div>
 {% endblock %}

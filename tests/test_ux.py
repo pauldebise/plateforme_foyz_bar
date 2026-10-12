@@ -355,8 +355,8 @@ def test_d2_article_blague():
 
     stats = client.get("/equipe/statistiques").get_data(as_text=True)
     _expect("Blague" in stats, "catégorie Blague proposée dans les statistiques")
-    tresorerie = client.get("/equipe/tresorerie").get_data(as_text=True)
-    _expect("Blague" in tresorerie, "colonne Blague présente en trésorerie")
+    rapport = client.get("/equipe/tresorerie/export/annuel?campus=brest").get_data(as_text=True)
+    _expect("Blague" in rapport, "colonne Blague présente dans le rapport annuel de trésorerie")
 
 
 def test_e_recherche_articles():

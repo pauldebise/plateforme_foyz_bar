@@ -69,8 +69,9 @@ def treasury(campus):
                 "reloads_total": 0,
                 "reloads_by_method": {k: 0 for k in PAYMENT_METHODS},
                 "sales_total": 0,
+                "sales_other": 0,
+                "sales_events": 0,
                 "sales_by_type": {k: 0 for k in ARTICLE_TYPES},
-                "events_total": 0,
             }
         )
     index = {(e["year"], e["month"]): e for e in report}
@@ -97,14 +98,16 @@ def treasury(campus):
         if method in entry["reloads_by_method"]:
             entry["reloads_by_method"][method] += int(total or 0)
 
-    # Un seul passage : les lignes d'événement alimentent events_total, les
-    # autres la consommation virtuelle (par type d'article).
+    # Un seul passage. Une vente est « évènement/soirée » si l'article est de ce
+    # type ou si elle a été faite via la passerelle d'un événement ; les autres
+    # sont des ventes ordinaires. Le détail par type d'article (CSV) couvre
+    # toutes les ventes : il se somme à sales_total.
     sales = (
         select(
             month_case.label("month"),
             TransactionLine.article_type,
-            func.sum(case((Transaction.event_id.isnot(None), TransactionLine.line_total), else_=0)),
-            func.sum(case((Transaction.event_id.is_(None), TransactionLine.line_total), else_=0)),
+            Transaction.event_id.isnot(None),
+            func.sum(TransactionLine.line_total),
         )
         .select_from(TransactionLine)
         .join(Transaction, TransactionLine.transaction_id == Transaction.id)
@@ -114,17 +117,18 @@ def treasury(campus):
             Transaction.created_at >= cutoff,
             Transaction.type.in_(["achat", "direct"]),
         )
-        .group_by(month_case, TransactionLine.article_type)
+        .group_by(month_case, TransactionLine.article_type, Transaction.event_id.isnot(None))
     )
-    for label, article_type, events, virtual in db.session.execute(sales):
+    for label, article_type, via_event, total in db.session.execute(sales):
         entry = index.get(_label_key(label))
         if entry is None:
             continue
-        entry["events_total"] += int(events or 0)
-        entry["sales_total"] += int(virtual or 0)
+        amount = int(total or 0)
+        entry["sales_total"] += amount
+        if via_event or article_type == "evenement":
+            entry["sales_events"] += amount
+        else:
+            entry["sales_other"] += amount
         if article_type in entry["sales_by_type"]:
-            entry["sales_by_type"][article_type] += int(virtual or 0)
-
-    for e in report:
-        e["grand_total"] = e["reloads_total"] + e["events_total"]
+            entry["sales_by_type"][article_type] += amount
     return report
