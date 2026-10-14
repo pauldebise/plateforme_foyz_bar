@@ -1,14 +1,18 @@
 """Catalogue public des prix : articles classés par tendance (ventes récentes)
-dans chaque catégorie, puis par nom pour ceux sans vente récente.
+dans chaque catégorie, puis par nom pour ceux sans vente récente ; carte des
+10 articles les plus vendus en tête ; barre de recherche.
 
 Exécutable sans pytest : python -m tests.test_catalogue_public
 """
 
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -29,6 +33,7 @@ from app.extensions import db  # noqa: E402
 from app.models import Article, Transaction  # noqa: E402
 from app.services import transactions as T  # noqa: E402
 
+CATALOGUE_JS = ROOT / "app" / "static" / "js" / "catalogue.js"
 _state = {}
 
 
@@ -66,10 +71,35 @@ def _setup():
             ("Aaa paris", "snack", "paris"),
             ("Bbb paris", "snack", "paris"),
         ]
+        specs += [(f"Vin {i:02d}", "vin", "brest") for i in range(1, 9)]
         for name, kind, campus in specs:
             db.session.add(
                 Article(name=name, article_type=kind, campus=campus, price_std=100, price_team=100)
             )
+        # Très vendus mais jamais affichés au public : privé, inactif, type masqué.
+        for name, kind, private in (
+            ("Prive hit", "snack", True),
+            ("Inactif hit", "snack", False),
+            ("Blague hit", "blague", False),
+        ):
+            db.session.add(
+                Article(
+                    name=name,
+                    article_type=kind,
+                    campus="brest",
+                    price_std=100,
+                    price_team=100,
+                    is_private=private,
+                )
+            )
+        db.session.commit()
+    for i in range(1, 9):
+        _sell(app, f"Vin {i:02d}", 31 - i)  # 30 … 23 : tête du classement
+    for name in ("Prive hit", "Inactif hit", "Blague hit"):
+        _sell(app, name, 100)
+    with app.app_context():
+        inactive = db.session.scalars(select(Article).where(Article.name == "Inactif hit")).one()
+        inactive.active = False
         db.session.commit()
     _sell(app, "Charlie snack", 5)
     _sell(app, "Bravo snack", 2)
@@ -79,10 +109,21 @@ def _setup():
     return _state
 
 
-def _order(campus="brest"):
-    """Noms d'articles dans l'ordre d'affichage de la page publique."""
+def _cards(campus="brest"):
+    """Page publique : {identifiant de carte: noms d'articles, dans l'ordre}.
+    La carte « plus vendus » a l'identifiant « catalogue-top »."""
     html = _setup()["client"].get(f"/catalogue?campus={campus}").get_data(as_text=True)
-    return re.findall(r"<td>([^<]+)</td>\s*<td class=\"text-muted\">", html)
+    cards = {}
+    for part in re.split(r'<div class="card mb-4[^"]*" id="', html)[1:]:
+        names = re.findall(r'<td class="catalogue-name">([^<]+?)\s*(?:<span|</td>)', part)
+        cards[part[: part.index('"')]] = names
+    return cards
+
+
+def _order(campus="brest"):
+    """Noms d'articles des catégories, dans l'ordre d'affichage (hors carte
+    « plus vendus »)."""
+    return [n for cid, names in _cards(campus).items() if cid != "catalogue-top" for n in names]
 
 
 def test_tendance_dans_chaque_categorie():
@@ -99,10 +140,65 @@ def test_tendance_dans_chaque_categorie():
 def test_categories_gardent_leur_ordre():
     html = _setup()["client"].get("/catalogue?campus=brest").get_data(as_text=True)
     _expect(
-        html.index("Zzz biere") < html.index("Charlie snack"),
-        "les cartes de catégorie gardent leur ordre fixe (bière avant snacks)",
+        html.index('id="cat-biere"') < html.index('id="cat-vin"') < html.index('id="cat-snack"'),
+        "les cartes de catégorie gardent leur ordre fixe (bière, vin, snacks)",
     )
     _expect("les plus vendus" in html, "phrase d'explication du classement")
+
+
+def test_carte_des_plus_vendus():
+    html = _setup()["client"].get("/catalogue?campus=brest").get_data(as_text=True)
+    cards = _cards()
+    expected = [f"Vin {i:02d}" for i in range(1, 9)] + ["Charlie snack", "Zzz biere"]
+    _expect(cards.get("catalogue-top") == expected, f"top 10 : {cards.get('catalogue-top')}")
+    _expect("Bravo snack" not in cards["catalogue-top"], "le 11e n'est pas dans la carte")
+    _expect(
+        html.index('id="catalogue-top"') < html.index('id="cat-biere"'),
+        "la carte est au-dessus des catégories",
+    )
+    _expect("Les 10 plus vendus" in html, "titre de la carte")
+    _expect("Charlie snack" in cards["cat-snack"], "les catégories listent toujours tout")
+
+
+def test_top_sans_articles_non_publics():
+    top = _cards()["catalogue-top"]
+    page = " ".join(n for names in _cards().values() for n in names)
+    for hidden in ("Prive hit", "Inactif hit", "Blague hit"):
+        _expect(hidden not in top and hidden not in page, f"{hidden} jamais affiché au public")
+
+
+def test_top_limite_aux_articles_vendus():
+    cards = _cards("paris")
+    _expect(cards.get("catalogue-top") == ["Bbb paris"], f"Paris : {cards.get('catalogue-top')}")
+    s = _setup()
+    with mock.patch("app.routes.public.top_article_ids", return_value=[]):
+        html = s["client"].get("/catalogue?campus=brest").get_data(as_text=True)
+    _expect('id="catalogue-top"' not in html, "aucune vente : pas de carte")
+    _expect('id="cat-snack"' in html, "les catégories restent affichées")
+
+
+def test_barre_de_recherche():
+    s = _setup()
+    html = s["client"].get("/catalogue?campus=brest").get_data(as_text=True)
+    _expect('id="catalogue-search"' in html, "champ de recherche présent")
+    _expect(re.search(r'id="catalogue-search-box"[^>]*\shidden', html), "masqué sans JavaScript")
+    _expect(re.search(r'<script src="/static/js/catalogue\.js[^"]*"', html), "script chargé")
+    _expect('data-search="Charlie snack Snacks"' in html, "texte de recherche des lignes")
+    _expect(
+        s["client"].get("/static/js/catalogue.js").status_code == 200, "script servi (CSP : site)"
+    )
+    js = CATALOGUE_JS.read_text(encoding="utf-8")
+    node = shutil.which("node")
+    if not node:
+        print("  (node absent : exécution de fold() ignorée)")
+        return
+    script = js[js.index("const FOLD_EXTRA") : js.index("const top =")] + (
+        "const cas = [['Bière','biere'],['BIÈRE','biere'],['Crêpe','crepe'],['Cœur','coeur']];"
+        "for (const [a, b] of cas) { if (fold(a) !== b) { console.log('KO ' + a); process.exit(1); } }"
+        "console.log('ok');"
+    )
+    res = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
+    _expect(res.returncode == 0 and "ok" in res.stdout, f"fold() : {res.stdout}{res.stderr}")
 
 
 def test_page_publique_sans_connexion():
@@ -120,6 +216,8 @@ def test_le_classement_suit_les_nouvelles_ventes():
     _sell(s["app"], "Alpha snack", 10)
     snacks = [n for n in _order() if n.endswith("snack")]
     _expect(snacks[0] == "Alpha snack", f"Alpha passe en tête après 10 ventes : {snacks}")
+    top = _cards()["catalogue-top"]
+    _expect("Alpha snack" in top and "Zzz biere" not in top, f"la carte suit aussi : {top}")
 
 
 def test_vente_annulee_ne_compte_pas():

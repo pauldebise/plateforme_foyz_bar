@@ -9,6 +9,9 @@ from app.utils import ARTICLE_TYPES, CAMPUSSES, HIDDEN_PUBLIC_TYPES, utcnow
 
 bp = Blueprint("public", __name__)
 
+# Taille de la carte « les plus vendus » en tête du catalogue public.
+PUBLIC_TOP_COUNT = 10
+
 
 @bp.route("/")
 def home():
@@ -57,16 +60,22 @@ def catalogue():
     # étudiants trouvent vite ce qu'ils cherchent (même classement, mis en cache,
     # que la caisse). Le tri est stable : les articles sans vente récente
     # restent classés par nom, à la suite.
-    rank_of = {aid: i for i, aid in enumerate(top_article_ids(campus))}
+    ranking = top_article_ids(campus)
+    rank_of = {aid: i for i, aid in enumerate(ranking)}
     articles.sort(key=lambda a: rank_of.get(a.id, len(rank_of)))
     grouped = {}
+    priced = {}
     for a in articles:
         price = _public_price(a, taps)
         if price is None:
             continue
+        priced[a.id] = (a, price)
         grouped.setdefault(a.article_type, []).append((a, price))
     ordered = sorted(grouped.items(), key=lambda kv: list(ARTICLE_TYPES).index(kv[0]))
-    return render_template("public/catalogue.html", grouped=ordered, campus=campus)
+    # Coup d'œil rapide : les plus vendus toutes catégories confondues, parmi les
+    # seuls articles affichés au public (jamais d'article sans vente récente).
+    top = [priced[aid] for aid in ranking if aid in priced][:PUBLIC_TOP_COUNT]
+    return render_template("public/catalogue.html", grouped=ordered, top=top, campus=campus)
 
 
 def _public_price(article, taps):

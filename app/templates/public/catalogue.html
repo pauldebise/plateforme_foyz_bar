@@ -12,11 +12,39 @@
 </div>
 
 {% if grouped %}
-<p class="text-muted small mb-3">{{ _("Dans chaque catégorie, les articles les plus vendus ces derniers temps sont en premier.") }}</p>
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+  <p class="text-muted small mb-0">{{ _("Dans chaque catégorie, les articles les plus vendus ces derniers temps sont en premier.") }}</p>
+  <div class="input-group input-group-sm" id="catalogue-search-box" style="max-width: 260px;" hidden>
+    <span class="input-group-text"><i class="bi bi-search"></i></span>
+    <input id="catalogue-search" type="search" class="form-control" placeholder="{{ _('Rechercher un article…') }}" aria-label="{{ _('Rechercher un article') }}" autocomplete="off" maxlength="100">
+  </div>
+</div>
+{% endif %}
+
+{% if top %}
+  <div class="card mb-4 border-primary catalogue-card" id="catalogue-top">
+    <div class="card-header"><i class="bi bi-fire"></i> {{ _("Les %(n)s plus vendus", n=top|length) }}</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 catalogue-top-table">
+          <tbody>
+            {% for a, price in top %}
+            <tr class="catalogue-row" data-search="{{ a.name }} {{ ARTICLE_TYPES[a.article_type] }}">
+              <td class="text-muted">{{ loop.index }}</td>
+              <td class="catalogue-name">{{ a.name }} <span class="text-muted small d-block d-sm-inline"><span class="d-none d-sm-inline">· </span>{{ ARTICLE_TYPES[a.article_type] }}</span></td>
+              <td class="text-muted">{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
+              <td class="text-end fw-bold">{{ price|eur }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 {% endif %}
 
 {% for type, items in grouped %}
-  <div class="card mb-4">
+  <div class="card mb-4 catalogue-card" id="cat-{{ type }}">
     <div class="card-header">{{ ARTICLE_TYPES[type] }}</div>
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -26,8 +54,8 @@
           </thead>
           <tbody>
             {% for a, price in items %}
-            <tr>
-              <td>{{ a.name }}</td>
+            <tr class="catalogue-row" data-search="{{ a.name }} {{ ARTICLE_TYPES[type] }}">
+              <td class="catalogue-name">{{ a.name }}</td>
               <td class="text-muted">{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
               <td class="text-end fw-bold">{{ price|eur }}</td>
             </tr>
@@ -40,4 +68,10 @@
 {% else %}
   <p class="text-muted">{{ _("Le catalogue est vide pour le moment.") }}</p>
 {% endfor %}
+
+<p id="catalogue-none" class="text-muted text-center py-4" hidden>{{ _("Aucun article ne correspond à cette recherche.") }}</p>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ static_url('js/catalogue.js') }}"></script>
 {% endblock %}

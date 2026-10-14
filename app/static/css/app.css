@@ -186,6 +186,16 @@ body.has-mobile-pay-bar .main-area { padding-bottom: 7.5rem; }
    ou moins longs). La colonne Article absorbe l'espace restant. */
 .catalogue-table th:nth-child(2), .catalogue-table td:nth-child(2) { width: 110px; }
 .catalogue-table th:nth-child(3), .catalogue-table td:nth-child(3) { width: 150px; }
+/* Carte « les plus vendus » : une colonne de rang en plus ; volume et prix
+   restent alignés sur ceux des tableaux de catégorie. */
+.catalogue-top-table td:nth-child(1) { width: 2.5rem; }
+.catalogue-top-table td:nth-child(3) { width: 110px; }
+.catalogue-top-table td:nth-child(4) { width: 150px; }
+@media (max-width: 575.98px) {
+  .catalogue-top-table td:nth-child(1) { width: 1.75rem; padding-right: 0; }
+  .catalogue-top-table td:nth-child(3) { width: 3.5rem; padding-left: 0; padding-right: 0; }
+  .catalogue-top-table td:nth-child(4) { width: 4.5rem; white-space: nowrap; }
+}
 
 .postit {
   border-radius: 6px;
