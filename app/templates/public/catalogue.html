@@ -11,6 +11,10 @@
   </div>
 </div>
 
+{% if grouped %}
+<p class="text-muted small mb-3">{{ _("Dans chaque catégorie, les articles les plus vendus ces derniers temps sont en premier.") }}</p>
+{% endif %}
+
 {% for type, items in grouped %}
   <div class="card mb-4">
     <div class="card-header">{{ ARTICLE_TYPES[type] }}</div>

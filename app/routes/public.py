@@ -4,6 +4,7 @@ from sqlalchemy import select
 from app.extensions import db
 from app.models import Article, Event, Note, Tap, UsefulLink
 from app.services.settings import get_setting, int_setting
+from app.services.stats import top_article_ids
 from app.utils import ARTICLE_TYPES, CAMPUSSES, HIDDEN_PUBLIC_TYPES, utcnow
 
 bp = Blueprint("public", __name__)
@@ -52,6 +53,12 @@ def catalogue():
         .order_by(Article.name)
     ).all()
     taps = {t.number: t for t in db.session.scalars(select(Tap))}
+    # Tendance : les articles les plus vendus récemment en premier, pour que les
+    # étudiants trouvent vite ce qu'ils cherchent (même classement, mis en cache,
+    # que la caisse). Le tri est stable : les articles sans vente récente
+    # restent classés par nom, à la suite.
+    rank_of = {aid: i for i, aid in enumerate(top_article_ids(campus))}
+    articles.sort(key=lambda a: rank_of.get(a.id, len(rank_of)))
     grouped = {}
     for a in articles:
         price = _public_price(a, taps)
