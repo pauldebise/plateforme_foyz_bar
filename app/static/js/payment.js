@@ -11,6 +11,15 @@ const GATEWAY = CONFIG.dataset.gateway === '1';
 let allowStandard = CONFIG.dataset.allowStandard !== '0';
 let catalogSignature = JSON.stringify(CATALOG);
 
+// Même règle que fold_text (app/utils.py) : minuscules et sans accents, pour
+// que « biere » retrouve « Bière » sans avoir à taper les accents.
+const FOLD_EXTRA = { œ: 'oe', æ: 'ae', ø: 'o', ł: 'l', đ: 'd', ı: 'i' };
+const fold = (text) => String(text || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[œæøłđı]/g, (c) => FOLD_EXTRA[c]);
+
 const $ = (id) => document.getElementById(id);
 const els = {
   search: $('student-search'),
@@ -248,11 +257,11 @@ function standardCards() {
 
 function renderCatalog() {
   if (!els.catalog) return;
-  const q = els.catalogSearch.value.trim().toLowerCase();
+  const q = fold(els.catalogSearch.value.trim());
   els.catalog.innerHTML = '';
   if (q) {
     const matches = CATALOG
-      .filter((a) => a.name.toLowerCase().includes(q))
+      .filter((a) => fold(a.name).includes(q))
       .sort(popularitySort);
     clearCatalogActive();
     if (!matches.length) {

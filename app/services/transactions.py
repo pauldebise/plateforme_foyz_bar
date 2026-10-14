@@ -1,8 +1,9 @@
 import time
 from collections import defaultdict
 from datetime import timedelta
+from functools import lru_cache
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
@@ -25,6 +26,7 @@ from app.utils import (
     PAYMENT_METHODS,
     clamp_text,
     euros,
+    fold_text,
     utcnow,
 )
 
@@ -222,30 +224,34 @@ def _recent_activity(campus=None, days=45):
     return ranking
 
 
+@lru_cache(maxsize=16384)
+def _search_text(name, nickname, username):
+    """Texte normalisé d'un compte (nom, surnom, identifiant). Mémorisé par
+    contenu : la normalisation de milliers de comptes à chaque frappe coûte
+    cher, et un nom modifié donne simplement une nouvelle entrée."""
+    return fold_text("\n".join((name or "", nickname or "", username or "")))
+
+
 def search_students(query, campus=None, limit=15):
     q = (query or "").strip()
     ranking = _recent_activity(campus)
     # En tête : comptes les plus actifs récemment ; ensuite alphabétique.
     # La recherche porte sur le nom réel, le surnom et l'identifiant.
-    stmt = select(User.id, User.name, User.nickname)
-    if q:
-        # Chaque mot de la requête doit apparaître (dans n'importe quel ordre)
-        # dans le nom, le surnom ou l'identifiant : « prénom nom » retrouve
-        # donc un compte enregistré « nom prénom ».
-        tokens = [t for t in q.split() if t]
-        stmt = stmt.where(
-            and_(
-                *[
-                    or_(
-                        User.name.ilike(f"%{t}%"),
-                        User.nickname.ilike(f"%{t}%"),
-                        User.username.ilike(f"%{t}%"),
-                    )
-                    for t in tokens
-                ]
-            )
-        )
-    candidates = db.session.execute(stmt).all()
+    candidates = db.session.execute(select(User.id, User.name, User.nickname, User.username)).all()
+    # Chaque mot de la requête doit apparaître (dans n'importe quel ordre)
+    # dans le nom, le surnom ou l'identifiant : « prénom nom » retrouve donc un
+    # compte enregistré « nom prénom ». La comparaison ignore majuscules et
+    # accents (« lea » retrouve « Léa ») : elle se fait sur les textes
+    # normalisés, ce que SQL ne sait pas faire de la même façon sur SQLite et
+    # PostgreSQL. Un mot ne contient pas d'espace : le saut de ligne qui sépare
+    # les trois champs l'empêche de chevaucher deux champs.
+    tokens = fold_text(q).split()
+    if tokens:
+        candidates = [
+            row
+            for row in candidates
+            if all(t in _search_text(row.name, row.nickname, row.username) for t in tokens)
+        ]
 
     def rank_key(row):
         count, last_at = ranking.get(row.id, (0, None))

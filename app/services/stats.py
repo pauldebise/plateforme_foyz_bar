@@ -1,5 +1,4 @@
 import time
-import unicodedata
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -8,14 +7,7 @@ from sqlalchemy import Float, case, cast, exists, func, literal, select
 from app.extensions import db
 from app.models import Contribution, Transaction, TransactionLine, User
 from app.services.transactions import history_cutoff, ranking_generation
-from app.utils import ARTICLE_TYPES, to_paris, utcnow
-
-
-def _fold(value):
-    """Minuscule sans accents, pour une recherche insensible à la casse et
-    aux diacritiques."""
-    text = unicodedata.normalize("NFKD", str(value or "").casefold())
-    return "".join(ch for ch in text if not unicodedata.combining(ch))
+from app.utils import ARTICLE_TYPES, fold_text, to_paris, utcnow
 
 
 def _parse_date(value, end_of_day=False):
@@ -213,8 +205,8 @@ def students_stats(filters=None, search="", page=1, per_page=0):
     if search:
         # Chaque mot doit apparaître, dans n'importe quel ordre : « prénom nom »
         # retrouve un compte enregistré « nom prénom ».
-        needles = [t for t in _fold(search).split() if t]
-        result = [s for s in result if all(n in _fold(s["name"]) for n in needles)]
+        needles = [t for t in fold_text(search).split() if t]
+        result = [s for s in result if all(n in fold_text(s["name"]) for n in needles)]
     top = result[:10]
     if not per_page:
         return {"rows": result, "top": top, "total": len(result), "page": 1, "pages": 1}
@@ -273,13 +265,13 @@ def top_articles_stats(filters=None, search=""):
             }
         )
     if search:
-        needle = _fold(search)
+        needle = fold_text(search)
         articles = [
             a
             for a in articles
-            if needle in _fold(a["name"])
-            or needle in _fold(a["type"])
-            or needle in _fold(ARTICLE_TYPES.get(a["type"], ""))
+            if needle in fold_text(a["name"])
+            or needle in fold_text(a["type"])
+            or needle in fold_text(ARTICLE_TYPES.get(a["type"], ""))
         ]
     articles.sort(key=lambda a: (-a["qty"], -a["revenue"]))
     return articles

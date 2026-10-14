@@ -144,6 +144,18 @@ def safe_color(value, default="#804db3"):
     return value if _HEX_COLOR_RE.match(value) else default
 
 
+_FOLD_EXTRA = str.maketrans({"œ": "oe", "æ": "ae", "ø": "o", "ł": "l", "đ": "d", "ı": "i"})
+
+
+def fold_text(value):
+    """Texte comparable : minuscules, sans accents. « Léa », « LÉA » et « lea »
+    donnent le même résultat. Sert à toutes les recherches de la caisse ; le
+    pendant côté navigateur est `fold()` dans static/js/payment.js."""
+    text = unicodedata.normalize("NFKD", str(value or "").casefold())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return text.translate(_FOLD_EXTRA)
+
+
 def slug_username(value):
     """Identifiant de connexion (users.username) : minuscule, sans accents,
     tout séparateur ramené à un point — ex : "Marie Claire Dupont" ->
