@@ -423,6 +423,12 @@ function addToCart(article) {
   cart.set(article.id, (cart.get(article.id) || 0) + 1);
   lastArticleId = article.id;
   renderCart();
+  // Clic souris comme touche Entrée : la recherche est vidée après l'ajout,
+  // pour pouvoir taper directement l'article suivant.
+  if (els.catalogSearch && els.catalogSearch.value) {
+    els.catalogSearch.value = '';
+    renderCatalog();
+  }
   if (els.catalogSearch) els.catalogSearch.focus({ preventScroll: true });
 }
 
@@ -719,8 +725,6 @@ if (els.catalogSearch) {
       const a = row ? CATALOG.find((x) => String(x.id) === String(row.dataset.id)) : null;
       if (a) {
         addToCart(a);
-        els.catalogSearch.value = '';
-        renderCatalog();
       } else if (!els.catalogSearch.value.trim() && payButtons().some((b) => !b.disabled)) {
         pay();
       }

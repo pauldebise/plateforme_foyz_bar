@@ -538,6 +538,25 @@ def test_i_modale_decouvert():
     _expect("$('admin-form').addEventListener('submit'" in payment_js, "Entrée valide la saisie")
 
 
+def test_j_recherche_articles_videe_a_l_ajout():
+    """Ajout d'un article — clic souris comme Entrée : la recherche est vidée
+    pour taper directement l'article suivant."""
+    app = create_app()
+    client = app.test_client()
+    _login(client)
+    page = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect('id="catalog-search"' in page, "champ de recherche d'articles présent")
+
+    js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    add = js[js.index("function addToCart(") : js.index("function renderCart()")]
+    _expect("els.catalogSearch.value = ''" in add, "recherche vidée à l'ajout")
+    _expect("renderCatalog();" in add, "catalogue re-affiché après l'ajout")
+    _expect(
+        "row.addEventListener('click', () => addToCart(a))" in js, "clic souris : ajout au panier"
+    )
+    _expect("addToCart(a);" in js, "même ajout pour la souris et le clavier")
+
+
 def main():
     tests = [
         (name, fn)
