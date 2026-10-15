@@ -3,16 +3,26 @@
     python -m tests.run_all                  # SQLite (toutes les suites)
     python -m tests.run_all --postgres URL   # PostgreSQL 16 (caisse, API, auth)
     python -m tests.run_all suite [suite…]   # sous-ensemble (noms de modules)
+    python -m tests.run_all --jobs 8         # 8 suites en parallèle (défaut : 4)
 
 Chaque suite tourne dans un processus séparé, avec sa propre base. En mode
 PostgreSQL, le schéma public est recréé puis migré (alembic upgrade head)
 avant chaque suite : la base cible est jetable, jamais une base réelle.
+
+Parallélisme (--jobs N) : les suites tournent par lots de N processus. En mode
+PostgreSQL, chaque emplacement utilise sa propre base (<base>_w0, <base>_w1…),
+créée au besoin. Les suites sensibles au temps (charge, performance,
+concurrence) tournent seules, après les autres, pour ne pas fausser leurs
+mesures. `--jobs 1` rétablit l'exécution séquentielle.
 """
 
 import argparse
 import os
+import queue
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +89,10 @@ POSTGRES_SUITES = [
 ]
 
 
+# Mesures de temps ou de concurrence : exécutées seules.
+SERIAL_SUITES = {"tests.test_charge", "tests.test_performance", "tests.test_concurrency"}
+
+
 def _run(module, extra_env):
     env = {**os.environ, **extra_env}
     res = subprocess.run(
@@ -94,6 +108,24 @@ def _run(module, extra_env):
 def _last_line(text):
     lines = [ln for ln in text.splitlines() if ln.strip()]
     return lines[-1] if lines else "(aucune sortie)"
+
+
+def _slot_url(url, slot):
+    """URL de la base dédiée à un emplacement ; la crée si nécessaire."""
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.engine import make_url
+
+    base = make_url(url)
+    target = base.set(database=f"{base.database}_w{slot}")
+    admin = create_engine(base, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": target.database}
+        ).scalar()
+        if not exists:
+            conn.execute(text(f'CREATE DATABASE "{target.database}"'))
+    admin.dispose()
+    return target.render_as_string(hide_password=False)
 
 
 def _reset_postgres(url):
@@ -120,6 +152,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Suites de tests Foy'z & Bar")
     parser.add_argument("suites", nargs="*", help="modules à exécuter (défaut : tous)")
     parser.add_argument("--postgres", metavar="URL", help="base PostgreSQL de test jetable")
+    parser.add_argument(
+        "--jobs",
+        "-j",
+        type=int,
+        default=4,
+        help="suites en parallèle (défaut : 4 ; 1 = séquentiel)",
+    )
     args = parser.parse_args(argv)
 
     if args.postgres:
@@ -130,30 +169,61 @@ def main(argv=None):
         mode = "SQLite"
     print(f"Mode {mode} — {len(suites)} suite(s)\n")
 
+    jobs = max(1, args.jobs)
     failures = []
-    for module in suites:
+    out_lock = threading.Lock()
+    slots = queue.Queue()
+    for i in range(jobs):
+        slots.put(i)
+
+    def run_suite(module):
+        slot = slots.get()
+        try:
+            return _run_suite(module, slot)
+        finally:
+            slots.put(slot)
+
+    def _run_suite(module, slot):
         extra = {}
+        report = []
+        ok = True
         if args.postgres:
+            url = args.postgres if jobs == 1 else None
             try:
-                _reset_postgres(args.postgres)
+                url = url or _slot_url(args.postgres, slot)
+                _reset_postgres(url)
             except Exception as exc:
-                print(f"  ERREUR {module}: préparation PostgreSQL impossible ({exc})")
-                failures.append(module)
-                continue
-            migration = _migrate_postgres(args.postgres)
+                return False, [f"  ERREUR {module}: préparation PostgreSQL impossible ({exc})"]
+            migration = _migrate_postgres(url)
             if migration.returncode != 0:
-                print(f"  ERREUR {module}: alembic upgrade head a échoué")
-                print(migration.stdout + migration.stderr)
-                failures.append(module)
-                continue
-            extra["FOYZ_TEST_DATABASE_URL"] = args.postgres
+                return False, [
+                    f"  ERREUR {module}: alembic upgrade head a échoué",
+                    migration.stdout + migration.stderr,
+                ]
+            extra["FOYZ_TEST_DATABASE_URL"] = url
         res = _run(module, extra)
-        print(f"  {module:32} {_last_line(res.stdout)}")
+        report.append(f"  {module:32} {_last_line(res.stdout)}")
         if res.returncode != 0:
-            failures.append(module)
-            print(res.stdout)
+            ok = False
+            report.append(res.stdout)
             if res.stderr.strip():
-                print(res.stderr)
+                report.append(res.stderr)
+        return ok, report
+
+    def record(module, result):
+        ok, report = result
+        with out_lock:
+            print("\n".join(report), flush=True)
+        if not ok:
+            failures.append(module)
+
+    parallel = [m for m in suites if jobs == 1 or m not in SERIAL_SUITES]
+    serial = [m for m in suites if m not in parallel]
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        for module, result in zip(parallel, pool.map(run_suite, parallel), strict=True):
+            record(module, result)
+    for module in serial:
+        record(module, _run_suite(module, 0))
 
     print()
     if failures:
