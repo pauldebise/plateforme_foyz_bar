@@ -477,7 +477,7 @@ def create_app():
             g.scope = "public"
 
     # Assets servis localement (Bootstrap, Icons, Chart.js) : plus aucune
-    # dépendance CDN, donc une CSP stricte et un fonctionnement hors ligne.
+    # dépendance CDN, donc une CSP stricte.
     CSP = (
         "default-src 'self'; "
         "script-src 'self'; "
@@ -489,7 +489,6 @@ def create_app():
         "frame-ancestors 'self'; "
         "base-uri 'self'; "
         "form-action 'self'; "
-        "worker-src 'self'; "
         "manifest-src 'self'; "
         "object-src 'none'"
     )
@@ -646,15 +645,13 @@ def create_app():
 
     @app.get("/sw.js")
     def service_worker():
-        """Service worker à la racine (portée complète) : jamais mis en cache."""
+        """Pierre tombale de l'ancienne coquille hors ligne (P10-6, retiré le
+        16/10/2026) : les postes l'ayant installée récupèrent ce fichier, qui
+        purge ses caches et se désenregistre. Jamais mis en cache."""
         response = send_from_directory(app.static_folder, "js/sw.js")
         response.headers["Service-Worker-Allowed"] = "/"
         response.headers["Cache-Control"] = "no-cache"
         return response
-
-    @app.get("/hors-ligne")
-    def offline_page():
-        return render_template("public/hors_ligne.html")
 
     @app.route("/uploads/<path:filename>")
     def uploaded_file(filename):

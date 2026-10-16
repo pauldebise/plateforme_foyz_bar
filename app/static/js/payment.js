@@ -545,16 +545,10 @@ async function pay(adminPassword) {
     const res = await apiFetch(GATEWAY ? location.pathname + '/encaisser' : '/api/purchase', { json: payload });
     showSuccess(res.total, res.balances);
   } catch (e) {
-    // Échec réseau (fetch rejette) : la vente est mise en file locale et sera
-    // rejouée avec la même clé d'idempotence — le serveur ne débitera qu'une fois.
-    if (e instanceof TypeError && window.FoyzOffline && window.FoyzOffline.queueSale) {
-      payload.idempotency_key = payload.idempotency_key || orderKeyFor(payload);
-      window.FoyzOffline.queueSale(
-        GATEWAY ? location.pathname + '/encaisser' : '/api/purchase',
-        payload
-      );
-      resetCartState();
-      toast('Hors ligne : vente enregistrée sur ce poste, transmission au retour du réseau.');
+    // Panne réseau (fetch rejette) : l'encaissement exige le serveur, le panier
+    // reste intact pour réessayer une fois la connexion rétablie.
+    if (e instanceof TypeError) {
+      toast('Pas de connexion au serveur : encaissement impossible. Vérifiez le réseau puis réessayez.');
       return;
     }
     if (e.code === 'admin_password_required' && els.adminModal) {

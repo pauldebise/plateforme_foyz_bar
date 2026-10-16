@@ -1,15 +1,14 @@
-"""Tests PWA et mode hors ligne de la caisse (P10-6).
+"""Tests PWA (manifeste installable) et retrait de l'encaissement hors ligne.
 
 Exécutable sans pytest : python -m tests.test_pwa
 
 Couvre :
 - manifeste installable (nom, start_url, icônes 192/512, raccourcis) ;
-- service worker servi à la racine (portée complète, jamais mis en cache)
-  et liste de pré-cache entièrement résolvable ;
-- page /hors-ligne ;
-- accroches de la file d'attente (IndexedDB, clé d'idempotence, bannière,
-  bouton Synchroniser) et CSP (worker-src, manifest-src) ;
-- icônes PNG valides aux bonnes dimensions.
+- icônes PNG valides aux bonnes dimensions ;
+- retrait complet du mode hors ligne : plus de file IndexedDB, plus de page
+  /hors-ligne, la caisse avertit en cas de panne réseau et conserve le panier ;
+- /sw.js réduit à une pierre tombale : les anciens postes désenregistrent la
+  coquille hors ligne et purgent ses caches, sans plus rien intercepter.
 """
 
 import json
@@ -18,6 +17,7 @@ import re
 import struct
 import sys
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,9 +33,13 @@ os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
 os.environ.pop("FLASK_ENV", None)
 
 from app import create_app  # noqa: E402
+from app.extensions import db  # noqa: E402
+from app.models import Event  # noqa: E402
+from app.utils import utcnow  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
 STATIC = ROOT / "app" / "static"
+TEMPLATES = ROOT / "app" / "templates"
 
 
 def _expect(cond, label):
@@ -79,44 +83,6 @@ def test_manifest_installable():
     _expect(shortcuts.get("Caisse") == "/equipe/paiement", "raccourci caisse")
 
 
-def test_service_worker():
-    app = create_app()
-    res = app.test_client().get("/sw.js")
-    _expect(res.status_code == 200, f"service worker servi ({res.status_code})")
-    _expect(
-        res.headers.get("Service-Worker-Allowed") == "/",
-        "portée racine autorisée",
-    )
-    _expect(res.headers.get("Cache-Control") == "no-cache", "service worker non mis en cache")
-    body = res.get_data(as_text=True)
-    _expect("javascript" in res.headers["Content-Type"], "type JavaScript")
-    _expect("'install'" in body and "'fetch'" in body, "événements install/fetch")
-    _expect("VERSION" in body and "/hors-ligne" in body, "pré-cache versionné")
-    _expect("/equipe/historique" not in body, "aucune page sensible pré-cachée")
-
-
-def test_precache_urls_resolvent():
-    app = create_app()
-    client = app.test_client()
-    body = (STATIC / "js" / "sw.js").read_text(encoding="utf-8")
-    precache = re.search(r"const PRECACHE = \[(.*?)\];", body, re.S)
-    _expect(precache is not None, "liste PRECACHE présente")
-    urls = re.findall(r"'([^']+)'", precache.group(1))
-    _expect(len(urls) >= 10, f"liste de pré-cache fournie ({len(urls)})")
-    for url in urls:
-        res = client.get(url)
-        _expect(res.status_code == 200, f"pré-cache résolvable : {url} ({res.status_code})")
-
-
-def test_offline_page():
-    app = create_app()
-    res = app.test_client().get("/hors-ligne")
-    _expect(res.status_code == 200, f"page hors ligne servie ({res.status_code})")
-    page = res.get_data(as_text=True)
-    _expect("Pas de connexion" in page, "message hors ligne")
-    _expect("caisse" in page.lower(), "renvoi vers la caisse")
-
-
 def test_icones_png():
     for size in (192, 512):
         data = (STATIC / "icons" / f"icon-{size}.png").read_bytes()
@@ -125,34 +91,64 @@ def test_icones_png():
         _expect((width, height) == (size, size), f"dimensions {size}x{size}")
 
 
-def test_accroches_hors_ligne_et_csp():
-    offline_js = (STATIC / "js" / "offline.js").read_text(encoding="utf-8")
-    for token in (
-        "indexedDB",
-        "foyz-offline",
-        "queueSale",
-        "X-CSRFToken",
-        "navigator.onLine",
-        "data-offline-flush",
-        "register('/sw.js')",
-    ):
-        _expect(token in offline_js, f"offline.js : {token}")
-    payment_js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
-    _expect("FoyzOffline.queueSale" in payment_js, "la caisse met en file les échecs réseau")
-    _expect("resetCartState" in payment_js, "panier réinitialisé après mise en file")
+def test_service_worker_pierre_tombale():
+    app = create_app()
+    res = app.test_client().get("/sw.js")
+    _expect(res.status_code == 200, f"pierre tombale servie ({res.status_code})")
+    _expect(
+        res.headers.get("Service-Worker-Allowed") == "/",
+        "portée racine autorisée",
+    )
+    _expect(res.headers.get("Cache-Control") == "no-cache", "service worker non mis en cache")
+    body = res.get_data(as_text=True)
+    _expect("javascript" in res.headers["Content-Type"], "type JavaScript")
+    for token in ("skipWaiting", "caches.delete", "unregister"):
+        _expect(token in body, f"sw.js : {token}")
+    _expect("respondWith" not in body, "plus aucune interception réseau")
+    _expect("caches.open" not in body, "plus aucune mise en cache")
 
+
+def test_encaissement_hors_ligne_retire():
+    _expect(not (STATIC / "js" / "offline.js").exists(), "offline.js supprimé")
+    _expect(
+        not (TEMPLATES / "public" / "hors_ligne.html").exists(),
+        "page hors ligne supprimée",
+    )
     app = create_app()
     client = app.test_client()
+    _expect(client.get("/hors-ligne").status_code == 404, "route /hors-ligne retirée")
+
+    payment_js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    _expect("FoyzOffline" not in payment_js, "plus de file locale dans la caisse")
+    _expect("queueSale" not in payment_js, "plus de mise en file des ventes")
+    _expect("instanceof TypeError" in payment_js, "panne réseau traitée à part")
+
     _expect(_login(client).status_code == 302, "connexion administrateur")
-    res = client.get("/equipe/paiement")
-    page = res.get_data(as_text=True)
-    _expect("offline-banner" in page and "data-offline-flush" in page, "bannière hors ligne")
-    _expect("js/offline.js" in page, "file d'attente chargée sur la caisse")
-    _expect('rel="manifest"' in page, "manifeste lié")
-    _expect('name="theme-color"' in page, "theme-color présent")
-    csp = res.headers["Content-Security-Policy"]
-    _expect("worker-src 'self'" in csp, "CSP worker-src")
+    caisse = client.get("/equipe/paiement")
+    page = caisse.get_data(as_text=True)
+    _expect("offline-banner" not in page, "bannière hors ligne retirée de la caisse")
+    _expect("data-offline-flush" not in page, "bouton Synchroniser retiré")
+    _expect("js/offline.js" not in page, "offline.js plus chargé")
+    _expect('rel="manifest"' in page, "manifeste toujours lié")
+    csp = caisse.headers["Content-Security-Policy"]
     _expect("manifest-src 'self'" in csp, "CSP manifest-src")
+    _expect("worker-src" not in csp, "CSP worker-src retirée (plus de service worker enregistré)")
+
+    with app.app_context():
+        ev = Event(
+            name="Événement PWA",
+            campus="brest",
+            starts_at=utcnow(),
+            ends_at=utcnow() + timedelta(hours=3),
+            token="tok-pwa-test",
+        )
+        db.session.add(ev)
+        db.session.commit()
+    gw = client.get("/passerelle/tok-pwa-test")
+    _expect(gw.status_code == 200, f"passerelle servie ({gw.status_code})")
+    gw_page = gw.get_data(as_text=True)
+    _expect("offline-banner" not in gw_page, "bannière hors ligne retirée de la passerelle")
+    _expect("js/offline.js" not in gw_page, "offline.js plus chargé sur la passerelle")
 
 
 def main():

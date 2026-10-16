@@ -133,7 +133,7 @@ def test_legacy_password_audit_conversion_and_purge():
         )
 
 
-def test_security_headers_and_offline_assets():
+def test_security_headers_and_local_assets():
     app = create_app()
     client = app.test_client()
 

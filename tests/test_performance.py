@@ -392,11 +392,11 @@ def test_c_cache_and_compression():
     )
     _expect("Accept-Encoding" in (compressed.headers.get("Vary") or ""), "Vary: Accept-Encoding")
 
-    # Utilisable sans Internet : la page ne référence aucun hôte externe.
+    # Aucun hôte externe : tous les assets sont auto-hébergés (CSP stricte).
     page = client.get("/connexion").get_data(as_text=True)
     _expect(
         'src="http' not in page and 'href="http' not in page,
-        "aucune ressource externe (hors ligne)",
+        "aucune ressource externe (assets auto-hébergés)",
     )
 
 

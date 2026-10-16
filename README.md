@@ -7,9 +7,9 @@ conformément au cahier des charges (`docs/main.tex`).
 - Backend : **Python 3 / Flask 3** (architecture modulaire en blueprints)
 - Base de données : **SQLAlchemy 2** — SQLite en développement, PostgreSQL en production
 - Front-end : **Bootstrap 5 + Chart.js** auto-hébergés (`app/static/vendor/`, aucune
-  dépendance CDN), templates Jinja2, JavaScript vanilla ; **PWA installable** avec
-  service worker et file d'attente hors ligne pour la caisse (les ventes rejouées
-  sont dédupliquées par la clé d'idempotence)
+  dépendance CDN), templates Jinja2, JavaScript vanilla ; **PWA installable**
+  (manifeste et icônes) ; l'encaissement exige un accès réseau — aucune vente
+  n'est stockée ni rejouée sur le poste
 - Sécurité : sessions signées, CSRF, hachage des mots de passe (scrypt), anti-bruteforce,
   expiration de session par inactivité, politique de mot de
   passe, journal d'audit, mots de passe administrateur pour les opérations sensibles
@@ -607,17 +607,16 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
   restent spécifiques à SQLite (fichiers sources, copies locales) ; les autres
   tournent sur les deux moteurs.
 
-### 7.6 PWA et mode hors ligne de la caisse
+### 7.6 PWA installable, encaissement en ligne uniquement
 
-- Manifeste `/manifest.webmanifest` et service worker `/sw.js` (portée racine,
-  jamais mis en cache) : l'application est installable sur mobile/tablette et la
-  coquille de la caisse (page + assets) est conservée pour un rechargement hors
-  ligne. Les autres pages authentifiées ne sont **pas** mises en cache.
-- Encaissements hors ligne : `app/static/js/offline.js` met les ventes en file
-  dans IndexedDB avec la clé d'idempotence générée par la caisse, puis les rejoue
-  au retour du réseau ou via le bouton « Synchroniser ». Une vente refusée par
-  le serveur (solde, blacklist, session expirée) reste affichée en erreur pour
-  traitement manuel — aucune vente n'est perdue ni comptée deux fois.
-- Limites assumées : la recherche d'étudiants et le solde en temps réel ne sont
-  pas disponibles hors ligne (le serveur reste seul juge des soldes) ; vérifier
-  l'installation sur un poste réel et un navigateur cible.
+- Manifeste `/manifest.webmanifest` : l'application est installable sur mobile et
+  tablette (icônes, raccourcis caisse/prix).
+- **Pas d'encaissement hors ligne** (file P10-6 retirée le 16/10/2026, décision de
+  Paul) : en cas de panne réseau, la caisse affiche « encaissement impossible » et
+  conserve le panier pour réessayer ; aucune vente n'est mise en file sur le poste.
+  La clé d'idempotence côté serveur reste : un double clic ou une retentative
+  réseau ne débite jamais deux fois.
+- `/sw.js` ne sert plus qu'une **pierre tombale** : les postes qui avaient installé
+  l'ancienne coquille hors ligne la remplacent à la prochaine visite, purgent les
+  caches et se désenregistrent. À conserver tant que d'anciens postes peuvent
+  demander une mise à jour.

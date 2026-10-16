@@ -427,11 +427,16 @@ def test_b2_jeton_absent_des_journaux():
     _expect(MaskingLogger is not None, "journal d'accès Gunicorn masquant disponible")
 
 
-def test_b2_service_worker_sans_page_passerelle():
+def test_b2_service_worker_retire():
+    """L'ancien service worker ne cache plus rien : il ne reste qu'une pierre
+    tombale qui purge ses caches et se désenregistre sur les anciens postes."""
     body = (ROOT / "app" / "static" / "js" / "sw.js").read_text(encoding="utf-8")
-    _expect("startsWith('/passerelle/')" not in body, "page passerelle jamais mise en cache")
-    _expect("startsWith('/equipe/paiement')" in body, "caisse équipe toujours disponible")
-    _expect("'foyz-v1'" not in body, "version du cache incrémentée (purge des anciennes copies)")
+    _expect("respondWith" not in body, "plus d'interception des requêtes")
+    _expect("caches.open" not in body, "plus aucune mise en cache (pages sensibles incluses)")
+    _expect(
+        "caches.delete" in body and "unregister" in body,
+        "purge des caches et désenregistrement",
+    )
 
 
 # --------------------------------------------------------------------------- B3
