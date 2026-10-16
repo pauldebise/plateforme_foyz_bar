@@ -237,8 +237,11 @@ def test_encrypted_uploads_restore():
 def test_purge_archives_and_cli():
     source = _tmpdir()
     archives = source / "archives"
+    # Dates relatives à l'heure réelle : le CLI purge sans `now`, une date fixe
+    # finirait par avoir plus de 30 jours (test devenu rouge le 16/10/2026).
+    now = datetime.now(UTC)
     old = archives / "20260101-000000"
-    recent = archives / "20260916-084833"
+    recent = archives / (now - timedelta(days=1)).strftime("%Y%m%d-%H%M%S")
     for directory in (old, recent):
         directory.mkdir(parents=True)
         (directory / "brest.sql").write_bytes(b"donnees personnelles")
@@ -246,7 +249,7 @@ def test_purge_archives_and_cli():
     stray.mkdir()
     (stray / "lisez-moi.txt").write_text("à conserver", encoding="utf-8")
 
-    removed = purge_archives(source, 30, now=datetime(2026, 9, 17, tzinfo=UTC), log=_quiet)
+    removed = purge_archives(source, 30, now=now, log=_quiet)
     _expect(str(old) in removed, "archive ancienne détruite")
     _expect(not old.exists(), "archive ancienne absente du disque")
     _expect(recent.exists(), "archive récente conservée")
@@ -267,7 +270,7 @@ def test_purge_archives_and_cli():
 
     old2 = archives / "20200101-000000"
     old2.mkdir()
-    purge_archives(source, 30, dry_run=True, now=datetime(2026, 9, 17, tzinfo=UTC), log=_quiet)
+    purge_archives(source, 30, dry_run=True, now=now, log=_quiet)
     _expect(old2.exists(), "simulation n'efface rien")
 
 
