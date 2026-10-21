@@ -38,6 +38,8 @@ Foyz_plateforme/
 │   │   ├── stats.py           #   Statistiques de consommation
 │   │   ├── treasury.py        #   Trésorerie mensuelle (12 mois glissants)
 │   │   ├── catalog.py         #   Gestion fûts/tireuses, génération des articles
+│   │   ├── events.py          #   Événements en cours (fenêtre caisse/passerelle)
+│   │   ├── api_tokens.py      #   Jetons d'API : empreinte, portées, limite 1 req/s
 │   │   ├── audit.py           #   Journal d'audit des actions d'administration
 │   │   ├── passwords.py       #   Politique de mot de passe
 │   │   └── health.py          #   Contrôles /health + tableau de bord santé
@@ -47,7 +49,8 @@ Foyz_plateforme/
 │   │   ├── team.py            #   /equipe/* (paiement, opérations, historique, stats…)
 │   │   ├── admin.py           #   /admin/* (comptes, équipe, articles, tireuses, événements…)
 │   │   ├── gateway.py         #   /passerelle/<token> (encaissement événement)
-│   │   └── api.py             #   /api/* (JSON pour l'interface de caisse et les graphiques)
+│   │   ├── api.py             #   /api/* (JSON pour l'interface de caisse et les graphiques)
+│   │   └── api_v1.py          #   /api/v1/* (API externe : consommations et prix)
 │   ├── templates/             # Jinja2 (public/, team/, admin/, gateway/, errors/)
 │   └── static/                # CSS + JS (caisse, recherche d'étudiants, opérations)
 ├── migration/                  # Module ETL de bascule nocturne (voir §6)
@@ -55,7 +58,7 @@ Foyz_plateforme/
 ├── ops/                       # Sauvegarde/restauration (python -m ops.backup, §7)
 ├── bdd_a_migrer/               # Dumps des anciennes bases (jamais versionnés)
 ├── tests/                     # Suites exécutables sans pytest (python -m tests.<module>)
-├── docs/                      # Cahier des charges + politique de confidentialité
+├── docs/                      # Cahier des charges, confidentialité, API externe
 ├── uploads/                   # Fichiers téléversés (affiches, logos, PDF)
 ├── instance/                  # Base SQLite (créée à l'exécution)
 ├── run.py / wsgi.py           # Lancement dev / point d'entrée Gunicorn
@@ -242,7 +245,10 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 ## 4. Sécurité
 
 - Mots de passe hachés (`werkzeug`, scrypt par défaut) ; identifiants jamais en clair.
-- Protection **CSRF** sur tous les formulaires et requêtes API (jeton de session).
+- Protection **CSRF** sur tous les formulaires et sur les requêtes de l'interface
+  (jeton de session). L'API externe `/api/v1` est authentifiée par un jeton
+  porteur dans l'en-tête `Authorization`, jamais par cookie : le CSRF ne s'y
+  applique pas (un navigateur n'ajoute pas cet en-tête).
 - Anti-bruteforce sur la connexion (voir ci-dessous) : IP réelle =
   `CF-Connecting-IP` si `TRUSTED_PROXY=cloudflare`, sinon `remote_addr` ;
   `X-Forwarded-For` brut n'est jamais utilisé.
@@ -264,6 +270,11 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
   visible : il détermine le tarif), avec limiteurs dédiés ; validité bornée à 72 h
   après le début de l'événement ; page absente du cache du Service Worker ; jeton
   masqué dans les journaux (application et accès Gunicorn, `app/gunicorn_logging.py`).
+- **API externe** (`docs/API.md`) : jetons créés uniquement par le compte
+  `admin` depuis `/admin/api`, stockés sous forme d'empreinte SHA-256, limités à
+  un campus, une fenêtre de lecture et une sélection d'articles/fûts ; une
+  requête par seconde ; aucune donnée nominative ; prix standards uniquement,
+  écritures par lot et journalisées dans l'audit.
 - Montants saisis (rechargement, retrait, transfert) : un seul parseur
   (`app.utils.parse_amount`), de 0,01 € à 5 000 € ; types et bornes des charges JSON
   de l'API validés (refus 400, jamais d'erreur serveur).

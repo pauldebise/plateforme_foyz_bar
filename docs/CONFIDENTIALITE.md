@@ -20,6 +20,7 @@ bureau. Contact : _(adresse e-mail à compléter)_.
 | Statuts (blacklist, blacklist alcool) | Sécurité et conformité | Intérêt légitime | Jusqu'à retrait du statut |
 | Registre des connexions (identifiant du compte, IP, succès/échec) | Sécurité (détection d'intrusions) | Intérêt légitime (sécurité du système) | Affichage limité à 90 jours par défaut ; **pas de purge automatique** (purge manuelle par l'administrateur système) |
 | Fichiers téléversés (affiches, logos, photos) | Communication de l'association | Consentement des personnes concernées | Durée de publication |
+| Jetons d'API (libellé, empreinte, campus, portées, bornes, dernier appel) | Accès machine autorisé aux agrégats et aux prix | Intérêt légitime (sécurité et fonctionnement du service) | Jusqu'à révocation ou suppression du jeton ; actions conservées dans le journal d'audit |
 
 Les données de l'ancienne plateforme (sauvegardes de migration) sont conservées
 **au maximum 30 jours** après la bascule puis détruites (`ARCHIVE_RETENTION_DAYS`).
@@ -33,6 +34,10 @@ Les données de l'ancienne plateforme (sauvegardes de migration) sont conservée
   (base, téléversements) repose sur un volume chiffré.
 - Chaque membre accède aux données de son campus ; l'administrateur peut agir
   sur les deux campus.
+- Les jetons d'API sont créés uniquement par le compte d'administration, pour
+  un campus et une durée déterminés. L'API externe ne reçoit **aucune donnée
+  nominative** : uniquement des quantités, recettes et volumes agrégés sur les
+  articles autorisés, ainsi que leurs prix standards.
 
 ## Sécurité
 
@@ -40,6 +45,9 @@ Les données de l'ancienne plateforme (sauvegardes de migration) sont conservée
 - Connexions chiffrées (HTTPS/HSTS), cookies `Secure`/`HttpOnly`, jetons CSRF.
 - Journalisation applicative sans mot de passe ; limiteur anti-force brute sur
   la connexion.
+- Jetons d'API conservés sous forme d'empreinte SHA-256, jamais en clair,
+  limités à une requête par seconde ; créations, modifications, révocations et
+  changements de prix sont journalisés.
 - Sauvegardes quotidiennes conservées 7 jours (+ 4 hebdomadaires), restauration
   testée.
 
