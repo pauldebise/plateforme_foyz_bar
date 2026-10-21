@@ -95,6 +95,11 @@ def ensure_schema_upgrades():
     if "taps" in table_columns and "name" not in table_columns["taps"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE taps ADD COLUMN name VARCHAR(160)"))
+    if "kegs" in table_columns and "remaining_l" in table_columns["kegs"]:
+        # Suppression du suivi du volume restant (révision 0015). Les bases
+        # SQLite de développement antérieures n'ont pas encore ce retrait.
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE kegs DROP COLUMN remaining_l"))
     if "users" in table_columns and "legacy_password" not in table_columns["users"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN legacy_password VARCHAR(255)"))

@@ -32,7 +32,7 @@ def assign_keg(tap, keg):
                 is_tap=True,
                 tap_number=tap.number,
                 keg_id=keg.id,
-                active=keg.remaining_l > 0.01,
+                active=keg.active,
             )
         )
     db.session.commit()

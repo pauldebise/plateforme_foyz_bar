@@ -53,7 +53,7 @@ La réponse contient :
   - articles : articles standards et articles d'événement autorisés, avec
     leur prix standard actuel (price_std_cents) ;
   - kegs : fûts autorisés, avec leurs trois prix standards (demi, pinte, pot)
-    et le volume restant.
+    et leur volume déclaré (volume_l).
 
 Si le jeton a la portée « lecture des prix équipe », les réponses ajoutent
 price_team_cents (articles) et price_half_team_cents / price_pint_team_cents /
@@ -83,7 +83,7 @@ La réponse contient :
   - groups : quantités, recettes (revenue_cents) et volumes (volume_ml) ;
   - totals : totaux sur la fenêtre ;
   - series : mêmes agrégats par tranche de temps, si bucket_seconds est fourni ;
-  - kegs : volumes restants des fûts autorisés.
+  - kegs : fûts autorisés et leur volume déclaré.
 
 Les ventes annulées sont exclues. Aucun nom d'étudiant n'est communiqué.
 Exemple de tranche de 5 minutes sur les 30 dernières minutes :
@@ -131,6 +131,7 @@ rafraîchit son affichage toutes les 8 secondes.
   price_std_cents, price_team_cents, revenue_cents   centimes entiers
   volume_cl                        centilitres (catalogue)
   volume_ml                        millilitres (agrégats)
+  volume_l                         litres (volume déclaré du fût)
   dates                            ISO 8601 ; sans fuseau = UTC ;
                                    les réponses utilisent le suffixe Z
 

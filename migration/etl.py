@@ -93,8 +93,8 @@ _ARTICLE_SQL = (
     ":is_alcohol, :is_tap, :tap_number, :keg_id, :active, :created_at) RETURNING id"
 )
 _KEG_SQL = (
-    "INSERT INTO kegs (name, alcohol_degree, volume_l, remaining_l, active, created_at) "
-    "VALUES (:name, :alcohol_degree, :volume_l, :remaining_l, :active, :created_at) "
+    "INSERT INTO kegs (name, alcohol_degree, volume_l, active, created_at) "
+    "VALUES (:name, :alcohol_degree, :volume_l, :active, :created_at) "
     "RETURNING id"
 )
 _KEG_PRICE_SQL = (
@@ -634,7 +634,6 @@ class Migrator:
             "name": obj["name"],
             "alcohol_degree": obj["alcohol_degree"],
             "volume_l": obj["volume_l"],
-            "remaining_l": obj["remaining_l"],
             "active": True,
             "created_at": now_utc(),
         }
@@ -706,7 +705,6 @@ class Migrator:
                 },
             )
             self.counts["taps_creees"] += 1
-            active = keg_obj["remaining_l"] > 0.01
             prices = {
                 "demi": (keg_obj["price_half_std"], keg_obj["price_half_team"]),
                 "pinte": (keg_obj["price_pint_std"], keg_obj["price_pint_team"]),
@@ -727,7 +725,7 @@ class Migrator:
                         "is_tap": True,
                         "tap_number": number,
                         "keg_id": keg_id,
-                        "active": active,
+                        "active": True,
                         "created_at": now_utc(),
                     },
                 )

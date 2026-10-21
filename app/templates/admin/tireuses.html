@@ -37,7 +37,7 @@
               <select class="form-select form-select-sm" name="keg_id" required>
                 <option value="">Choisir un fût…</option>
                 {% for k in free_kegs if not t.keg %}
-                <option value="{{ k.id }}">{{ k.name }} ({{ '%.1f'|format(k.remaining_l) }} L)</option>
+                <option value="{{ k.id }}">{{ k.name }}</option>
                 {% endfor %}
               </select>
               <button class="btn btn-sm btn-outline-primary">Assigner</button>
@@ -87,13 +87,13 @@
   </div>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
-      <thead class="table-light"><tr><th>Fût</th><th>Degré</th><th>Restant</th><th>En service</th><th></th></tr></thead>
+      <thead class="table-light"><tr><th>Fût</th><th>Degré</th><th>Volume</th><th>En service</th><th></th></tr></thead>
       <tbody>
         {% for k in kegs %}
         <tr>
           <td><strong>{{ k.name }}</strong></td>
           <td>{{ '%.1f'|format(k.alcohol_degree) }}°</td>
-          <td>{{ '%.1f'|format(k.remaining_l) }} L / {{ '%.0f'|format(k.volume_l) }} L</td>
+          <td>{{ '%.0f'|format(k.volume_l) }} L</td>
           <td>{% if k.taps|length %}{% for t in k.taps %}<span class="badge bg-primary">{{ t.display_name }} ({{ CAMPUSSES[t.campus] }})</span> {% endfor %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td class="text-end text-nowrap">
             {% if writable %}
@@ -125,7 +125,6 @@
         <div class="col-md-6"><label class="form-label">Nom du fût</label><input class="form-control" name="name" required></div>
         <div class="col-md-2"><label class="form-label">Degré (°)</label><input class="form-control" name="alcohol_degree" type="number" step="0.1" value="5.0"></div>
         <div class="col-md-2"><label class="form-label">Volume (L)</label><input class="form-control" name="volume_l" type="number" step="0.5" value="30"></div>
-        <div class="col-md-2"><label class="form-label">Restant (L)</label><input class="form-control" name="remaining_l" type="number" step="0.5" value="30"></div>
         {% for c, label in [('brest','Brest'), ('paris','Paris')] %}
         <div class="col-12"><strong>{{ label }}</strong></div>
         {% for size, slabel in [('half','Demi'), ('pint','Pinte'), ('pot','Pot')] %}

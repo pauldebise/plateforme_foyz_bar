@@ -56,7 +56,6 @@ class Keg(db.Model):
     name: db.Mapped[str] = db.mapped_column(db.String(255))
     alcohol_degree: db.Mapped[float] = db.mapped_column(db.Float, default=0.0)
     volume_l: db.Mapped[float] = db.mapped_column(db.Float, default=30.0)
-    remaining_l: db.Mapped[float] = db.mapped_column(db.Float, default=30.0)
     active: db.Mapped[bool] = db.mapped_column(db.Boolean, default=True)
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow)
 

@@ -173,7 +173,7 @@ def _keg(
     mounted=True,
 ):
     with app.app_context():
-        keg = Keg(name=name, volume_l=30, remaining_l=20, active=True)
+        keg = Keg(name=name, volume_l=30, active=True)
         db.session.add(keg)
         db.session.flush()
         row = keg.price_row(campus)
@@ -550,7 +550,8 @@ def test_consumption_aggregates_and_privacy():
     _expect(body["totals"] == {"quantity": 4, "revenue_cents": 1500, "volume_ml": 1250}, "totaux")
     _expect("Conso Étudiant" not in res.get_data(as_text=True), "aucun nom d'étudiant")
     keg_row = body["kegs"][0]
-    _expect(abs(keg_row["remaining_l"] - 19.75) < 0.01, "litres restants du fût")
+    _expect("remaining_l" not in keg_row, "aucun volume restant exposé")
+    _expect(keg_row["volume_l"] == 30.0, "volume déclaré du fût")
 
     res = _get(client, raw, "/api/v1/consumption", query_string={"group_by": "category"})
     categories = {row["category"]: row for row in res.get_json()["groups"]}

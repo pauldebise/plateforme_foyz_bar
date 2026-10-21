@@ -3,7 +3,8 @@
 Exécutable sans pytest : python -m tests.test_integrity
 
 - T-3.2 : idempotence des encaissements (même jeton = une seule transaction) ;
-- T-3.3 : annulation d'achat -> restitution du fût et du catalogue pression.
+- T-3.3 : la vente ne vide plus le fût ni le catalogue pression ; l'annulation
+  rembourse sans toucher aux tireuses.
 """
 
 import os
@@ -119,10 +120,10 @@ def test_purchase_idempotency_via_api():
         _expect(balance == 700, f"un seul débit de 300 (obtenu {balance})")
 
 
-def test_cancel_restores_keg_and_tap_catalog():
+def test_sale_does_not_drain_keg_or_tap_catalog():
     app = create_app()
     with app.app_context():
-        keg = Keg(name="Fût test", volume_l=30.0, remaining_l=0.5)
+        keg = Keg(name="Fût test", volume_l=30.0)
         db.session.add(keg)
         db.session.flush()
         tap = Tap(number=501, name="Tireuse test", campus="brest", keg_id=keg.id)
@@ -145,36 +146,66 @@ def test_cancel_restores_keg_and_tap_catalog():
         )
         db.session.add_all([tap, article, user])
         db.session.flush()
-        user.wallet("brest").balance = 1000
+        user.wallet("brest").balance = 100_000
         db.session.commit()
         keg_id, tap_id, article_id, user_id = keg.id, tap.id, article.id, user.id
 
+        # 100 pintes = 50 L, au-delà des 30 L déclarés : l'ancien compteur
+        # aurait vidé le fût. La tireuse doit rester en service.
         transaction = create_purchase(
             operator_label="test",
             campus="brest",
-            items=[{"article_id": article_id, "quantity": 1}],
+            items=[{"article_id": article_id, "quantity": 100}],
             contributor_ids=[user_id],
         )
         transaction_id = transaction.id
         db.session.expire_all()
 
-        _expect(db.session.get(Keg, keg_id).remaining_l == 0.0, "vente vide le fût")
-        _expect(db.session.get(Article, article_id).active is False, "article tireuse désactivé")
-        _expect(db.session.get(Tap, tap_id).keg_id is None, "tireuse détachée")
+        _expect(db.session.get(Tap, tap_id).keg_id == keg_id, "tireuse toujours montée")
+        _expect(
+            db.session.get(Article, article_id).active is True,
+            "article de tireuse toujours actif",
+        )
+        _expect(
+            db.session.get(User, user_id).wallet("brest").balance == 80_000,
+            "débit de la vente",
+        )
 
         cancel_transaction(db.session.get(Transaction, transaction_id), ADMIN_PASSWORD)
         db.session.expire_all()
 
         _expect(
-            abs(db.session.get(Keg, keg_id).remaining_l - 0.5) < 1e-9,
-            "volume du fût restauré",
+            db.session.get(Tap, tap_id).keg_id == keg_id, "tireuse toujours montée après annulation"
         )
-        _expect(db.session.get(Article, article_id).active is True, "article tireuse réactivé")
-        _expect(db.session.get(Tap, tap_id).keg_id == keg_id, "tireuse rebranchée")
         _expect(
-            db.session.get(User, user_id).wallet("brest").balance == 1000,
+            db.session.get(Article, article_id).active is True,
+            "article de tireuse toujours actif après annulation",
+        )
+        _expect(
+            db.session.get(User, user_id).wallet("brest").balance == 100_000,
             "solde remboursé par l'annulation",
         )
+
+
+def test_tireuse_accepts_keg_without_stock():
+    app = create_app()
+    with app.app_context():
+        keg = Keg(name="Fût sans stock", volume_l=30.0)
+        tap = Tap(number=502, name="Tireuse assignation", campus="brest")
+        db.session.add_all([keg, tap])
+        db.session.commit()
+        keg_id = keg.id
+
+    client = app.test_client()
+    _login(client)
+    res = client.get("/admin/tireuses")
+    _expect(res.status_code == 200, "onglet tireuses accessible")
+    html = res.get_data(as_text=True)
+    _expect(
+        f'<option value="{keg_id}">Fût sans stock</option>' in html,
+        "fût proposé à l'assignation sans condition de volume",
+    )
+    _expect('name="remaining_l"' not in html, "champ restant absent de l'onglet tireuses")
 
 
 def test_schema_upgrade_adds_idempotency_key():
@@ -196,6 +227,25 @@ def test_schema_upgrade_adds_idempotency_key():
             "ix_transactions_idempotency_key" in indexes,
             "index unique d'idempotence rétabli",
         )
+
+
+def test_schema_upgrade_drops_keg_remaining():
+    if not IS_SQLITE:
+        print("  (ignoré : évolution de schéma SQLite)")
+        return
+    from app import ensure_schema_upgrades
+
+    app = create_app()
+    with app.app_context():
+        columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("kegs")}
+        if "remaining_l" not in columns:
+            with db.engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE kegs ADD COLUMN remaining_l FLOAT NOT NULL DEFAULT 0")
+                )
+        ensure_schema_upgrades()
+        columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("kegs")}
+        _expect("remaining_l" not in columns, "colonne remaining_l retirée")
 
 
 def test_schema_upgrade_campus_catalog():

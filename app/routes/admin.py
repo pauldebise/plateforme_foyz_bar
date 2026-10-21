@@ -894,9 +894,7 @@ def tireuses():
     kegs = db.session.scalars(select(Keg).order_by(Keg.active.desc(), Keg.name)).unique().all()
     taps = db.session.scalars(select(Tap).where(Tap.campus == campus).order_by(Tap.number)).all()
     all_taps = db.session.scalars(select(Tap)).all()
-    free_kegs = [
-        k for k in kegs if k.remaining_l > 0.01 and not any(t.keg_id == k.id for t in all_taps)
-    ]
+    free_kegs = [k for k in kegs if not any(t.keg_id == k.id for t in all_taps)]
     return render_template(
         "admin/tireuses.html",
         kegs=kegs,
@@ -916,7 +914,6 @@ def keg_nouveau():
     except ValueError:
         flash("Volume ou degré invalide (nombres positifs attendus).", "danger")
         return redirect(url_for("admin.tireuses"))
-    keg.remaining_l = keg.volume_l
     db.session.add(keg)
     A.record(
         "fut.creation",
@@ -944,7 +941,7 @@ def keg(keg_id):
         A.record(
             "fut.modification",
             target=keg.name,
-            details=f"{keg.volume_l:g} L, restant {keg.remaining_l:g} L",
+            details=f"{keg.volume_l:g} L",
         )
         db.session.commit()
         if request.form.get("refresh_articles") == "on":
@@ -996,11 +993,6 @@ def _keg_from_form(k, writable_campus):
     k.name = clamp_text((request.form.get("name") or "Sans nom").strip(), 255)
     k.alcohol_degree = _positive_float("alcohol_degree", k.alcohol_degree or 0.0, 100.0)
     k.volume_l = _positive_float("volume_l", k.volume_l or 30.0, 10_000.0)
-    k.remaining_l = _positive_float(
-        "remaining_l",
-        k.remaining_l or 0.0,
-        k.volume_l,
-    )
     k.active = request.form.get("active", "on") == "on"
     for c in CAMPUSSES:
         row = k.price_row(c)

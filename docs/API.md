@@ -59,8 +59,8 @@ refusé immédiatement. La limite d'une requête par seconde renvoie `429` avec
 
 - Prix et recettes : **centimes entiers** (`price_std_cents`, `price_team_cents`,
   `revenue_cents`).
-- Volumes : `volume_cl` en centilitres dans le catalogue, `volume_ml` en
-  millilitres dans les agrégats.
+- Volumes : `volume_cl` en centilitres dans le catalogue, `volume_l` en litres
+  pour le volume déclaré d'un fût, `volume_ml` en millilitres dans les agrégats.
 - Dates : ISO 8601. Les dates sans fuseau sont interprétées en UTC ; les dates
   avec décalage sont converties. Les réponses utilisent le suffixe `Z`.
 
@@ -108,7 +108,6 @@ curl -H "Authorization: Bearer $JETON" https://foyz.fr/api/v1/catalog
       "id": 4,
       "name": "IPA",
       "volume_l": 30.0,
-      "remaining_l": 19.75,
       "active": true,
       "price_half_std_cents": 200,
       "price_pint_std_cents": 400,
@@ -178,7 +177,7 @@ curl -H "Authorization: Bearer $JETON" \
     }
   ],
   "kegs": [
-    {"id": 4, "name": "IPA", "volume_l": 30.0, "remaining_l": 19.75, "active": true}
+    {"id": 4, "name": "IPA", "volume_l": 30.0, "active": true}
   ]
 }
 ```

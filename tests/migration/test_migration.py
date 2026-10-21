@@ -380,7 +380,7 @@ def test_article_catalog_mapping():
         },
         "euros",
     )
-    _expect(keg["volume_l"] == 30.0 and keg["remaining_l"] == 30.0, "volume fût")
+    _expect(keg["volume_l"] == 30.0 and "remaining_l" not in keg, "volume fût")
     _expect(keg["alcohol_degree"] == 8.0, "degré fût")
     _expect(keg["price_pint_std"] == 350 and keg["price_pint_team"] == 340, "tarifs fût")
     tap = map_tap_row(

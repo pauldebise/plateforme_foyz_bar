@@ -180,8 +180,7 @@
                 <label class="form-check-label" for="keg-{{ item.keg.id }}-{{ item.campus }}">
                   {{ item.keg.name }}
                   <span class="text-muted small">
-                    {{ '%.1f'|format(item.keg.remaining_l) }} L restants
-                    {% if item.taps %}· tireuse(s) {{ item.taps|join(', ') }}{% else %}· non monté{% endif %}
+                    {% if item.taps %}tireuse(s) {{ item.taps|join(', ') }}{% else %}non monté{% endif %}
                   </span>
                   {% if item.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[item.campus] }}</span>{% endif %}
                   {% if not item.keg.active %}<span class="badge bg-secondary">inactif</span>{% endif %}

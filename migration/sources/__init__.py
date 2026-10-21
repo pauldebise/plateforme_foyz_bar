@@ -837,7 +837,6 @@ def map_keg_row(row, money_unit):
         "src_id": pick(row, KEG_FIELDS["src_id"]),
         "name": str(unescape_html(name)).strip()[:255],
         "volume_l": volume_l,
-        "remaining_l": volume_l,
         "alcohol_degree": _deg(pick(row, KEG_FIELDS["alcohol_degree"])),
         "price_half_std": to_cents(
             pick(row, KEG_FIELDS["price_half_std"]), money_unit, context="fût (prix demi)"

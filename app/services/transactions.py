@@ -11,8 +11,6 @@ from app.models import (
     Article,
     Contribution,
     Event,
-    Keg,
-    Tap,
     Transaction,
     TransactionLine,
     User,
@@ -116,17 +114,6 @@ def _lock_wallets(campus, users):
     ).all()
     by_user = {w.user_id: w for w in rows}
     return {u.id: by_user[u.id] for u in users}
-
-
-def _lock_kegs(keg_ids):
-    """Verrouille les fûts concernés, dans un ordre stable."""
-    ids = sorted({kid for kid in keg_ids if kid})
-    if not ids:
-        return {}
-    rows = db.session.scalars(
-        select(Keg).where(Keg.id.in_(ids)).order_by(Keg.id).with_for_update()
-    ).all()
-    return {k.id: k for k in rows}
 
 
 def _existing_by_key(idempotency_key):
@@ -462,7 +449,6 @@ def create_purchase(
 
     all_team = (not direct) and users and all(u.is_team for u in users)
     cart = []
-    keg_volumes = defaultdict(float)
     article_total = 0
     for a, qty in lines:
         unit = a.price_for(campus, team=all_team)
@@ -471,8 +457,6 @@ def create_purchase(
         line_total = unit * qty
         article_total += line_total
         cart.append({"article": a, "quantity": qty, "unit_price": unit, "line_total": line_total})
-        if a.is_tap and a.keg_id:
-            keg_volumes[a.keg_id] += (a.volume_cl or 0) * qty / 100.0
 
     glasses = 0
     deposit_total = 0
@@ -496,10 +480,8 @@ def create_purchase(
     n = len(users) if users else 1
     shares = _split_shares(total, n)
 
-    # Verrouillage cohérent : portefeuilles puis fûts, ordonnés par identifiant
-    # (les deux ensembles sont verrouillés dans le même ordre partout).
+    # Verrouillage cohérent des portefeuilles, dans un ordre stable.
     wallets = _lock_wallets(campus, users) if not direct else {}
-    kegs = _lock_kegs(keg_volumes.keys())
 
     already_negative = []
     if not direct:
@@ -576,10 +558,6 @@ def create_purchase(
         if glasses and primary is not None:
             wp = wallets[primary.id]
             wp.glasses_outstanding = Wallet.glasses_outstanding + glasses
-    for keg_id, volume_l in keg_volumes.items():
-        keg = kegs.get(keg_id)
-        if keg is not None:
-            keg.remaining_l = Keg.remaining_l - volume_l
     db.session.flush()
 
     if not direct:
@@ -615,11 +593,6 @@ def create_purchase(
             )
         )
 
-    for keg in kegs.values():
-        if keg.remaining_l <= 0.01:
-            keg.remaining_l = 0.0
-            _drain_tap(keg)
-
     try:
         db.session.commit()
     except IntegrityError:
@@ -642,43 +615,6 @@ def balances_after(transaction):
         for c in transaction.contributions
         if c.user_id is not None and c.user is not None
     ]
-
-
-def _drain_tap(keg):
-    for tap in db.session.scalars(select(Tap).where(Tap.keg_id == keg.id)):
-        tap.keg_id = None
-    for article in db.session.scalars(select(Article).where(Article.keg_id == keg.id)):
-        article.active = False
-
-
-def _reactivate_keg_articles(keg, tap_numbers):
-    """Rétablit le catalogue pression d'un fût après annulation d'une vente.
-
-    Les articles de tireuse sont réactivés (sauf s'ils sont remplacés par un
-    autre fût sur la même tireuse) et les tireuses laissées vides par le
-    vidage sont rebranchées sur ce fût.
-    """
-    active_numbers = {
-        a.tap_number
-        for a in db.session.scalars(
-            select(Article).where(
-                Article.keg_id == keg.id, Article.is_tap.is_(True), Article.active.is_(True)
-            )
-        )
-    }
-    for article in db.session.scalars(
-        select(Article).where(
-            Article.keg_id == keg.id, Article.is_tap.is_(True), Article.active.is_(False)
-        )
-    ):
-        if article.tap_number in active_numbers:
-            continue
-        article.active = True
-        active_numbers.add(article.tap_number)
-    if tap_numbers:
-        for tap in db.session.scalars(select(Tap).where(Tap.number.in_(tap_numbers))):
-            if tap.keg_id is None:
-                tap.keg_id = keg.id
 
 
 def return_glasses(*, operator_label, campus, user, count):
@@ -924,19 +860,6 @@ def cancel_transaction(transaction, admin_password, *, verified=False):
             wallets[(campus, user_id)] = w
         return w
 
-    # Fûts concernés : volume recalculé depuis les lignes (l'article de tireuse
-    # conserve son keg_id après vidage), puis articles de tireuse réactivés.
-    volumes = defaultdict(float)
-    tap_numbers = defaultdict(set)
-    for line in transaction.lines:
-        article = db.session.get(Article, line.article_id) if line.article_id else None
-        if article is None or not article.is_tap or not article.keg_id:
-            continue
-        volumes[article.keg_id] += (article.volume_cl or 0) * line.quantity / 100.0
-        if article.tap_number is not None:
-            tap_numbers[article.keg_id].add(article.tap_number)
-    kegs = _lock_kegs(volumes.keys())
-
     if transaction.type in ("achat", "consigne"):
         for c in transaction.contributions:
             if c.user is not None:
@@ -985,16 +908,6 @@ def cancel_transaction(transaction, admin_password, *, verified=False):
                 w_of(transaction.campus, transaction.to_user_id).balance = (
                     Wallet.balance - transaction.total
                 )
-
-    for keg_id, volume_l in volumes.items():
-        keg = kegs.get(keg_id)
-        if keg is not None:
-            keg.remaining_l = Keg.remaining_l + volume_l
-    db.session.flush()
-    for keg_id, numbers in tap_numbers.items():
-        keg = kegs.get(keg_id)
-        if keg is not None:
-            _reactivate_keg_articles(keg, numbers)
 
     db.session.commit()
     _invalidate_activity_cache()

@@ -12,8 +12,7 @@
       <div class="row g-3">
         <div class="col-md-6"><label class="form-label">Nom du fût</label><input class="form-control" name="name" value="{{ keg.name }}" required></div>
         <div class="col-md-2"><label class="form-label">Degré (°)</label><input class="form-control" name="alcohol_degree" type="number" step="0.1" value="{{ '%.1f'|format(keg.alcohol_degree) }}"></div>
-        <div class="col-md-2"><label class="form-label">Volume total (L)</label><input class="form-control" name="volume_l" type="number" step="0.5" value="{{ '%.1f'|format(keg.volume_l) }}"></div>
-        <div class="col-md-2"><label class="form-label">Restant (L)</label><input class="form-control" name="remaining_l" type="number" step="0.1" value="{{ '%.1f'|format(keg.remaining_l) }}"></div>
+        <div class="col-md-2"><label class="form-label">Volume (L)</label><input class="form-control" name="volume_l" type="number" step="0.5" value="{{ '%.1f'|format(keg.volume_l) }}"></div>
 
         <div class="col-12"><strong>Brest</strong></div>
         <div class="col-md-2"><label class="form-label small">Demi std (€)</label><input class="form-control form-control-sm" name="brest_half_std" value="{{ '%.2f'|format(br.price_half_std / 100) }}" {% if own != 'brest' %}disabled{% endif %}></div>

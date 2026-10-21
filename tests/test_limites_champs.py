@@ -82,7 +82,7 @@ def _setup():
             password_hash=generate_password_hash("secret123"),
         )
         article = Article(name="Fuzz Biere", article_type="biere", campus="brest", price_std=100)
-        keg = Keg(name="Fuzz Fut", volume_l=30, remaining_l=30)
+        keg = Keg(name="Fuzz Fut", volume_l=30)
         db.session.add_all([student, target, article, keg])
         db.session.flush()
         student.wallet("brest").balance = 100_000
@@ -209,7 +209,6 @@ def test_tireuses_futs_evenements():
         "name": "Fut",
         "alcohol_degree": "5",
         "volume_l": "30",
-        "remaining_l": "30",
         "brest_half_std": "1",
         "brest_pint_std": "2",
         "brest_pot_std": "3",
@@ -259,7 +258,7 @@ def test_tireuse_nom_long_et_article_derive():
     )
     _expect(res.status_code < 500, f"renommage (255 car.) : {res.status_code}")
     with s["app"].app_context():
-        keg = Keg(name="F" * 255, volume_l=30, remaining_l=30)
+        keg = Keg(name="F" * 255, volume_l=30)
         db.session.add(keg)
         db.session.commit()
         keg_id = keg.id
