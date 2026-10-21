@@ -243,6 +243,25 @@ def ensure_schema_upgrades():
                         "ON transaction_lines (article_id)"
                     )
                 )
+    if "api_tokens" in table_columns:
+        # Droits distincts sur les prix équipe (révision 0014). Les bases
+        # SQLite de développement antérieures n'ont pas encore ces colonnes.
+        cols = table_columns["api_tokens"]
+        with db.engine.begin() as conn:
+            if "can_write_team_prices" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE api_tokens ADD COLUMN can_write_team_prices "
+                        "BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+            if "can_read_team_prices" not in cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE api_tokens ADD COLUMN can_read_team_prices "
+                        "BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
     if "audit_logs" not in table_columns:
         with db.engine.begin() as conn:
             conn.execute(

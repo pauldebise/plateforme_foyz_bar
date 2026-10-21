@@ -25,6 +25,10 @@ class ApiToken(db.Model):
     campus: db.Mapped[str] = db.mapped_column(db.String(10), index=True)
     can_read_consumption: db.Mapped[bool] = db.mapped_column(db.Boolean, default=True)
     can_write_prices: db.Mapped[bool] = db.mapped_column(db.Boolean, default=True)
+    # Prix équipe : droits distincts, désactivés par défaut. Les jetons
+    # existants conservent leurs droits actuels après la migration.
+    can_write_team_prices: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
+    can_read_team_prices: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
     # Fenêtre de lecture figée à la création (mais modifiable depuis l'onglet).
     history_from: db.Mapped[datetime] = db.mapped_column(db.DateTime)
     history_to: db.Mapped[datetime] = db.mapped_column(db.DateTime)
@@ -68,6 +72,10 @@ class ApiToken(db.Model):
             labels.append("consommation:lecture")
         if self.can_write_prices:
             labels.append("prix:ecriture")
+        if self.can_write_team_prices:
+            labels.append("prix_equipe:ecriture")
+        if self.can_read_team_prices:
+            labels.append("prix_equipe:lecture")
         return labels
 
 

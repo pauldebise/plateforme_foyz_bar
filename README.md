@@ -273,7 +273,8 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 - **API externe** (`docs/API.md`) : jetons créés uniquement par le compte
   `admin` depuis `/admin/api`, stockés sous forme d'empreinte SHA-256, limités à
   un campus, une fenêtre de lecture et une sélection d'articles/fûts ; une
-  requête par seconde ; aucune donnée nominative ; prix standards uniquement,
+  requête par seconde ; aucune donnée nominative ; prix standards et/ou équipe
+  selon des droits séparés (les droits équipe sont désactivés par défaut),
   écritures par lot et journalisées dans l'audit. Un guide texte téléchargeable
   depuis l'onglet est fourni aux tiers.
 - Montants saisis (rechargement, retrait, transfert) : un seul parseur

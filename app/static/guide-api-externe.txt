@@ -33,6 +33,14 @@ Limite : une requête par seconde maximum, toutes requêtes confondues.
 Au-delà : 429 avec l'en-tête Retry-After: 1. Attendez au moins une seconde
 avant de réessayer.
 
+Droits possibles :
+  - lecture des consommations ;
+  - écriture des prix standards ;
+  - écriture des prix équipe ;
+  - lecture des prix équipe (catalogue).
+Les deux droits équipe sont des options séparées, désactivées par défaut.
+L'équipe peut les ajouter à un jeton existant sans le régénérer.
+
 
 2. VÉRIFIER LES ACCÈS DU JETON
 ------------------------------
@@ -46,6 +54,10 @@ La réponse contient :
     leur prix standard actuel (price_std_cents) ;
   - kegs : fûts autorisés, avec leurs trois prix standards (demi, pinte, pot)
     et le volume restant.
+
+Si le jeton a la portée « lecture des prix équipe », les réponses ajoutent
+price_team_cents (articles) et price_half_team_cents / price_pint_team_cents /
+price_pot_team_cents (fûts). Sans cette portée, ces champs sont absents.
 
 Un fût donne accès à ses trois tailles. Il peut être monté sur une tireuse ou
 non : un fût non monté reste accessible pour préparer ses prix avant de
@@ -88,18 +100,22 @@ Exemple de tranche de 5 minutes sur les 30 dernières minutes :
        -H "Content-Type: application/json" \
        -d '{
          "articles": [
-           {"article_id": 12, "price_std_cents": 450}
+           {"article_id": 12, "price_std_cents": 450, "price_team_cents": 400}
          ],
          "kegs": [
-           {"keg_id": 4, "price_half_std_cents": 250,
-            "price_pint_std_cents": 450, "price_pot_std_cents": 350}
+           {"keg_id": 4,
+            "price_half_std_cents": 250, "price_half_team_cents": 230,
+            "price_pint_std_cents": 450, "price_pint_team_cents": 410,
+            "price_pot_std_cents": 350, "price_pot_team_cents": 320}
          ]
        }' \
        https://foyz.fr/api/v1/prices
 
 Règles :
   - prix en centimes entiers, de 0 à 10000 (0 à 100 €) ;
-  - les prix équipe ne sont jamais modifiés ;
+  - les champs standards exigent le droit d'écriture des prix standards ;
+  - les champs équipe exigent le droit d'écriture des prix équipe ;
+  - un droit manquant renvoie 403 sans appliquer le lot ;
   - maximum 200 modifications par requête, sans doublon ;
   - le lot est atomique : si une entrée est refusée, aucune modification n'est
     appliquée ;
@@ -112,7 +128,7 @@ rafraîchit son affichage toutes les 8 secondes.
 5. UNITÉS ET DATES
 ------------------
 
-  price_std_cents, revenue_cents   centimes entiers
+  price_std_cents, price_team_cents, revenue_cents   centimes entiers
   volume_cl                        centilitres (catalogue)
   volume_ml                        millilitres (agrégats)
   dates                            ISO 8601 ; sans fuseau = UTC ;
@@ -126,7 +142,7 @@ rafraîchit son affichage toutes les 8 secondes.
 
   400  requête ou valeur invalide, fenêtre hors bornes
   401  jeton absent, invalide, expiré ou révoqué
-  403  droit absent ou article/fût hors du périmètre du jeton
+  403  droit absent (standard ou équipe) ou article/fût hors du périmètre
   404  ressource inconnue
   405  méthode non autorisée
   429  plus d'une requête par seconde (réessayer après Retry-After)

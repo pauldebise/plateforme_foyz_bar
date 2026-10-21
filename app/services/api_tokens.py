@@ -209,6 +209,8 @@ def create_token(
     history_to,
     can_read_consumption,
     can_write_prices,
+    can_write_team_prices,
+    can_read_team_prices,
     articles,
     kegs,
     created_by=None,
@@ -220,7 +222,12 @@ def create_token(
         expires_at,
         history_from,
         history_to,
-        (can_read_consumption, can_write_prices),
+        (
+            can_read_consumption,
+            can_write_prices,
+            can_write_team_prices,
+            can_read_team_prices,
+        ),
     )
     raw, digest, prefix = generate_token()
     token = ApiToken(
@@ -230,6 +237,8 @@ def create_token(
         campus=campus,
         can_read_consumption=can_read_consumption,
         can_write_prices=can_write_prices,
+        can_write_team_prices=can_write_team_prices,
+        can_read_team_prices=can_read_team_prices,
         history_from=history_from,
         history_to=history_to,
         expires_at=expires_at,
@@ -253,6 +262,8 @@ def update_token(
     history_to,
     can_read_consumption,
     can_write_prices,
+    can_write_team_prices,
+    can_read_team_prices,
     articles,
     kegs,
 ):
@@ -265,7 +276,12 @@ def update_token(
         expires_at,
         history_from,
         history_to,
-        (can_read_consumption, can_write_prices),
+        (
+            can_read_consumption,
+            can_write_prices,
+            can_write_team_prices,
+            can_read_team_prices,
+        ),
     )
     token.label = label
     token.expires_at = expires_at
@@ -273,6 +289,8 @@ def update_token(
     token.history_to = history_to
     token.can_read_consumption = can_read_consumption
     token.can_write_prices = can_write_prices
+    token.can_write_team_prices = can_write_team_prices
+    token.can_read_team_prices = can_read_team_prices
 
     # Mise à jour en place : supprimer puis recréer les mêmes lignes dans le
     # même flush violerait la contrainte d'unicité (INSERT avant DELETE).

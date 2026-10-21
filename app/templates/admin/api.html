@@ -53,8 +53,10 @@
           </td>
           <td>{{ CAMPUSSES[t.campus] }}</td>
           <td class="small">
-            {% if t.can_read_consumption %}<span class="badge bg-info text-dark">lecture</span>{% endif %}
-            {% if t.can_write_prices %}<span class="badge bg-warning text-dark">écriture</span>{% endif %}
+            {% if t.can_read_consumption %}<span class="badge bg-info text-dark">conso</span>{% endif %}
+            {% if t.can_write_prices %}<span class="badge bg-warning text-dark">prix std</span>{% endif %}
+            {% if t.can_write_team_prices %}<span class="badge bg-warning text-dark">prix équipe</span>{% endif %}
+            {% if t.can_read_team_prices %}<span class="badge bg-info text-dark">lecture équipe</span>{% endif %}
           </td>
           <td class="small">{{ t.expires_at|dt }}</td>
           <td class="small">{{ t.history_from|dt }}<br>→ {{ t.history_to|dt }}</td>

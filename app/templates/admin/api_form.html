@@ -63,6 +63,7 @@
         </div>
         <div class="col-md-6 d-flex align-items-end">
           <div>
+            <div class="small fw-bold mb-1">Droits</div>
             <div class="form-check">
               <input class="form-check-input" type="checkbox" name="can_read_consumption"
                      id="can_read_consumption" {% if not token or token.can_read_consumption %}checked{% endif %}>
@@ -75,6 +76,20 @@
                      id="can_write_prices" {% if not token or token.can_write_prices %}checked{% endif %}>
               <label class="form-check-label" for="can_write_prices">
                 Écriture des prix standards (articles et fûts sélectionnés)
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="can_write_team_prices"
+                     id="can_write_team_prices" {% if token and token.can_write_team_prices %}checked{% endif %}>
+              <label class="form-check-label" for="can_write_team_prices">
+                Écriture des prix équipe
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="can_read_team_prices"
+                     id="can_read_team_prices" {% if token and token.can_read_team_prices %}checked{% endif %}>
+              <label class="form-check-label" for="can_read_team_prices">
+                Lecture des prix équipe (catalogue)
               </label>
             </div>
           </div>

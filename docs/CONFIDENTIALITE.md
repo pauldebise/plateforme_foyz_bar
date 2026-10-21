@@ -37,7 +37,8 @@ Les données de l'ancienne plateforme (sauvegardes de migration) sont conservée
 - Les jetons d'API sont créés uniquement par le compte d'administration, pour
   un campus et une durée déterminés. L'API externe ne reçoit **aucune donnée
   nominative** : uniquement des quantités, recettes et volumes agrégés sur les
-  articles autorisés, ainsi que leurs prix standards.
+  articles autorisés, ainsi que leurs prix standards et, si l'administrateur
+  l'autorise, leurs prix équipe.
 
 ## Sécurité
 

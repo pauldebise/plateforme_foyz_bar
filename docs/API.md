@@ -2,9 +2,9 @@
 
 API destinée aux logiciels tiers autorisés (par exemple un script qui adapte
 les prix pendant une soirée). Elle permet de lire des **agrégats de
-consommation** et de modifier les **prix standards**. Elle ne permet jamais
-d'encaisser une vente : la caisse de la plateforme reste le seul point de
-vente.
+consommation** et de modifier les **prix standards** et/ou les **prix équipe**
+selon les droits du jeton. Elle ne permet jamais d'encaisser une vente : la
+caisse de la plateforme reste le seul point de vente.
 
 ## Principes
 
@@ -24,6 +24,23 @@ vente.
   blacklist. Les agrégats portent sur les articles sélectionnés.
 - Une requête par seconde au maximum, toutes requêtes confondues.
 
+## Droits
+
+| Portée | Effet |
+|---|---|
+| `consommation:lecture` | Lire les agrégats de `/consumption` |
+| `prix:ecriture` | Écrire les prix standards (`price_std_cents`, prix standard des fûts) |
+| `prix_equipe:ecriture` | Écrire les prix équipe (`price_team_cents`, prix équipe des fûts) |
+| `prix_equipe:lecture` | Voir les prix équipe dans `/catalog` |
+
+Les deux droits équipe sont **décochés par défaut** à la création. Un jeton
+peut avoir n'importe quelle combinaison, avec au moins une portée. Les jetons
+existants conservent leurs droits actuels : l'administrateur peut ajouter ou
+retirer un droit plus tard, sans régénérer le jeton.
+
+Une écriture d'un prix non autorisé par les portées du jeton est refusée par
+`403` avant toute modification du lot.
+
 ## Authentification
 
 Base : `https://foyz.fr/api/v1`
@@ -40,7 +57,8 @@ refusé immédiatement. La limite d'une requête par seconde renvoie `429` avec
 
 ## Unités et dates
 
-- Prix et recettes : **centimes entiers** (`price_std_cents`, `revenue_cents`).
+- Prix et recettes : **centimes entiers** (`price_std_cents`, `price_team_cents`,
+  `revenue_cents`).
 - Volumes : `volume_cl` en centilitres dans le catalogue, `volume_ml` en
   millilitres dans les agrégats.
 - Dates : ISO 8601. Les dates sans fuseau sont interprétées en UTC ; les dates
@@ -48,7 +66,8 @@ refusé immédiatement. La limite d'une requête par seconde renvoie `429` avec
 
 ## `GET /catalog`
 
-Retourne les articles et les fûts autorisés, avec leurs prix standards actuels.
+Retourne les articles et les fûts autorisés, avec leurs prix actuels. Les prix
+équipe ne sont inclus que si le jeton possède `prix_equipe:lecture`.
 
 ```bash
 curl -H "Authorization: Bearer $JETON" https://foyz.fr/api/v1/catalog
@@ -60,7 +79,10 @@ curl -H "Authorization: Bearer $JETON" https://foyz.fr/api/v1/catalog
   "token": {
     "label": "Script prix soirée",
     "campus": "brest",
-    "scopes": ["consommation:lecture", "prix:ecriture"],
+    "scopes": [
+      "consommation:lecture", "prix:ecriture",
+      "prix_equipe:ecriture", "prix_equipe:lecture"
+    ],
     "expires_at": "2026-10-25T02:00:00Z",
     "history_from": "2026-10-24T18:00:00Z",
     "history_to": "2026-10-25T02:00:00Z"
@@ -77,7 +99,8 @@ curl -H "Authorization: Bearer $JETON" https://foyz.fr/api/v1/catalog
       "keg_id": 4,
       "event_id": null,
       "active": true,
-      "price_std_cents": 400
+      "price_std_cents": 400,
+      "price_team_cents": 350
     }
   ],
   "kegs": [
@@ -89,14 +112,20 @@ curl -H "Authorization: Bearer $JETON" https://foyz.fr/api/v1/catalog
       "active": true,
       "price_half_std_cents": 200,
       "price_pint_std_cents": 400,
-      "price_pot_std_cents": 300
+      "price_pot_std_cents": 300,
+      "price_half_team_cents": 180,
+      "price_pint_team_cents": 360,
+      "price_pot_team_cents": 270
     }
   ]
 }
 ```
 
 Les articles d'événement portent en plus `event_name`. Les articles de
-tireuse sont présents à travers le fût sélectionné (les trois tailles).
+tireuse sont présents à travers le fût sélectionné (les trois tailles). Les
+champs `price_team_cents`, `price_half_team_cents`, `price_pint_team_cents` et
+`price_pot_team_cents` ne sont présents qu'avec la portée
+`prix_equipe:lecture`.
 
 ## `GET /consumption`
 
@@ -163,30 +192,37 @@ curl -H "Authorization: Bearer $JETON" \
 
 ## `PATCH /prices`
 
-Modifie des prix **standards** par lot, de façon atomique : si une entrée est
-invalide, aucune modification n'est appliquée.
+Modifie des prix **standards et/ou équipe** par lot, de façon atomique : si une
+entrée est invalide ou si un droit manque, aucune modification n'est appliquée.
 
 ```bash
 curl -X PATCH -H "Authorization: Bearer $JETON" -H "Content-Type: application/json" \
   -d '{
     "articles": [
-      {"article_id": 12, "price_std_cents": 450},
+      {"article_id": 12, "price_std_cents": 450, "price_team_cents": 400},
       {"article_id": 18, "price_std_cents": 600}
     ],
     "kegs": [
-      {"keg_id": 4, "price_half_std_cents": 250, "price_pint_std_cents": 450, "price_pot_std_cents": 350}
+      {"keg_id": 4,
+       "price_half_std_cents": 250, "price_half_team_cents": 230,
+       "price_pint_std_cents": 450, "price_pint_team_cents": 410,
+       "price_pot_std_cents": 350, "price_pot_team_cents": 320}
     ]
   }' \
   https://foyz.fr/api/v1/prices
 ```
 
-- `articles` : articles standards ou d'événement sélectionnés. Les articles de
-  tireuse ne se modifient pas directement : utilisez `kegs`.
-- `kegs` : au moins un des trois prix (`price_half_std_cents`,
-  `price_pint_std_cents`, `price_pot_std_cents`). Les trois articles de
-  tireuse correspondants sont mis à jour dans la même transaction.
+- `articles` : articles standards ou d'événement sélectionnés. Fournir au moins
+  `price_std_cents` ou `price_team_cents`. Les articles de tireuse ne se
+  modifient pas directement : utilisez `kegs`.
+- `kegs` : fournir au moins un des six prix (`price_half_std_cents`,
+  `price_pint_std_cents`, `price_pot_std_cents`, `price_half_team_cents`,
+  `price_pint_team_cents`, `price_pot_team_cents`). Les articles de tireuse
+  correspondants sont mis à jour dans la même transaction.
 - Prix entre `0` et `10000` centimes (100 €), entiers uniquement.
-- Les prix équipe (`price_team`) ne sont **jamais** modifiés par l'API.
+- Les champs standards exigent `prix:ecriture` ; les champs équipe exigent
+  `prix_equipe:ecriture`. Un champ non autorisé renvoie `403` sans appliquer le
+  lot.
 - Maximum 200 modifications par requête ; pas de doublon dans un lot.
 
 Réponse :
@@ -196,7 +232,11 @@ Réponse :
   "ok": true,
   "updated": {
     "articles": [
-      {"id": 12, "name": "Pinte de tireuse 1 (IPA)", "price_std_cents": 450, "previous_price_std_cents": 400}
+      {
+        "id": 12, "name": "Pinte de tireuse 1 (IPA)",
+        "price_std_cents": 450, "previous_price_std_cents": 400,
+        "price_team_cents": 400, "previous_price_team_cents": 350
+      }
     ],
     "kegs": [
       {
@@ -207,12 +247,21 @@ Réponse :
         "price_pot_std_cents": 350,
         "previous_price_half_std_cents": 200,
         "previous_price_pint_std_cents": 400,
-        "previous_price_pot_std_cents": 300
+        "previous_price_pot_std_cents": 300,
+        "price_half_team_cents": 230,
+        "price_pint_team_cents": 410,
+        "price_pot_team_cents": 320,
+        "previous_price_half_team_cents": 180,
+        "previous_price_pint_team_cents": 360,
+        "previous_price_pot_team_cents": 270
       }
     ]
   }
 }
 ```
+
+Les champs équipe de la réponse sont présents si un prix équipe a été fourni ou
+si le jeton possède `prix_equipe:lecture`.
 
 ## Erreurs
 
@@ -224,7 +273,7 @@ Réponse :
 |---|---|
 | `400` | requête ou valeur invalide, fenêtre hors bornes |
 | `401` | jeton absent, invalide, expiré ou révoqué |
-| `403` | portée absente ou article/fût hors du périmètre |
+| `403` | portée absente (lecture/écriture standard ou équipe) ou article/fût hors du périmètre |
 | `404` | ressource inconnue |
 | `405` | méthode non autorisée |
 | `429` | plus d'une requête par seconde (`Retry-After: 1`) |

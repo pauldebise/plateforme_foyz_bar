@@ -211,6 +211,8 @@ def _token_form_data(
     keg_ids=(),
     read=True,
     write=True,
+    team_read=False,
+    team_write=False,
     expires_hours=4,
     history_from_hours=-1,
     history_to_hours=2,
@@ -229,6 +231,10 @@ def _token_form_data(
         data["can_read_consumption"] = "on"
     if write:
         data["can_write_prices"] = "on"
+    if team_read:
+        data["can_read_team_prices"] = "on"
+    if team_write:
+        data["can_write_team_prices"] = "on"
     return data
 
 
@@ -286,6 +292,8 @@ def _edit_token(
     keg_ids=(),
     read=True,
     write=True,
+    team_read=False,
+    team_write=False,
     expires_hours=6,
     history_from_hours=-2,
     history_to_hours=2,
@@ -298,6 +306,8 @@ def _edit_token(
         keg_ids=keg_ids,
         read=read,
         write=write,
+        team_read=team_read,
+        team_write=team_write,
         expires_hours=expires_hours,
         history_from_hours=history_from_hours,
         history_to_hours=history_to_hours,
@@ -811,6 +821,240 @@ def test_unmounted_keg_scope():
     body = _get(client, raw, "/api/v1/catalog").get_json()
     keg_ids = {keg["id"] for keg in body["kegs"]}
     _expect({keg_id, second} <= keg_ids, "les deux fûts sont accessibles")
+
+
+def test_team_price_rights():
+    admin = _admin_client()
+    article = _article("Équipe article", std=400, team=350)
+    keg_id = _keg("Équipe fût")
+    client = app.test_client()
+
+    # 1. Jeton standard seulement : les prix équipe sont masqués et refusés.
+    std_raw = _create_token(
+        admin,
+        label="Jeton prix std",
+        campus="brest",
+        article_ids=[article],
+        keg_ids=[keg_id],
+        read=True,
+        write=True,
+        team_read=False,
+        team_write=False,
+    )
+    body = _get(client, std_raw, "/api/v1/catalog").get_json()
+    article_payload = next(a for a in body["articles"] if a["id"] == article)
+    keg_payload = next(k for k in body["kegs"] if k["id"] == keg_id)
+    _expect("price_team_cents" not in article_payload, "prix équipe article masqué")
+    _expect("price_half_team_cents" not in keg_payload, "prix équipe fût masqué")
+    res = _patch(
+        client,
+        std_raw,
+        "/api/v1/prices",
+        json={"articles": [{"article_id": article, "price_team_cents": 300}]},
+    )
+    _expect(res.status_code == 403, "écriture équipe refusée sans droit")
+    with app.app_context():
+        _expect(db.session.get(Article, article).price_team == 350, "prix équipe intact")
+    res = _patch(
+        client,
+        std_raw,
+        "/api/v1/prices",
+        json={"articles": [{"article_id": article, "price_std_cents": 450}]},
+    )
+    _expect(res.status_code == 200, "écriture standard autorisée")
+    _expect(
+        "price_team_cents" not in res.get_json()["updated"]["articles"][0],
+        "réponse sans prix équipe",
+    )
+
+    # 2. Jeton équipe écriture seulement : refuse les standards.
+    team_raw = _create_token(
+        admin,
+        label="Jeton prix équipe",
+        campus="brest",
+        article_ids=[article],
+        keg_ids=[keg_id],
+        read=False,
+        write=False,
+        team_read=False,
+        team_write=True,
+    )
+    res = _patch(
+        client,
+        team_raw,
+        "/api/v1/prices",
+        json={"articles": [{"article_id": article, "price_std_cents": 500}]},
+    )
+    _expect(res.status_code == 403, "écriture standard refusée sans droit")
+    res = _patch(
+        client,
+        team_raw,
+        "/api/v1/prices",
+        json={
+            "articles": [{"article_id": article, "price_team_cents": 320}],
+            "kegs": [
+                {
+                    "keg_id": keg_id,
+                    "price_half_team_cents": 170,
+                    "price_pint_team_cents": 340,
+                    "price_pot_team_cents": 250,
+                }
+            ],
+        },
+    )
+    _expect(res.status_code == 200, "écriture équipe autorisée")
+    with app.app_context():
+        a = db.session.get(Article, article)
+        _expect(a.price_team == 320, "prix équipe article modifié")
+        _expect(a.price_std == 450, "prix standard article intact")
+        row = db.session.scalars(
+            select(KegPrice).where(KegPrice.keg_id == keg_id, KegPrice.campus == "brest")
+        ).one()
+        _expect(
+            (row.price_half_team, row.price_pint_team, row.price_pot_team) == (170, 340, 250),
+            "prix équipe fût modifiés",
+        )
+        _expect(
+            (row.price_half_std, row.price_pint_std, row.price_pot_std) == (200, 400, 300),
+            "prix standard fût intacts",
+        )
+        taps = {
+            item.volume_cl: item
+            for item in db.session.scalars(
+                select(Article).where(Article.keg_id == keg_id, Article.is_tap.is_(True))
+            )
+        }
+        _expect(
+            (taps[25].price_team, taps[50].price_team, taps[33].price_team) == (170, 340, 250),
+            "tarif équipe des tireuses modifié",
+        )
+        _expect(
+            (taps[25].price_std, taps[50].price_std, taps[33].price_std) == (200, 400, 300),
+            "tarif standard des tireuses intact",
+        )
+    body = _get(client, team_raw, "/api/v1/catalog").get_json()
+    _expect(
+        "price_team_cents" not in next(a for a in body["articles"] if a["id"] == article),
+        "lecture équipe toujours masquée",
+    )
+
+    # 3. Les deux droits, plus la lecture équipe.
+    both_raw = _create_token(
+        admin,
+        label="Jeton prix complets",
+        campus="brest",
+        article_ids=[article],
+        keg_ids=[keg_id],
+        read=True,
+        write=True,
+        team_read=True,
+        team_write=True,
+    )
+    body = _get(client, both_raw, "/api/v1/catalog").get_json()
+    _expect(
+        next(a for a in body["articles"] if a["id"] == article)["price_team_cents"] == 320,
+        "lecture du prix équipe article",
+    )
+    _expect(
+        next(k for k in body["kegs"] if k["id"] == keg_id)["price_half_team_cents"] == 170,
+        "lecture du prix équipe fût",
+    )
+    res = _patch(
+        client,
+        both_raw,
+        "/api/v1/prices",
+        json={
+            "articles": [{"article_id": article, "price_std_cents": 460, "price_team_cents": 330}],
+            "kegs": [
+                {
+                    "keg_id": keg_id,
+                    "price_half_std_cents": 210,
+                    "price_half_team_cents": 175,
+                }
+            ],
+        },
+    )
+    _expect(res.status_code == 200, "écriture des deux prix autorisée")
+    with app.app_context():
+        a = db.session.get(Article, article)
+        _expect((a.price_std, a.price_team) == (460, 330), "article : deux prix modifiés")
+        row = db.session.scalars(
+            select(KegPrice).where(KegPrice.keg_id == keg_id, KegPrice.campus == "brest")
+        ).one()
+        _expect((row.price_half_std, row.price_half_team) == (210, 175), "fût : deux prix")
+        taps = {
+            item.volume_cl: item
+            for item in db.session.scalars(
+                select(Article).where(Article.keg_id == keg_id, Article.is_tap.is_(True))
+            )
+        }
+        _expect(
+            (taps[25].price_std, taps[25].price_team) == (210, 175),
+            "tireuse : deux prix modifiés",
+        )
+
+    # 4. Lecture équipe seule, sans écriture.
+    read_raw = _create_token(
+        admin,
+        label="Jeton lecture équipe",
+        campus="brest",
+        article_ids=[article],
+        keg_ids=[keg_id],
+        read=False,
+        write=False,
+        team_read=True,
+        team_write=False,
+    )
+    body = _get(client, read_raw, "/api/v1/catalog").get_json()
+    _expect(
+        next(a for a in body["articles"] if a["id"] == article)["price_team_cents"] == 330,
+        "lecture équipe autorisée",
+    )
+    res = _patch(
+        client,
+        read_raw,
+        "/api/v1/prices",
+        json={"articles": [{"article_id": article, "price_team_cents": 300}]},
+    )
+    _expect(res.status_code == 403, "écriture refusée en lecture seule")
+
+    # 5. Ajout des droits à un jeton existant, sans régénération.
+    token_id = _token_id(std_raw)
+    res = _edit_token(
+        admin,
+        token_id,
+        label="Jeton prix std étendu",
+        article_ids=[article],
+        keg_ids=[keg_id],
+        read=True,
+        write=True,
+        team_read=True,
+        team_write=True,
+    )
+    _expect(res.status_code == 302, "ajout des droits accepté")
+    body = _get(client, std_raw, "/api/v1/catalog").get_json()
+    _expect(
+        next(a for a in body["articles"] if a["id"] == article)["price_team_cents"] == 330,
+        "même jeton : lecture équipe ajoutée",
+    )
+    res = _patch(
+        client,
+        std_raw,
+        "/api/v1/prices",
+        json={"articles": [{"article_id": article, "price_team_cents": 340}]},
+    )
+    _expect(res.status_code == 200, "même jeton : écriture équipe ajoutée")
+
+    # 6. Les cases équipe sont décochées par défaut à la création.
+    page = admin.get("/admin/api/nouveau").get_data(as_text=True)
+    _expect(
+        re.search(r'id="can_write_team_prices"[^>]*checked', page, re.S) is None,
+        "écriture équipe décochée par défaut",
+    )
+    _expect(
+        re.search(r'id="can_read_team_prices"[^>]*checked', page, re.S) is None,
+        "lecture équipe décochée par défaut",
+    )
 
 
 def test_token_edit_and_revocation_immediate():

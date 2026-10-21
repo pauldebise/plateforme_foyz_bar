@@ -1577,6 +1577,8 @@ def api_token_nouveau():
                 history_to=history_to,
                 can_read_consumption=request.form.get("can_read_consumption") == "on",
                 can_write_prices=request.form.get("can_write_prices") == "on",
+                can_write_team_prices=request.form.get("can_write_team_prices") == "on",
+                can_read_team_prices=request.form.get("can_read_team_prices") == "on",
                 articles=articles,
                 kegs=kegs,
                 created_by=g.current_user,
@@ -1637,6 +1639,8 @@ def api_token(token_id):
                 history_to=history_to,
                 can_read_consumption=request.form.get("can_read_consumption") == "on",
                 can_write_prices=request.form.get("can_write_prices") == "on",
+                can_write_team_prices=request.form.get("can_write_team_prices") == "on",
+                can_read_team_prices=request.form.get("can_read_team_prices") == "on",
                 articles=articles,
                 kegs=kegs,
             )
