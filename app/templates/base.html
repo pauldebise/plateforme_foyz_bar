@@ -61,6 +61,9 @@
         <a class="side-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin.evenement') }}" href="{{ url_for('admin.evenements') }}"><i class="bi bi-stars"></i> Événements</a>
         <a class="side-link {{ 'active' if request.endpoint in ('admin.journal', 'admin.journaux', 'admin.audit') }}" href="{{ url_for('admin.journal') }}"><i class="bi bi-journal-text"></i> Journal</a>
         <a class="side-link {{ 'active' if request.endpoint == 'admin.sante' }}" href="{{ url_for('admin.sante') }}"><i class="bi bi-activity"></i> Santé</a>
+        {% if current_user.is_super_admin %}
+        <a class="side-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin.api') }}" href="{{ url_for('admin.api_tokens') }}"><i class="bi bi-key"></i> API</a>
+        {% endif %}
         <a class="side-link {{ 'active' if request.endpoint == 'admin.module_dev' }}" href="{{ url_for('admin.module_dev') }}"><i class="bi bi-sliders"></i> Module dev</a>
         {% endif %}
       </nav>

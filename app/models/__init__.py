@@ -4,8 +4,12 @@ from app.models.event import Event
 from app.models.transaction import Transaction, TransactionLine, Contribution
 from app.models.note import Note
 from app.models.system import AuditLog, Setting, LoginLog, LoginThrottle, UsefulLink
+from app.models.api import ApiToken, ApiTokenArticle, ApiTokenKeg
 
 __all__ = [
+    "ApiToken",
+    "ApiTokenArticle",
+    "ApiTokenKeg",
     "Article",
     "AuditLog",
     "Contribution",

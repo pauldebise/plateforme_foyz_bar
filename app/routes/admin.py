@@ -2,6 +2,7 @@ import contextlib
 import math
 import os
 from datetime import datetime, timedelta
+from functools import wraps
 
 from flask import (
     Blueprint,
@@ -21,6 +22,7 @@ from werkzeug.utils import secure_filename
 
 from app.extensions import db
 from app.models import (
+    ApiToken,
     Article,
     AuditLog,
     Event,
@@ -34,6 +36,7 @@ from app.models import (
     Wallet,
 )
 from app.services import adminpw as AP
+from app.services import api_tokens as AT
 from app.services import audit as A
 from app.services import catalog as C
 from app.services import settings as S
@@ -50,6 +53,7 @@ from app.utils import (
     paris_to_utc,
     safe_color,
     slug_username,
+    to_paris,
     utcnow,
 )
 
@@ -77,6 +81,18 @@ def require_mandat():
             return None
         abort(403)
     return None
+
+
+def super_admin_required(view):
+    """Réservé au compte admin global : les mandats n'ont pas accès aux jetons."""
+
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not g.get("current_user") or not g.current_user.is_super_admin:
+            abort(403)
+        return view(*args, **kwargs)
+
+    return wrapped
 
 
 def save_upload(file_storage, allowed=None):
@@ -1407,6 +1423,249 @@ def sante():
         activity=activity,
         version=current_app.config.get("APP_VERSION", "?"),
     )
+
+
+def _api_articles(campus=None):
+    stmt = (
+        select(Article)
+        .where(Article.is_tap.is_(False))
+        .order_by(Article.active.desc(), Article.name)
+    )
+    if campus is not None:
+        stmt = stmt.where(Article.campus == campus)
+    return db.session.scalars(stmt).all()
+
+
+def _api_keg_options(campus=None, include_keg_ids=None):
+    stmt = select(Tap).order_by(Tap.campus, Tap.number)
+    if campus is not None:
+        stmt = stmt.where(Tap.campus == campus)
+    options = {}
+    for tap in db.session.scalars(stmt).all():
+        if tap.keg is None:
+            continue
+        key = (tap.keg_id, tap.campus)
+        option = options.get(key)
+        if option is None:
+            option = {"keg": tap.keg, "campus": tap.campus, "taps": []}
+            options[key] = option
+        option["taps"].append(tap.number)
+    # Un fût déjà sélectionné mais détaché de sa tireuse reste visible dans le
+    # formulaire, sinon un simple changement de borne le retirerait du jeton.
+    if campus is not None:
+        for keg_id in include_keg_ids or set():
+            key = (keg_id, campus)
+            if key in options:
+                continue
+            keg = db.session.get(Keg, keg_id)
+            if keg is not None:
+                options[key] = {"keg": keg, "campus": campus, "taps": []}
+    return sorted(options.values(), key=lambda item: (item["campus"], item["keg"].name.lower()))
+
+
+def _api_form_context(campus=None, include_keg_ids=None):
+    articles = _api_articles(campus)
+    event_articles = [article for article in articles if article.event_id is not None]
+    event_ids = {article.event_id for article in event_articles}
+    events = (
+        {
+            event.id: event
+            for event in db.session.scalars(select(Event).where(Event.id.in_(event_ids)))
+        }
+        if event_ids
+        else {}
+    )
+    grouped = {}
+    for article in event_articles:
+        grouped.setdefault(article.event_id, []).append(article)
+    event_groups = [(events.get(event_id), items) for event_id, items in grouped.items()]
+    event_groups.sort(
+        key=lambda pair: (
+            pair[0].starts_at if pair[0] else utcnow(),
+            pair[0].name.lower() if pair[0] else "",
+        )
+    )
+    return {
+        "standard_articles": [article for article in articles if article.event_id is None],
+        "event_groups": event_groups,
+        "keg_options": _api_keg_options(campus, include_keg_ids),
+    }
+
+
+def _local_input(value):
+    return to_paris(value).strftime("%Y-%m-%dT%H:%M") if value else ""
+
+
+def _api_form_values(token):
+    now = utcnow()
+    if token is None:
+        return {
+            "expires_value": _local_input(now + timedelta(hours=24)),
+            "history_from_value": _local_input(now),
+            "history_to_value": _local_input(now + timedelta(hours=24)),
+        }
+    return {
+        "expires_value": _local_input(token.expires_at),
+        "history_from_value": _local_input(token.history_from),
+        "history_to_value": _local_input(token.history_to),
+    }
+
+
+def _api_selection_from_form(campus):
+    expires_at = AT.parse_form_datetime(request.form.get("expires_at"), "La date d'expiration")
+    history_from = AT.parse_form_datetime(
+        request.form.get("history_from"), "La borne de début de l'historique"
+    )
+    history_to = AT.parse_form_datetime(
+        request.form.get("history_to"), "La borne de fin de l'historique"
+    )
+    articles, kegs = AT.selection_objects(
+        campus, request.form.getlist("article_ids"), request.form.getlist("keg_ids")
+    )
+    return expires_at, history_from, history_to, articles, kegs
+
+
+@bp.route("/api")
+@login_required
+@super_admin_required
+def api_tokens():
+    tokens = db.session.scalars(
+        select(ApiToken).order_by(ApiToken.created_at.desc(), ApiToken.id.desc())
+    ).all()
+    return render_template("admin/api.html", tokens=tokens)
+
+
+@bp.route("/api/nouveau", methods=["GET", "POST"])
+@login_required
+@super_admin_required
+def api_token_nouveau():
+    if request.method == "POST":
+        try:
+            campus = (request.form.get("campus") or "").strip()
+            expires_at, history_from, history_to, articles, kegs = _api_selection_from_form(campus)
+            token, raw = AT.create_token(
+                label=request.form.get("label", ""),
+                campus=campus,
+                expires_at=expires_at,
+                history_from=history_from,
+                history_to=history_to,
+                can_read_consumption=request.form.get("can_read_consumption") == "on",
+                can_write_prices=request.form.get("can_write_prices") == "on",
+                articles=articles,
+                kegs=kegs,
+                created_by=g.current_user,
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+            return redirect(url_for("admin.api_token_nouveau"))
+        A.record(
+            "api.jeton_creation",
+            target=token.label,
+            details=(
+                f"Campus {CAMPUSSES[token.campus]}, "
+                f"{len(token.article_links)} article(s), {len(token.keg_links)} fût(s), "
+                f"expire le {to_paris(token.expires_at):%d/%m/%Y %H:%M}"
+            ),
+        )
+        db.session.commit()
+        return render_template("admin/api_token_cree.html", token=token, raw_token=raw)
+
+    context = _api_form_context()
+    values = _api_form_values(None)
+    return render_template(
+        "admin/api_form.html",
+        token=None,
+        campus=own_campus(),
+        standard_articles=context["standard_articles"],
+        event_groups=context["event_groups"],
+        keg_options=context["keg_options"],
+        selected_article_ids=set(),
+        selected_keg_ids=set(),
+        form_action=url_for("admin.api_token_nouveau"),
+        title="Nouveau jeton API",
+        **values,
+    )
+
+
+@bp.route("/api/<int(max=2147483647):token_id>", methods=["GET", "POST"])
+@login_required
+@super_admin_required
+def api_token(token_id):
+    token = db.session.get(ApiToken, token_id)
+    if token is None:
+        abort(404)
+    if request.method == "POST":
+        if token.is_revoked:
+            flash("Un jeton révoqué ne peut plus être modifié.", "danger")
+            return redirect(url_for("admin.api_token", token_id=token.id))
+        try:
+            expires_at, history_from, history_to, articles, kegs = _api_selection_from_form(
+                token.campus
+            )
+            AT.update_token(
+                token,
+                label=request.form.get("label", ""),
+                expires_at=expires_at,
+                history_from=history_from,
+                history_to=history_to,
+                can_read_consumption=request.form.get("can_read_consumption") == "on",
+                can_write_prices=request.form.get("can_write_prices") == "on",
+                articles=articles,
+                kegs=kegs,
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            flash(str(exc), "danger")
+            return redirect(url_for("admin.api_token", token_id=token.id))
+        A.record(
+            "api.jeton_modification",
+            target=token.label,
+            details=(
+                f"{len(token.article_links)} article(s), {len(token.keg_links)} fût(s), "
+                f"expire le {to_paris(token.expires_at):%d/%m/%Y %H:%M}"
+            ),
+        )
+        db.session.commit()
+        flash(
+            "Jeton mis à jour : les changements de sélection et de bornes sont "
+            "immédiatement actifs.",
+            "success",
+        )
+        return redirect(url_for("admin.api_tokens"))
+
+    context = _api_form_context(
+        token.campus, include_keg_ids={link.keg_id for link in token.keg_links}
+    )
+    values = _api_form_values(token)
+    return render_template(
+        "admin/api_form.html",
+        token=token,
+        campus=token.campus,
+        standard_articles=context["standard_articles"],
+        event_groups=context["event_groups"],
+        keg_options=context["keg_options"],
+        selected_article_ids={link.article_id for link in token.article_links},
+        selected_keg_ids={link.keg_id for link in token.keg_links},
+        form_action=url_for("admin.api_token", token_id=token.id),
+        title=f"Modifier le jeton « {token.label} »",
+        **values,
+    )
+
+
+@bp.route("/api/<int(max=2147483647):token_id>/revoquer", methods=["POST"])
+@login_required
+@super_admin_required
+def api_token_revoquer(token_id):
+    token = db.session.get(ApiToken, token_id)
+    if token is None:
+        abort(404)
+    if token.revoked_at is None:
+        token.revoked_at = utcnow()
+        A.record("api.jeton_revocation", target=token.label)
+        db.session.commit()
+        flash("Jeton révoqué : les appels suivants seront refusés.", "success")
+    return redirect(url_for("admin.api_tokens"))
 
 
 SETTING_LABELS = {

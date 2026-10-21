@@ -48,6 +48,11 @@ ACTION_LABELS = {
     "mot_de_passe_admin.echec": "Mot de passe administrateur refusé",
     "lien.ajout": "Ajout d'un lien utile",
     "lien.suppression": "Suppression d'un lien utile",
+    "api.jeton_creation": "Création d'un jeton API",
+    "api.jeton_modification": "Modification d'un jeton API",
+    "api.jeton_revocation": "Révocation d'un jeton API",
+    "api.prix_article": "Modification de prix d'article via l'API",
+    "api.prix_fut": "Modification de prix de fût via l'API",
 }
 
 
@@ -55,7 +60,7 @@ def label(action):
     return ACTION_LABELS.get(action, action)
 
 
-def record(action, target="", details="", *, commit=False, campus=None):
+def record(action, target="", details="", *, commit=False, campus=None, actor_label=None):
     """Ajoute une entrée d'audit à la session courante.
 
     `target` désigne l'objet touché (nom, identifiant, libellé) ; `details`
@@ -63,14 +68,15 @@ def record(action, target="", details="", *, commit=False, campus=None):
     sa route ne fait aucun commit). Ne lève jamais pour un problème de
     contenu : les champs sont tronqués aux tailles de colonnes. `campus`
     force le campus de l'entrée (sinon celui de la session de l'acteur).
+    `actor_label` remplace l'acteur de la session (appels par jeton d'API).
     """
     # Hors requête HTTP (commande CLI, service appelé directement) : pas
     # d'acteur ni d'IP, l'entrée est tout de même écrite.
     in_request = has_request_context()
-    actor = getattr(g, "current_user", None) if in_request else None
+    actor = getattr(g, "current_user", None) if in_request and actor_label is None else None
     entry = AuditLog(
         user_id=actor.id if actor else None,
-        actor=clamp_text(actor.display_name, 160) if actor else "",
+        actor=clamp_text(actor_label or (actor.display_name if actor else ""), 160),
         campus=campus
         or (session.get("campus") if in_request else None)
         or (actor.team_campus if actor else "")

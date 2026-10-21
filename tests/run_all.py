@@ -32,7 +32,9 @@ SQLITE_SUITES = [
     "tests.test_security",
     "tests.test_identifiers",
     "tests.test_caisse",
+    "tests.test_caisse_evenement",
     "tests.test_gateway",
+    "tests.test_api_externe",
     "tests.test_securite_caisse",
     "tests.test_connexion_journaux",
     "tests.test_integrity",
@@ -63,7 +65,9 @@ SQLITE_SUITES = [
 # des volumétries de fichier local.
 POSTGRES_SUITES = [
     "tests.test_caisse",
+    "tests.test_caisse_evenement",
     "tests.test_gateway",
+    "tests.test_api_externe",
     "tests.test_securite_caisse",
     "tests.test_connexion_journaux",
     "tests.test_integrity",

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Jetons API{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h1 class="h3 mb-0"><i class="bi bi-key"></i> Jetons API</h1>
+    <p class="text-muted mb-0 mt-1">
+      Accès machine à la lecture des consommations et à l'écriture des prix
+      standards. Réservé au compte d'administration.
+    </p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('admin.api_token_nouveau') }}">
+    <i class="bi bi-plus-lg"></i> Nouveau jeton
+  </a>
+</div>
+
+<div class="alert alert-light border small">
+  <i class="bi bi-info-circle"></i>
+  API : <code>/api/v1</code> — authentification par en-tête
+  <code>Authorization: Bearer &lt;jeton&gt;</code>, une requête par seconde
+  maximum. Le jeton en clair n'est affiché qu'une fois, à sa création ; seule
+  son empreinte est conservée.
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Libellé</th>
+          <th>Campus</th>
+          <th>Droits</th>
+          <th>Validité</th>
+          <th>Historique</th>
+          <th>Portée</th>
+          <th>Dernier appel</th>
+          <th>Statut</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in tokens %}
+        <tr data-href="{{ url_for('admin.api_token', token_id=t.id) }}">
+          <td>
+            <strong>{{ t.label }}</strong>
+            <div class="small text-muted"><code>{{ t.token_prefix }}…</code></div>
+          </td>
+          <td>{{ CAMPUSSES[t.campus] }}</td>
+          <td class="small">
+            {% if t.can_read_consumption %}<span class="badge bg-info text-dark">lecture</span>{% endif %}
+            {% if t.can_write_prices %}<span class="badge bg-warning text-dark">écriture</span>{% endif %}
+          </td>
+          <td class="small">{{ t.expires_at|dt }}</td>
+          <td class="small">{{ t.history_from|dt }}<br>→ {{ t.history_to|dt }}</td>
+          <td class="small">
+            {{ t.article_links|length }} article(s)<br>
+            {{ t.keg_links|length }} fût(s)
+          </td>
+          <td class="small">{{ t.last_used_at|dt if t.last_used_at else 'jamais' }}</td>
+          <td>
+            {% if t.is_revoked %}<span class="badge bg-secondary">révoqué</span>
+            {% elif t.is_expired %}<span class="badge bg-warning text-dark">expiré</span>
+            {% else %}<span class="badge bg-success">actif</span>{% endif %}
+          </td>
+          <td class="text-end">
+            {% if not t.is_revoked %}
+            <form method="post" action="{{ url_for('admin.api_token_revoquer', token_id=t.id) }}"
+                  data-confirm="Révoquer ce jeton ? Les appels suivants seront refusés.">
+              <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+              <button class="btn btn-sm btn-outline-danger" title="Révoquer"><i class="bi bi-x-octagon"></i></button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center text-muted py-4">Aucun jeton créé.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

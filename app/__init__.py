@@ -373,6 +373,7 @@ def create_app():
     from app.routes.admin import bp as admin_bp
     from app.routes.gateway import bp as gateway_bp
     from app.routes.api import bp as api_bp
+    from app.routes.api_v1 import bp as api_v1_bp
 
     app.register_blueprint(public_bp)
     app.register_blueprint(auth_bp)
@@ -380,6 +381,7 @@ def create_app():
     app.register_blueprint(admin_bp, url_prefix="/admin")
     app.register_blueprint(gateway_bp)
     app.register_blueprint(api_bp, url_prefix="/api")
+    app.register_blueprint(api_v1_bp, url_prefix="/api/v1")
 
     def _contains_nul(value):
         """Octet nul dans une saisie : PostgreSQL le refuse (« A string literal
@@ -402,6 +404,9 @@ def create_app():
         if any(_contains_nul(source) for source in sources):
             abort(400, "Caractère interdit dans la requête.")
 
+    def _is_api_v1_path():
+        return request.path == "/api/v1" or request.path.startswith("/api/v1/")
+
     @app.before_request
     def security_pipeline():
         _reject_nul()
@@ -416,6 +421,12 @@ def create_app():
         _resolve_scope()
 
     def _csrf_check():
+        # API externe : authentification par jeton porteur dans l'en-tête,
+        # jamais par cookie de session. Le CSRF ne s'y applique pas (un site
+        # tiers ne peut pas faire ajouter l'en-tête par le navigateur) ; le
+        # blueprint /api/v1 refuse toute requête sans jeton valide.
+        if _is_api_v1_path():
+            return None
         if request.method in ("POST", "PUT", "PATCH", "DELETE"):
             token = session.get("_csrf_token")
             sent = request.form.get("_csrf") or request.headers.get("X-CSRFToken")
@@ -694,11 +705,21 @@ def create_app():
 
     @app.errorhandler(403)
     def forbidden(e):
+        if _is_api_v1_path():
+            return jsonify(ok=False, code="forbidden", error="Accès refusé."), 403
         return render_template("errors/403.html"), 403
 
     @app.errorhandler(404)
     def not_found(e):
+        if _is_api_v1_path():
+            return jsonify(ok=False, code="not_found", error="Ressource introuvable."), 404
         return render_template("errors/404.html"), 404
+
+    @app.errorhandler(405)
+    def method_not_allowed(e):
+        if _is_api_v1_path():
+            return jsonify(ok=False, code="method_not_allowed", error="Méthode non autorisée."), 405
+        return "Méthode non autorisée.", 405
 
     @app.errorhandler(500)
     def server_error(e):
@@ -707,6 +728,8 @@ def create_app():
         # d'erreur (qui lit des réglages en base) échouerait à son tour.
         with contextlib.suppress(Exception):
             db.session.rollback()
+        if _is_api_v1_path():
+            return jsonify(ok=False, code="server_error", error="Erreur interne."), 500
         extra = {
             "event": "unhandled_error",
             "path": redact_secrets(request.path)[:255],

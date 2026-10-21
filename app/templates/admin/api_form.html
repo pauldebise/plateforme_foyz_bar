@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-key"></i> {{ title }}</h1>
+
+{% if token %}
+<div class="card mb-4">
+  <div class="card-body py-3 small text-muted d-flex flex-wrap gap-3">
+    <span><i class="bi bi-upc-scan"></i> Préfixe <code>{{ token.token_prefix }}…</code></span>
+    <span><i class="bi bi-calendar-plus"></i> Créé le {{ token.created_at|dt }}</span>
+    <span><i class="bi bi-clock-history"></i> Dernier appel : {{ token.last_used_at|dt if token.last_used_at else 'jamais' }}</span>
+    <span>
+      {% if token.is_revoked %}<span class="badge bg-secondary">révoqué</span>
+      {% elif token.is_expired %}<span class="badge bg-warning text-dark">expiré</span>
+      {% else %}<span class="badge bg-success">actif</span>{% endif %}
+    </span>
+  </div>
+</div>
+{% if token.is_revoked %}
+<div class="alert alert-secondary">Ce jeton est révoqué : il ne peut plus être modifié ni utilisé.</div>
+{% endif %}
+{% endif %}
+
+<div class="card">
+  <div class="card-body">
+    <form method="post" action="{{ form_action }}">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Libellé</label>
+          <input class="form-control" name="label" maxlength="160" required
+                 value="{{ token.label if token else '' }}"
+                 placeholder="ex : Script prix soirée BDE">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Campus</label>
+          {% if token %}
+          <input class="form-control" value="{{ CAMPUSSES[token.campus] }}" disabled>
+          <input type="hidden" name="campus" value="{{ token.campus }}">
+          {% else %}
+          <select class="form-select" id="api-campus" name="campus">
+            {% for key, label in CAMPUSSES.items() %}
+            <option value="{{ key }}" {% if key == campus %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          {% endif %}
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Expiration</label>
+          <input class="form-control" type="datetime-local" name="expires_at"
+                 value="{{ expires_value }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Historique — début</label>
+          <input class="form-control" type="datetime-local" name="history_from"
+                 value="{{ history_from_value }}" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Historique — fin</label>
+          <input class="form-control" type="datetime-local" name="history_to"
+                 value="{{ history_to_value }}" required>
+          <div class="form-text">Doit précéder l'expiration du jeton.</div>
+        </div>
+        <div class="col-md-6 d-flex align-items-end">
+          <div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="can_read_consumption"
+                     id="can_read_consumption" {% if not token or token.can_read_consumption %}checked{% endif %}>
+              <label class="form-check-label" for="can_read_consumption">
+                Lecture des consommations (agrégats, sans noms d'étudiants)
+              </label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="can_write_prices"
+                     id="can_write_prices" {% if not token or token.can_write_prices %}checked{% endif %}>
+              <label class="form-check-label" for="can_write_prices">
+                Écriture des prix standards (articles et fûts sélectionnés)
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="my-4">
+      <div class="d-flex justify-content-between align-items-end gap-3 mb-3">
+        <div>
+          <h2 class="h5 mb-0">Périmètre du jeton</h2>
+          <p class="text-muted small mb-0">
+            Les articles de tireuse se sélectionnent via leur fût (demi, pinte et pot ensemble).
+          </p>
+        </div>
+        <div style="min-width: 260px;">
+          <input class="form-control form-control-sm" id="api-selection-search"
+                 placeholder="Rechercher un article ou un fût…" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-header py-2 small fw-bold">Articles standards</div>
+            <div class="card-body api-selection-list">
+              {% for a in standard_articles %}
+              <div class="form-check api-select-row" data-campus="{{ a.campus }}" data-search="{{ a.name }}">
+                <input class="form-check-input" type="checkbox" name="article_ids"
+                       value="{{ a.id }}" id="article-{{ a.id }}"
+                       {% if a.id in selected_article_ids %}checked{% endif %}>
+                <label class="form-check-label" for="article-{{ a.id }}">
+                  {{ a.name }}
+                  <span class="text-muted small">{{ a.price_std|eur }}</span>
+                  {% if a.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[a.campus] }}</span>{% endif %}
+                  {% if not a.active %}<span class="badge bg-secondary">inactif</span>{% endif %}
+                </label>
+              </div>
+              {% else %}
+              <p class="text-muted mb-0">Aucun article standard.</p>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-header py-2 small fw-bold">Articles d'événement</div>
+            <div class="card-body api-selection-list">
+              {% for ev, articles in event_groups %}
+              <div class="mt-1 mb-1">
+                <strong>{{ ev.name if ev else 'Événement supprimé' }}</strong>
+                {% if ev %}<span class="text-muted small d-block">{{ ev.starts_at|dt }} → {{ ev.ends_at|dt }}</span>{% endif %}
+              </div>
+              {% for a in articles %}
+              <div class="form-check api-select-row ms-3" data-campus="{{ a.campus }}"
+                   data-search="{{ a.name }} {{ ev.name if ev else '' }}">
+                <input class="form-check-input" type="checkbox" name="article_ids"
+                       value="{{ a.id }}" id="article-{{ a.id }}"
+                       {% if a.id in selected_article_ids %}checked{% endif %}>
+                <label class="form-check-label" for="article-{{ a.id }}">
+                  {{ a.name }}
+                  <span class="text-muted small">{{ a.price_std|eur }}</span>
+                  {% if a.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[a.campus] }}</span>{% endif %}
+                  {% if not a.active %}<span class="badge bg-secondary">inactif</span>{% endif %}
+                </label>
+              </div>
+              {% endfor %}
+              {% else %}
+              <p class="text-muted mb-0">Aucun article d'événement.</p>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="card h-100">
+            <div class="card-header py-2 small fw-bold">Fûts (demi / pinte / pot)</div>
+            <div class="card-body api-selection-list">
+              {% for item in keg_options %}
+              <div class="form-check api-select-row" data-campus="{{ item.campus }}"
+                   data-search="{{ item.keg.name }} {{ item.taps|join(' ') }}">
+                <input class="form-check-input" type="checkbox" name="keg_ids"
+                       value="{{ item.keg.id }}" id="keg-{{ item.keg.id }}-{{ item.campus }}"
+                       {% if item.keg.id in selected_keg_ids %}checked{% endif %}>
+                <label class="form-check-label" for="keg-{{ item.keg.id }}-{{ item.campus }}">
+                  {{ item.keg.name }}
+                  <span class="text-muted small">
+                    {{ '%.1f'|format(item.keg.remaining_l) }} L restants
+                    {% if item.taps %}· tireuse(s) {{ item.taps|join(', ') }}{% else %}· fût détaché{% endif %}
+                  </span>
+                  {% if item.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[item.campus] }}</span>{% endif %}
+                  {% if not item.keg.active %}<span class="badge bg-secondary">inactif</span>{% endif %}
+                </label>
+              </div>
+              {% else %}
+              <p class="text-muted mb-0">Aucun fût rattaché à une tireuse.</p>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if not token or not token.is_revoked %}
+      <button class="btn btn-primary mt-4">
+        {{ 'Créer le jeton' if not token else 'Enregistrer les modifications' }}
+      </button>
+      {% endif %}
+      <a class="btn btn-outline-secondary mt-4" href="{{ url_for('admin.api_tokens') }}">Retour</a>
+    </form>
+
+    {% if token and not token.is_revoked %}
+    <hr class="my-4">
+    <form method="post" action="{{ url_for('admin.api_token_revoquer', token_id=token.id) }}"
+          data-confirm="Révoquer ce jeton ? Les appels suivants seront refusés.">
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <button class="btn btn-outline-danger btn-sm"><i class="bi bi-x-octagon"></i> Révoquer ce jeton</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static_url('js/admin_api.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Jeton API créé{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4"><i class="bi bi-key"></i> Jeton créé</h1>
+
+<div class="alert alert-warning">
+  <strong>Copiez ce jeton maintenant.</strong> Il ne sera plus jamais affiché :
+  seule son empreinte est conservée en base. Si vous le perdez, révoquez-le et
+  créez-en un nouveau.
+</div>
+
+<div class="card" style="max-width: 820px;">
+  <div class="card-body">
+    <p class="mb-2">
+      <strong>{{ token.label }}</strong> — campus {{ CAMPUSSES[token.campus] }}
+    </p>
+    <div class="input-group mb-3">
+      <input class="form-control font-monospace" id="new-api-token" readonly
+             value="{{ raw_token }}" aria-label="Jeton API">
+      <button class="btn btn-outline-primary" type="button" data-copy-text="#new-api-token"
+              title="Copier le jeton">
+        <i class="bi bi-clipboard"></i>
+      </button>
+    </div>
+    <ul class="small text-muted mb-0">
+      <li>Expiration : {{ token.expires_at|dt }}</li>
+      <li>Historique lisible : {{ token.history_from|dt }} → {{ token.history_to|dt }}</li>
+      <li>Droits : {{ token.scope_labels|join(', ') }}</li>
+      <li>
+        Périmètre : {{ token.article_links|length }} article(s) et
+        {{ token.keg_links|length }} fût(s)
+      </li>
+    </ul>
+  </div>
+</div>
+
+<a class="btn btn-primary mt-4" href="{{ url_for('admin.api_tokens') }}">Retour aux jetons</a>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static_url('js/admin_api.js') }}"></script>
+{% endblock %}
