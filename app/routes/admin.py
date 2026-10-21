@@ -27,6 +27,7 @@ from app.models import (
     AuditLog,
     Event,
     Keg,
+    KegPrice,
     LoginLog,
     Tap,
     Transaction,
@@ -1450,6 +1451,31 @@ def _api_keg_options(campus=None, include_keg_ids=None):
             option = {"keg": tap.keg, "campus": tap.campus, "taps": []}
             options[key] = option
         option["taps"].append(tap.number)
+
+    # Fûts non montés : un fût préparé pour la soirée doit pouvoir être
+    # sélectionné avant d'être installé sur une tireuse. On l'affilie au campus
+    # par ses prix (une ligne KegPrice non nulle), les lignes vides créées pour
+    # l'autre campus ne suffisant pas.
+    priced = (
+        select(KegPrice, Keg)
+        .join(Keg, KegPrice.keg_id == Keg.id)
+        .where(
+            or_(
+                KegPrice.price_half_std != 0,
+                KegPrice.price_pint_std != 0,
+                KegPrice.price_pot_std != 0,
+                KegPrice.price_half_team != 0,
+                KegPrice.price_pint_team != 0,
+                KegPrice.price_pot_team != 0,
+            )
+        )
+    )
+    if campus is not None:
+        priced = priced.where(KegPrice.campus == campus)
+    for price, keg in db.session.execute(priced):
+        key = (keg.id, price.campus)
+        options.setdefault(key, {"keg": keg, "campus": price.campus, "taps": []})
+
     # Un fût déjà sélectionné mais détaché de sa tireuse reste visible dans le
     # formulaire, sinon un simple changement de borne le retirerait du jeton.
     if campus is not None:

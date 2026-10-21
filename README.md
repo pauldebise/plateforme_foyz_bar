@@ -274,7 +274,8 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
   `admin` depuis `/admin/api`, stockés sous forme d'empreinte SHA-256, limités à
   un campus, une fenêtre de lecture et une sélection d'articles/fûts ; une
   requête par seconde ; aucune donnée nominative ; prix standards uniquement,
-  écritures par lot et journalisées dans l'audit.
+  écritures par lot et journalisées dans l'audit. Un guide texte téléchargeable
+  depuis l'onglet est fourni aux tiers.
 - Montants saisis (rechargement, retrait, transfert) : un seul parseur
   (`app.utils.parse_amount`), de 0,01 € à 5 000 € ; types et bornes des charges JSON
   de l'API validés (refus 400, jamais d'erreur serveur).

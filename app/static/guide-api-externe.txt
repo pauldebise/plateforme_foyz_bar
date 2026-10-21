@@ -1,0 +1,146 @@
+GUIDE API — FOY'Z & BAR
+=======================
+
+Cette API permet à un logiciel tiers de lire des agrégats de consommation et
+de modifier les prix standards des articles et des fûts autorisés. Elle ne
+permet pas d'encaisser une vente : la caisse de la plateforme reste le seul
+point de vente.
+
+Le jeton fourni par l'équipe est personnel et secret. Il détermine :
+  - le campus autorisé ;
+  - les droits (lecture des consommations, écriture des prix) ;
+  - les articles et les fûts accessibles ;
+  - la fenêtre d'historique lisible ;
+  - la date d'expiration.
+
+L'équipe peut modifier ces accès pendant la soirée ; le jeton reste le même.
+
+
+1. AUTHENTIFICATION
+-------------------
+
+Adresse de base : https://foyz.fr/api/v1
+
+Ajoutez cet en-tête à chaque requête :
+
+  Authorization: Bearer fz_VOTRE_JETON
+
+Ne mettez jamais le jeton dans l'URL : il apparaîtrait dans les journaux.
+Une requête sans jeton valide reçoit 401. Un jeton expiré ou révoqué est
+refusé immédiatement.
+
+Limite : une requête par seconde maximum, toutes requêtes confondues.
+Au-delà : 429 avec l'en-tête Retry-After: 1. Attendez au moins une seconde
+avant de réessayer.
+
+
+2. VÉRIFIER LES ACCÈS DU JETON
+------------------------------
+
+  curl -H "Authorization: Bearer fz_VOTRE_JETON" \
+       https://foyz.fr/api/v1/catalog
+
+La réponse contient :
+  - token : libellé, campus, droits, expiration, bornes d'historique ;
+  - articles : articles standards et articles d'événement autorisés, avec
+    leur prix standard actuel (price_std_cents) ;
+  - kegs : fûts autorisés, avec leurs trois prix standards (demi, pinte, pot)
+    et le volume restant.
+
+Un fût donne accès à ses trois tailles. Il peut être monté sur une tireuse ou
+non : un fût non monté reste accessible pour préparer ses prix avant de
+l'installer. Les prix écrits sur un fût non monté s'appliqueront quand il sera
+monté.
+
+Si un article ou un fût n'apparaît pas dans /catalog, le jeton n'y a pas accès.
+
+
+3. LIRE LA CONSOMMATION
+-----------------------
+
+  curl -H "Authorization: Bearer fz_VOTRE_JETON" \
+       "https://foyz.fr/api/v1/consumption?group_by=article"
+
+Paramètres facultatifs :
+  from            début ISO 8601 (dans les bornes du jeton)
+  to              fin ISO 8601 (dans les bornes du jeton)
+  group_by        article (défaut) ou category
+  bucket_seconds  tranches de temps en secondes (ex. 300 pour 5 minutes)
+
+La réponse contient :
+  - groups : quantités, recettes (revenue_cents) et volumes (volume_ml) ;
+  - totals : totaux sur la fenêtre ;
+  - series : mêmes agrégats par tranche de temps, si bucket_seconds est fourni ;
+  - kegs : volumes restants des fûts autorisés.
+
+Les ventes annulées sont exclues. Aucun nom d'étudiant n'est communiqué.
+Exemple de tranche de 5 minutes sur les 30 dernières minutes :
+
+  curl -H "Authorization: Bearer fz_VOTRE_JETON" \
+       "https://foyz.fr/api/v1/consumption?bucket_seconds=300&from=2026-10-24T21:30:00Z&to=2026-10-24T22:00:00Z"
+
+
+4. MODIFIER LES PRIX STANDARDS
+------------------------------
+
+  curl -X PATCH \
+       -H "Authorization: Bearer fz_VOTRE_JETON" \
+       -H "Content-Type: application/json" \
+       -d '{
+         "articles": [
+           {"article_id": 12, "price_std_cents": 450}
+         ],
+         "kegs": [
+           {"keg_id": 4, "price_half_std_cents": 250,
+            "price_pint_std_cents": 450, "price_pot_std_cents": 350}
+         ]
+       }' \
+       https://foyz.fr/api/v1/prices
+
+Règles :
+  - prix en centimes entiers, de 0 à 10000 (0 à 100 €) ;
+  - les prix équipe ne sont jamais modifiés ;
+  - maximum 200 modifications par requête, sans doublon ;
+  - le lot est atomique : si une entrée est refusée, aucune modification n'est
+    appliquée ;
+  - les articles de tireuse se modifient via leur fût (kegs), pas directement.
+
+Les prix prennent effet à la vente suivante. La caisse de la plateforme
+rafraîchit son affichage toutes les 8 secondes.
+
+
+5. UNITÉS ET DATES
+------------------
+
+  price_std_cents, revenue_cents   centimes entiers
+  volume_cl                        centilitres (catalogue)
+  volume_ml                        millilitres (agrégats)
+  dates                            ISO 8601 ; sans fuseau = UTC ;
+                                   les réponses utilisent le suffixe Z
+
+
+6. ERREURS
+----------
+
+  {"ok": false, "code": "forbidden", "error": "..."}
+
+  400  requête ou valeur invalide, fenêtre hors bornes
+  401  jeton absent, invalide, expiré ou révoqué
+  403  droit absent ou article/fût hors du périmètre du jeton
+  404  ressource inconnue
+  405  méthode non autorisée
+  429  plus d'une requête par seconde (réessayer après Retry-After)
+  500  erreur interne
+
+
+7. SÉCURITÉ
+-----------
+
+  - Gardez le jeton dans un fichier protégé ou un coffre de secrets.
+  - Ne le partagez pas et ne le mettez pas dans un dépôt public.
+  - En cas de perte ou de fuite, demandez sa révocation à l'équipe : les
+    appels seront refusés immédiatement.
+  - L'API ne donne accès à aucune donnée nominative (pas de noms, soldes ni
+    blacklists) et ne permet aucun encaissement.
+
+Documentation complète : docs/API.md dans le dépôt de la plateforme.

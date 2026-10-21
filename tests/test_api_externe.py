@@ -164,7 +164,14 @@ def _event(name, *, campus="brest", starts=-1, ends=4, closed=False, allow_stand
         return event.id
 
 
-def _keg(name, *, campus="brest", prices=(200, 400, 300), team_prices=(180, 360, 270)):
+def _keg(
+    name,
+    *,
+    campus="brest",
+    prices=(200, 400, 300),
+    team_prices=(180, 360, 270),
+    mounted=True,
+):
     with app.app_context():
         keg = Keg(name=name, volume_l=30, remaining_l=20, active=True)
         db.session.add(keg)
@@ -172,10 +179,13 @@ def _keg(name, *, campus="brest", prices=(200, 400, 300), team_prices=(180, 360,
         row = keg.price_row(campus)
         row.price_half_std, row.price_pint_std, row.price_pot_std = prices
         row.price_half_team, row.price_pint_team, row.price_pot_team = team_prices
-        tap = Tap(number=next(_seq), campus=campus, keg_id=keg.id)
-        db.session.add(tap)
-        db.session.commit()
-        C.assign_keg(tap, keg)
+        if mounted:
+            tap = Tap(number=next(_seq), campus=campus, keg_id=keg.id)
+            db.session.add(tap)
+            db.session.commit()
+            C.assign_keg(tap, keg)
+        else:
+            db.session.commit()
         return keg.id
 
 
@@ -316,6 +326,14 @@ def test_admin_only_and_token_lifecycle():
     _expect(admin.get("/admin/api").status_code == 200, "onglet API accessible à l'admin")
     page = admin.get("/admin/api").get_data(as_text=True)
     _expect('href="/admin/api"' in page, "lien API présent pour l'admin")
+    _expect("guide-api-externe.txt" in page, "guide tiers lié depuis l'onglet")
+    guide = admin.get("/static/guide-api-externe.txt")
+    _expect(guide.status_code == 200, "guide tiers téléchargeable")
+    _expect(guide.content_type.startswith("text/plain"), "guide en texte brut")
+    _expect(
+        "Authorization: Bearer" in guide.get_data(as_text=True),
+        "guide décrit l'authentification",
+    )
 
     article_a = _article("Jeton article A", std=400)
     article_b = _article("Jeton article B", std=350)
@@ -718,6 +736,81 @@ def test_edit_token_with_detached_keg():
     with app.app_context():
         token = db.session.get(ApiToken, token_id)
         _expect({link.keg_id for link in token.keg_links} == {keg_id}, "fût conservé")
+
+
+def test_unmounted_keg_scope():
+    admin = _admin_client()
+    keg_id = _keg("Fût non monté principal", mounted=False)
+    page = admin.get("/admin/api/nouveau").get_data(as_text=True)
+    _expect("Fût non monté principal" in page, "fût non monté proposé")
+    _expect(f'id="keg-{keg_id}-brest"' in page, "case du fût non monté")
+    _expect("non monté" in page, "mention non monté")
+
+    raw = _create_token(admin, label="Jeton fût non monté", campus="brest", keg_ids=[keg_id])
+    client = app.test_client()
+    body = _get(client, raw, "/api/v1/catalog").get_json()
+    _expect(any(keg["id"] == keg_id for keg in body["kegs"]), "fût non monté accessible")
+    _expect(not body["articles"], "aucun article de tireuse avant montage")
+
+    res = _patch(
+        client,
+        raw,
+        "/api/v1/prices",
+        json={
+            "kegs": [
+                {
+                    "keg_id": keg_id,
+                    "price_half_std_cents": 260,
+                    "price_pint_std_cents": 470,
+                    "price_pot_std_cents": 360,
+                }
+            ]
+        },
+    )
+    _expect(res.status_code == 200, "prix du fût non monté acceptés")
+    with app.app_context():
+        row = db.session.scalars(
+            select(KegPrice).where(KegPrice.keg_id == keg_id, KegPrice.campus == "brest")
+        ).one()
+        _expect(
+            (row.price_half_std, row.price_pint_std, row.price_pot_std) == (260, 470, 360),
+            "prix du fût non monté enregistrés",
+        )
+        _expect(
+            not db.session.scalars(
+                select(Article).where(Article.keg_id == keg_id, Article.is_tap.is_(True))
+            ).all(),
+            "pas encore d'articles de tireuse",
+        )
+        tap = Tap(number=next(_seq), campus="brest", keg_id=keg_id)
+        db.session.add(tap)
+        db.session.commit()
+        C.assign_keg(tap, db.session.get(Keg, keg_id))
+    with app.app_context():
+        taps = {
+            article.volume_cl: article
+            for article in db.session.scalars(
+                select(Article).where(Article.keg_id == keg_id, Article.is_tap.is_(True))
+            )
+        }
+        _expect(
+            (taps[25].price_std, taps[50].price_std, taps[33].price_std) == (260, 470, 360),
+            "prix appliqués au montage",
+        )
+
+    # Modification de la portée à la volée : ajout d'un second fût non monté.
+    second = _keg("Fût non monté secondaire", mounted=False)
+    token_id = _token_id(raw)
+    res = _edit_token(
+        admin,
+        token_id,
+        label="Jeton fût non monté étendu",
+        keg_ids=[keg_id, second],
+    )
+    _expect(res.status_code == 302, "portée modifiée à la volée")
+    body = _get(client, raw, "/api/v1/catalog").get_json()
+    keg_ids = {keg["id"] for keg in body["kegs"]}
+    _expect({keg_id, second} <= keg_ids, "les deux fûts sont accessibles")
 
 
 def test_token_edit_and_revocation_immediate():

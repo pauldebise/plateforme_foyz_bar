@@ -13,7 +13,9 @@ vente.
   accès.
 - Un jeton est limité à **un campus**, à une **fenêtre de lecture** et à une
   **sélection précise** d'articles standards, d'articles d'événement et de
-  fûts. Un fût donne accès à ses trois tailles : demi, pinte et pot.
+  fûts. Un fût donne accès à ses trois tailles : demi, pinte et pot. Un fût
+  **non monté** peut être sélectionné s'il a des prix sur le campus ; ses prix
+  s'appliquent lorsqu'il est installé sur une tireuse.
 - La sélection, les bornes et l'expiration peuvent être modifiées à tout
   moment ; le changement est immédiat, sans régénérer le jeton.
 - Le jeton en clair n'est affiché **qu'une seule fois**, à la création. Seule
@@ -246,3 +248,7 @@ Dans **Administrateur → API** : création, modification de la sélection, des
 bornes, de l'expiration et des portées, révocation immédiate. Le jeton reste
 inchangé lors d'une modification ; il suffit de révoquer et d'en recréer un en
 cas de perte.
+
+Un **guide texte prêt à transmettre** aux tiers est téléchargeable depuis cet
+onglet (`/static/guide-api-externe.txt`). Il reprend l'authentification, les
+endpoints, les unités, les erreurs et les règles de sécurité.

@@ -153,6 +153,9 @@
           <div class="card h-100">
             <div class="card-header py-2 small fw-bold">Fûts (demi / pinte / pot)</div>
             <div class="card-body api-selection-list">
+              <p class="text-muted small mb-2">
+                Les fûts non montés avec des prix sur le campus sont disponibles.
+              </p>
               {% for item in keg_options %}
               <div class="form-check api-select-row" data-campus="{{ item.campus }}"
                    data-search="{{ item.keg.name }} {{ item.taps|join(' ') }}">
@@ -163,7 +166,7 @@
                   {{ item.keg.name }}
                   <span class="text-muted small">
                     {{ '%.1f'|format(item.keg.remaining_l) }} L restants
-                    {% if item.taps %}· tireuse(s) {{ item.taps|join(', ') }}{% else %}· fût détaché{% endif %}
+                    {% if item.taps %}· tireuse(s) {{ item.taps|join(', ') }}{% else %}· non monté{% endif %}
                   </span>
                   {% if item.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[item.campus] }}</span>{% endif %}
                   {% if not item.keg.active %}<span class="badge bg-secondary">inactif</span>{% endif %}
@@ -183,6 +186,10 @@
       </button>
       {% endif %}
       <a class="btn btn-outline-secondary mt-4" href="{{ url_for('admin.api_tokens') }}">Retour</a>
+      <a class="btn btn-link mt-4" href="{{ static_url('guide-api-externe.txt') }}"
+         download="guide-api-foyz.txt">
+        <i class="bi bi-file-earmark-text"></i> Guide pour les tiers (TXT)
+      </a>
     </form>
 
     {% if token and not token.is_revoked %}

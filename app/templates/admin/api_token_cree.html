@@ -34,7 +34,13 @@
   </div>
 </div>
 
-<a class="btn btn-primary mt-4" href="{{ url_for('admin.api_tokens') }}">Retour aux jetons</a>
+<div class="d-flex gap-2 mt-4">
+  <a class="btn btn-primary" href="{{ url_for('admin.api_tokens') }}">Retour aux jetons</a>
+  <a class="btn btn-outline-secondary" href="{{ static_url('guide-api-externe.txt') }}"
+     download="guide-api-foyz.txt">
+    <i class="bi bi-file-earmark-text"></i> Télécharger le guide pour les tiers (TXT)
+  </a>
+</div>
 {% endblock %}
 {% block scripts %}
 <script src="{{ static_url('js/admin_api.js') }}"></script>

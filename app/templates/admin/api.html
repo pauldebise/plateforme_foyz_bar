@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Jetons API{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
   <div>
     <h1 class="h3 mb-0"><i class="bi bi-key"></i> Jetons API</h1>
     <p class="text-muted mb-0 mt-1">
@@ -9,9 +9,15 @@
       standards. Réservé au compte d'administration.
     </p>
   </div>
-  <a class="btn btn-primary" href="{{ url_for('admin.api_token_nouveau') }}">
-    <i class="bi bi-plus-lg"></i> Nouveau jeton
-  </a>
+  <div class="d-flex gap-2 flex-shrink-0">
+    <a class="btn btn-outline-secondary text-nowrap" href="{{ static_url('guide-api-externe.txt') }}"
+       download="guide-api-foyz.txt">
+      <i class="bi bi-file-earmark-text"></i> Guide pour les tiers (TXT)
+    </a>
+    <a class="btn btn-primary text-nowrap" href="{{ url_for('admin.api_token_nouveau') }}">
+      <i class="bi bi-plus-lg"></i> Nouveau jeton
+    </a>
+  </div>
 </div>
 
 <div class="alert alert-light border small">
