@@ -292,38 +292,28 @@ function renderCatalog() {
     return;
   }
 
+  const eventItems = CATALOG.filter((a) => a.event);
+  if (eventItems.length) els.catalog.appendChild(eventCard(eventItems));
+  const taps = tapGroups();
+  if (taps.length) els.catalog.appendChild(tapCard(taps));
   const trending = CATALOG
-    .filter((a) => a.rank != null && !a.tap)
+    .filter((a) => a.rank != null && !a.tap && !a.event)
     .sort(popularitySort)
     .slice(0, 9);
-  const taps = tapGroups();
-  if (trending.length || taps.length) {
-    if (taps.length) els.catalog.appendChild(tapCard(taps));
-    if (trending.length) {
-      els.catalog.appendChild(catalogCard(
-        'Articles tendances', '<i class="bi bi-fire"></i>', 'border-success', trending,
-      ));
-    }
+  if (trending.length) {
+    els.catalog.appendChild(catalogCard(
+      'Articles tendances', '<i class="bi bi-fire"></i>', 'border-success', trending,
+    ));
     clearCatalogActive();
     return;
   }
   const groups = {};
-  CATALOG.forEach((a) => {
+  CATALOG.filter((a) => !a.event && !a.tap).forEach((a) => {
     (groups[a.type] = groups[a.type] || []).push(a);
   });
-  const eventItems = CATALOG.filter((a) => a.event);
-  if (eventItems.length) {
-    const card = document.createElement('div');
-    card.className = 'card mb-2 border-warning';
-    card.innerHTML = `<div class="card-header py-1 small fw-bold text-warning-emphasis">Articles de l'événement</div><div class="card-body p-0"></div>`;
-    const body = card.querySelector('.card-body');
-    eventItems.forEach((a) => body.appendChild(catalogRow(a)));
-    els.catalog.appendChild(card);
-  }
   Object.entries(groups).forEach(([type, items]) => {
-    const std = items.filter((a) => !a.event);
-    if (!std.length) return;
-    els.catalog.appendChild(catalogCard(TYPE_LABELS[type] || type, '', '', std));
+    if (!items.length) return;
+    els.catalog.appendChild(catalogCard(TYPE_LABELS[type] || type, '', '', items));
   });
   clearCatalogActive();
 }
@@ -355,7 +345,7 @@ let catalogTimer = null;
 // Rafraîchissement en direct : réglage « articles standards », ajout ou
 // suppression d'articles — sans rechargement de la page.
 async function refreshCatalog() {
-  if (!GATEWAY || document.hidden) return;
+  if (document.hidden) return;
   try {
     const res = await fetch(`${location.pathname}/catalogue`, {
       headers: { Accept: 'application/json' },
@@ -372,11 +362,16 @@ async function refreshCatalog() {
     const signature = JSON.stringify(next);
     updateCatalogTitle();
     if (signature === catalogSignature) return;
+    const previousPrices = new Map(CATALOG.map((a) => [a.id, `${a.std}/${a.team}`]));
+    const priceChanged = next.some(
+      (a) => previousPrices.has(a.id) && previousPrices.get(a.id) !== `${a.std}/${a.team}`,
+    );
     catalogSignature = signature;
     CATALOG = next;
     pruneCart();
     renderCatalog();
     renderCart();
+    if (priceChanged) toast('Les prix du catalogue ont été mis à jour.', 'info');
   } catch (e) {
     // Réseau indisponible : on retentera au prochain cycle.
   }
@@ -812,11 +807,10 @@ updateCatalogTitle();
 renderCatalog();
 renderCart();
 
-if (GATEWAY) {
-  // Actualisation périodique du catalogue (et du réglage d'encaissement) ainsi
-  // qu'au retour sur l'onglet, pour refléter les changements en direct.
-  catalogTimer = setInterval(refreshCatalog, 8000);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) refreshCatalog();
-  });
-}
+// Actualisation périodique du catalogue (et du réglage d'encaissement de la
+// passerelle) ainsi qu'au retour sur l'onglet, pour refléter les changements
+// de prix et d'articles en direct, en caisse comme sur la passerelle.
+catalogTimer = setInterval(refreshCatalog, 8000);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) refreshCatalog();
+});

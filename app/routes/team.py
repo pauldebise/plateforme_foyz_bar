@@ -8,6 +8,7 @@ from flask import (
     abort,
     flash,
     g,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -21,6 +22,7 @@ from app.models import Article, Contribution, Note, Transaction, User
 from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
 from app.services import adminpw as AP
+from app.services.events import running_events
 from app.services.settings import int_setting
 from app.services.names import plain_names
 from app.services.stats import sales_stats, students_stats, top_article_ids, top_articles_stats
@@ -91,25 +93,29 @@ def require_mandat():
         abort(403)
 
 
-@bp.route("/paiement")
-@login_required
-def payment():
+def _payment_catalog(campus_name):
+    """Catalogue de la caisse : articles standards et articles des événements
+    en cours du campus (même fenêtre que la passerelle)."""
+    events = running_events(campus_name)
+    event_ids = {event.id for event in events}
+    event_names = {event.id: event.name for event in events}
+    conditions = [Article.active.is_(True), Article.campus == campus_name]
+    if event_ids:
+        conditions.append(or_(Article.event_id.is_(None), Article.event_id.in_(event_ids)))
+    else:
+        conditions.append(Article.event_id.is_(None))
     articles = db.session.scalars(
-        select(Article)
-        .where(
-            Article.active.is_(True),
-            Article.event_id.is_(None),
-            Article.campus == campus(),
-        )
-        .order_by(Article.is_tap.desc(), Article.name)
+        select(Article).where(*conditions).order_by(Article.is_tap.desc(), Article.name)
     ).all()
     # un article sans prix sur ce campus (ni standard ni équipe) est exclu de
     # l'encaissement ; il reste listé dans l'onglet admin Articles
     articles = [
-        a for a in articles if a.is_tap or a.price_for(campus()) or a.price_for(campus(), team=True)
+        a
+        for a in articles
+        if a.is_tap or a.price_for(campus_name) or a.price_for(campus_name, team=True)
     ]
     data = []
-    rank_of = {aid: i for i, aid in enumerate(top_article_ids(campus()))}
+    rank_of = {aid: i for i, aid in enumerate(top_article_ids(campus_name))}
     for a in articles:
         item = {
             "id": a.id,
@@ -119,14 +125,35 @@ def payment():
             "alcohol": a.is_alcohol,
             "tap": a.is_tap,
             "tap_number": a.tap_number,
-            "std": a.price_for(campus(), False),
-            "team": a.price_for(campus(), True),
+            "std": a.price_for(campus_name, False),
+            "team": a.price_for(campus_name, True),
+            "event": a.event_id is not None,
         }
+        if a.event_id is not None:
+            item["event_id"] = a.event_id
+            item["event_name"] = event_names.get(a.event_id, "")
         rank = rank_of.get(a.id)
         if rank is not None:
             item["rank"] = rank
         data.append(item)
-    return render_template("team/payment.html", catalog=data, read_only=not can_write())
+    return data
+
+
+@bp.route("/paiement")
+@login_required
+def payment():
+    return render_template(
+        "team/payment.html",
+        catalog=_payment_catalog(campus()),
+        read_only=not can_write(),
+    )
+
+
+@bp.route("/paiement/catalogue")
+@login_required
+def payment_catalogue():
+    """Rafraîchissement périodique du catalogue de la caisse (8 s)."""
+    return jsonify(ok=True, catalog=_payment_catalog(campus()))
 
 
 @bp.route("/rechargement", methods=["GET", "POST"])

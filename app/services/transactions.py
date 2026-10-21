@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.services import adminpw as AP
 from app.services import settings as S
+from app.services.events import running_event_ids
 from app.utils import (
     ALCOHOL_TYPES,
     MAX_OPERATION_CENTS,
@@ -289,7 +290,12 @@ def search_students(query, campus=None, limit=15):
 
 
 def _resolve_items(
-    items, event_id=None, campus=None, allow_standard=False, max_quantity=MAX_LINE_QUANTITY
+    items,
+    event_id=None,
+    campus=None,
+    allow_standard=False,
+    max_quantity=MAX_LINE_QUANTITY,
+    team_sale=False,
 ):
     if not items:
         raise OperationError("invalid", "Aucun article sélectionné.")
@@ -309,6 +315,7 @@ def _resolve_items(
     if not merged:
         raise OperationError("invalid", "Aucun article sélectionné.")
 
+    allowed_event_ids = running_event_ids(campus) if team_sale else set()
     stmt = select(Article).where(Article.id.in_(merged.keys()), Article.active.is_(True))
     articles = {a.id: a for a in db.session.scalars(stmt)}
     lines = []
@@ -318,7 +325,20 @@ def _resolve_items(
         # d'article d'un autre campus (ou inconnu/inactif) est refusé.
         if a is None or a.campus != campus:
             raise OperationError("invalid", "Article indisponible.")
-        if a.event_id != event_id:
+        if team_sale:
+            # Caisse équipe : le catalogue standard reste toujours vendable ;
+            # les articles d'événement ne le sont que pendant un événement en
+            # cours du campus (même fenêtre que la passerelle) et s'ils ont un
+            # prix affichable.
+            if a.event_id is not None and a.event_id not in allowed_event_ids:
+                raise OperationError("invalid", "Article indisponible.")
+            if (
+                a.event_id is not None
+                and a.price_for(campus) <= 0
+                and a.price_for(campus, team=True) <= 0
+            ):
+                raise OperationError("invalid", "Article indisponible.")
+        elif a.event_id != event_id:
             # hors d'un événement, seuls les articles standard sont vendables ;
             # en contexte événement (passerelle), le catalogue standard du
             # campus reste disponible uniquement si l'événement l'autorise
@@ -348,6 +368,7 @@ def create_purchase(
     admin_password=None,
     idempotency_key=None,
     gateway=False,
+    team_sale=False,
 ):
     """Encaisse un panier.
 
@@ -355,6 +376,12 @@ def create_purchase(
     montant plus bas et aucun contournement du découvert par mot de passe
     administrateur (il ne se saisit jamais depuis un simple lien). Le tarif
     équipe s'applique comme en caisse.
+
+    `team_sale=True` (caisse équipe) : accepte en plus les articles des
+    événements en cours du campus, sans appliquer le réglage
+    `allow_standard_articles` qui ne concerne que la passerelle. La transaction
+    est rattachée à l'événement quand tous les articles d'événement du panier
+    viennent du même événement.
     """
     if idempotency_key is not None and (
         not isinstance(idempotency_key, str) or len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH
@@ -384,9 +411,10 @@ def create_purchase(
             raise OperationError("invalid", "Aucun étudiant sélectionné.")
 
     # Les articles standards ne sont acceptés qu'en contexte événement et
-    # seulement si l'événement l'autorise (réglage modifiable en direct).
+    # seulement si l'événement l'autorise (réglage modifiable en direct). La
+    # caisse équipe, elle, vend toujours son catalogue standard.
     allow_standard = False
-    if event_id is not None:
+    if event_id is not None and not team_sale:
         event = db.session.get(Event, event_id)
         if event is None:
             raise OperationError("invalid", "Événement introuvable.")
@@ -398,7 +426,11 @@ def create_purchase(
         campus=campus,
         allow_standard=allow_standard,
         max_quantity=GATEWAY_MAX_LINE_QUANTITY if gateway else MAX_LINE_QUANTITY,
+        team_sale=team_sale,
     )
+    if team_sale:
+        used_event_ids = {a.event_id for a, _qty in lines if a.event_id is not None}
+        event_id = next(iter(used_event_ids)) if len(used_event_ids) == 1 else None
     users = []
     if not direct:
         seen = set()
