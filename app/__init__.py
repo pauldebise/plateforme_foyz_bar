@@ -513,7 +513,11 @@ def create_app():
         # (default-src 'none') et ne doit pas être écrasée ici.
         response.headers.setdefault("Content-Security-Policy", CSP)
         path = request.path
-        if path.startswith("/static/"):
+        if path.startswith("/api/v1"):
+            # L'API externe renvoie des données de consommation et de prix :
+            # jamais de cache, même intermédiaire.
+            response.headers["Cache-Control"] = "no-store, private"
+        elif path.startswith("/static/"):
             # Assets versionnés par leur date de modification (cf. static_url) :
             # cache navigateur maximal, mise à jour immédiate au déploiement.
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"

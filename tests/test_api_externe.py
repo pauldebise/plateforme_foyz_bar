@@ -372,6 +372,7 @@ def test_api_auth_rate_limit_and_scopes():
 
     res = _get(client, raw, "/api/v1/catalog")
     _expect(res.status_code == 200, f"catalogue autorisé ({res.status_code})")
+    _expect(res.headers.get("Cache-Control") == "no-store, private", "API non mise en cache")
     ids = {article["id"] for article in res.get_json()["articles"]}
     _expect(article_a in ids and article_b not in ids, "seuls les articles du jeton")
 
