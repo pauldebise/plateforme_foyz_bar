@@ -56,14 +56,10 @@
   </div>
   <div class="col-lg-5">
     <div class="card h-100">
-      <div class="card-header"><i class="bi bi-cup-straw"></i> {{ _("Le bar en un clin d'œil") }}</div>
+      <div class="card-header"><i class="bi bi-cup-straw"></i> {{ _("Catalogue") }}</div>
       <div class="card-body">
-        <p>{% trans %}Consultez le catalogue complet et les <strong>prix standards</strong> de chaque campus :{% endtrans %}</p>
+        <p>{{ _("Consultez le catalogue complet et les prix de chaque campus :") }}</p>
         <a class="btn btn-primary" href="{{ url_for('public.catalogue') }}"><i class="bi bi-tags"></i> {{ _("Voir les prix") }}</a>
-        <hr>
-        <p class="small text-muted mb-0">
-          {{ _("La monnaie utilisée au Foy'z/Bar est une monnaie virtuelle : créditez votre compte sur place (Carte bancaire, Lydia, Espèces, HelloAsso) puis réglez vos consommations.") }}
-        </p>
       </div>
     </div>
   </div>

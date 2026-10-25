@@ -143,7 +143,27 @@ def test_categories_gardent_leur_ordre():
         html.index('id="cat-biere"') < html.index('id="cat-vin"') < html.index('id="cat-snack"'),
         "les cartes de catégorie gardent leur ordre fixe (bière, vin, snacks)",
     )
-    _expect("les plus vendus" in html, "phrase d'explication du classement")
+    _expect("Prix standards" not in html, "titre de page simplifié en « Prix »")
+    _expect(
+        "les plus vendus ces derniers temps" not in html,
+        "phrase d'explication du classement retirée",
+    )
+
+
+def test_libelles_carte_catalogue_accueil():
+    s = _setup()
+    accueil = s["client"].get("/").get_data(as_text=True)
+    _expect("Le bar en un clin d'œil" not in accueil, "ancien titre de carte retiré")
+    _expect(
+        '<i class="bi bi-cup-straw"></i> Catalogue' in accueil,
+        "carte renommée en « Catalogue »",
+    )
+    _expect(
+        "Consultez le catalogue complet et les prix de chaque campus :" in accueil,
+        "phrase du catalogue simplifiée",
+    )
+    _expect("<strong>prix standards</strong>" not in accueil, "prix sans gras")
+    _expect("monnaie virtuelle" not in accueil, "commentaire sur la monnaie virtuelle retiré")
 
 
 def test_carte_des_plus_vendus():

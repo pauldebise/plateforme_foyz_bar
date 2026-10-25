@@ -82,10 +82,6 @@ msgstr "Back to home"
 msgid "Erreur interne du serveur. L'équipe technique a été prévenue."
 msgstr "Internal server error. The technical team has been notified."
 
-#: app/templates/public/catalogue.html:4
-msgid "Prix standards"
-msgstr "Standard prices"
-
 #: app/templates/public/catalogue.html:13
 msgid "Article"
 msgstr "Item"
@@ -131,29 +127,16 @@ msgid "Aucune note publique actuellement."
 msgstr "No public note at the moment."
 
 #: app/templates/public/home.html:59
-msgid "Le bar en un clin d'œil"
-msgstr "The bar at a glance"
+msgid "Catalogue"
+msgstr "Catalogue"
 
 #: app/templates/public/home.html:61
-msgid ""
-"Consultez le catalogue complet et les <strong>prix standards</strong> de "
-"chaque campus :"
-msgstr ""
-"Browse the full catalogue and the <strong>standard prices</strong> for "
-"each campus:"
+msgid "Consultez le catalogue complet et les prix de chaque campus :"
+msgstr "Browse the full catalogue and the prices for each campus:"
 
 #: app/templates/public/home.html:62
 msgid "Voir les prix"
 msgstr "See the prices"
-
-#: app/templates/public/home.html:65
-msgid ""
-"La monnaie utilisée au Foy'z/Bar est une monnaie virtuelle : créditez "
-"votre compte sur place (Carte bancaire, Lydia, Espèces, HelloAsso) puis "
-"réglez vos consommations."
-msgstr ""
-"The Foy'z/Bar uses a virtual currency: top up your account on site (card,"
-" Lydia, cash, HelloAsso), then pay for your drinks."
 
 #: app/templates/public/hors_ligne.html:2
 msgid "Hors ligne"

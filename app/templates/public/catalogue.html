@@ -2,7 +2,7 @@
 {% block title %}{{ _("Prix") }} — {{ site_name }}{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-  <h1 class="h3 mb-0"><i class="bi bi-tags"></i> {{ _("Prix standards") }}</h1>
+  <h1 class="h3 mb-0"><i class="bi bi-tags"></i> {{ _("Prix") }}</h1>
   <div class="btn-group" role="group">
     {% for key, label in CAMPUSSES.items() %}
     <a class="btn {% if campus == key %}btn-primary{% else %}btn-outline-primary{% endif %}"
@@ -13,8 +13,7 @@
 
 {% if grouped %}
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-  <p class="text-muted small mb-0">{{ _("Dans chaque catégorie, les articles les plus vendus ces derniers temps sont en premier.") }}</p>
-  <div class="input-group input-group-sm" id="catalogue-search-box" style="max-width: 260px;" hidden>
+  <div class="input-group input-group-sm ms-auto" id="catalogue-search-box" style="max-width: 260px;" hidden>
     <span class="input-group-text"><i class="bi bi-search"></i></span>
     <input id="catalogue-search" type="search" class="form-control" placeholder="{{ _('Rechercher un article…') }}" aria-label="{{ _('Rechercher un article') }}" autocomplete="off" maxlength="100">
   </div>
