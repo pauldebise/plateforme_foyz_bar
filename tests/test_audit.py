@@ -8,8 +8,8 @@ Couvre :
 - aucune fuite de secret (un mot de passe redéfini n'apparaît jamais) ;
 - consultation du journal (/admin/journal, onglet actions : filtres, pagination) ;
 - accès administrateur réservé aux mandats (un ancien membre reçoit 403), sauf
-  comptes/articles/tireuses ouverts aux anciens, et trésorerie réservée aux
-  mandats ;
+  comptes, articles, tireuses et événements ouverts aux anciens, et trésorerie
+  réservée aux mandats ;
 - purge selon la rétention (CLI, --dry-run).
 """
 
@@ -36,7 +36,7 @@ from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
-from app.models import AuditLog, User  # noqa: E402
+from app.models import AuditLog, Event, User  # noqa: E402
 from app.utils import utcnow  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
@@ -273,9 +273,13 @@ def test_tresorerie_reservee_aux_mandats():
     html = client.get("/equipe/paiement").get_data(as_text=True)
     _expect("/equipe/tresorerie" in html, "onglet Trésorerie visible pour un mandat")
     _expect("Administrateur" in html, "section administrateur visible pour un mandat")
+    _expect(
+        0 <= html.find("/admin/evenements") < html.find("Administrateur"),
+        "onglet Événements hors de la section administrateur",
+    )
 
 
-def test_comptes_et_articles_ouverts_aux_anciens():
+def test_onglets_partages_ouverts_aux_anciens():
     app = create_app()
     with app.app_context():
         old = User(
@@ -292,8 +296,9 @@ def test_comptes_et_articles_ouverts_aux_anciens():
         _login(client, "ancien.comptes", "secret123").status_code == 302,
         "connexion ancien membre",
     )
-    # accès complet aux comptes et articles malgré le statut non-administrateur
-    for path in ("/admin/comptes", "/admin/articles"):
+    # accès complet aux comptes, aux articles et aux événements malgré le
+    # statut non-administrateur
+    for path in ("/admin/comptes", "/admin/articles", "/admin/evenements"):
         res = client.get(path)
         _expect(res.status_code == 200, f"{path} accessible à un ancien ({res.status_code})")
     token = _csrf(client, "/admin/comptes")
@@ -302,19 +307,40 @@ def test_comptes_et_articles_ouverts_aux_anciens():
         data={"name": "Compte Ancien", "username": "compte.ancien", "_csrf": token},
     )
     _expect(res.status_code == 302, "création de compte par un ancien membre")
+    token = _csrf(client, "/admin/evenements")
+    res = client.post(
+        "/admin/evenements/nouveau",
+        data={
+            "name": "Événement ancien membre",
+            "starts_at": "2099-06-01T18:00",
+            "ends_at": "2099-06-01T23:00",
+            "_csrf": token,
+        },
+    )
+    _expect(res.status_code == 302, "création d'événement par un ancien membre")
+    with app.app_context():
+        event = Event.query.filter_by(name="Événement ancien membre").first()
+        _expect(
+            event is not None and event.campus == "brest",
+            "événement créé sur le campus du membre",
+        )
+        event_id = event.id
+    res = client.get(f"/admin/evenements/{event_id}")
+    _expect(res.status_code == 200, f"détail d'événement accessible ({res.status_code})")
     # les onglets restés administrateur et la trésorerie demeurent fermés
     for path in (
         "/admin/equipe",
         "/admin/journal",
-        "/admin/evenements",
         "/equipe/tresorerie",
         "/equipe/tresorerie/export/annuel",
     ):
         _expect(client.get(path).status_code == 403, f"{path} interdit aux anciens membres")
-    # menu : Comptes et Articles visibles, Trésorerie et section admin absents
+    # menu : Comptes, Articles et Événements visibles, Trésorerie et section
+    # admin absents
     html = client.get("/equipe/paiement").get_data(as_text=True)
     _expect("/admin/comptes" in html, "onglet Comptes visible pour un ancien")
     _expect("/admin/articles" in html, "onglet Articles visible pour un ancien")
+    _expect("/admin/evenements" in html, "onglet Événements visible pour un ancien")
     _expect("/equipe/tresorerie" not in html, "onglet Trésorerie masqué pour un ancien")
     _expect("Administrateur" not in html, "section administrateur masquée pour un ancien")
 

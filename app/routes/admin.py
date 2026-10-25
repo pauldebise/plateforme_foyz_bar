@@ -64,15 +64,16 @@ from app.utils import (
 
 bp = Blueprint("admin", __name__)
 
-# Pages ouvertes aux anciens membres (équipe sans admin) : tireuses, plus la
-# gestion des comptes et des articles (onglets déplacés hors de la section
-# administrateur). Tout le reste de /admin/* demeure réservé aux mandats.
+# Pages ouvertes à tous les membres de l'équipe (mandats et anciens) : les
+# tireuses, les comptes, les articles et les événements, onglets sortis de la
+# section administrateur. Le reste de /admin/* demeure réservé aux mandats.
 MEMBER_ENDPOINTS = (
     "admin.tireuse",
     "admin.keg",
     "admin.tap",
     "admin.compte",
     "admin.article",
+    "admin.evenement",
 )
 
 
