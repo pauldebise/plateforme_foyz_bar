@@ -594,7 +594,11 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
 
 ### 7.5 Tests, lint et intégration continue
 
-- Suites exécutables sans pytest : `make tests` (12 suites, SQLite).
+- Suites exécutables sans pytest : `make tests` (toutes les suites, SQLite).
+  Elles tournent en parallèle par défaut (`min(8, CPU)` processus ; `--jobs N`
+  pour ajuster). Les comptes de test utilisent un PBKDF2 allégé pour ne pas
+  payer le coût du scrypt à chaque connexion ; `FOYZ_TEST_REAL_HASH=1` rétablit
+  le hachage de production.
 - PostgreSQL 16 jetable : `make tests-postgres` (ou
   `python -m tests.run_all --postgres <url>`). Le schéma public est recréé puis
   migré (`alembic upgrade head`) avant chaque suite — à ne pointer que vers une

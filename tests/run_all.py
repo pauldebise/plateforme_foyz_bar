@@ -3,7 +3,7 @@
     python -m tests.run_all                  # SQLite (toutes les suites)
     python -m tests.run_all --postgres URL   # PostgreSQL 16 (caisse, API, auth)
     python -m tests.run_all suite [suite…]   # sous-ensemble (noms de modules)
-    python -m tests.run_all --jobs 8         # 8 suites en parallèle (défaut : 4)
+    python -m tests.run_all --jobs 8         # 8 suites en parallèle (défaut : min(8, CPU))
 
 Chaque suite tourne dans un processus séparé, avec sa propre base. En mode
 PostgreSQL, le schéma public est recréé puis migré (alembic upgrade head)
@@ -162,8 +162,8 @@ def main(argv=None):
         "--jobs",
         "-j",
         type=int,
-        default=4,
-        help="suites en parallèle (défaut : 4 ; 1 = séquentiel)",
+        default=min(8, os.cpu_count() or 4),
+        help="suites en parallèle (défaut : min(8, CPU) ; 1 = séquentiel)",
     )
     args = parser.parse_args(argv)
 
