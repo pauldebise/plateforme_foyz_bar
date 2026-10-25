@@ -18,7 +18,7 @@ from flask import (
 from sqlalchemy import func, or_, select
 
 from app.extensions import db
-from app.models import Article, Contribution, Note, Transaction, User
+from app.models import Article, Contribution, Note, Transaction, TransactionLine, User
 from app.routes.auth import login  # noqa: F401
 from app.services import transactions as T
 from app.services import adminpw as AP
@@ -31,6 +31,7 @@ from app.utils import (
     ARTICLE_TYPES,
     CAMPUSSES,
     PAYMENT_METHODS,
+    TRANSACTION_TYPES,
     clamp_text,
     is_safe_target,
     login_required,
@@ -39,6 +40,15 @@ from app.utils import (
 )
 
 bp = Blueprint("team", __name__)
+
+# Filtre supplémentaire de l'historique : ventes contenant au moins un article
+# d'événement. Cette valeur n'existe pas dans `transactions.type` ; elle est
+# traitée à part dans la route.
+EVENT_SALES_FILTER = "ventes_evenement"
+HISTORY_TYPE_FILTERS = {
+    **TRANSACTION_TYPES,
+    EVENT_SALES_FILTER: "Ventes d'évènement",
+}
 
 
 @bp.before_request
@@ -275,7 +285,12 @@ def historique():
     ffrom = request.args.get("from", "")
     fto = request.args.get("to", "")
     query = T.visible_transactions()
-    if ftype:
+    if ftype == EVENT_SALES_FILTER:
+        query = query.filter(
+            Transaction.type.in_(("achat", "direct")),
+            Transaction.lines.any(TransactionLine.article_type == "evenement"),
+        )
+    elif ftype:
         query = query.filter(Transaction.type == ftype)
     if fcampus in ("brest", "paris"):
         query = query.filter(Transaction.campus == fcampus)
@@ -321,6 +336,7 @@ def historique():
         "team/historique.html",
         rows=rows,
         filters=request.args,
+        type_filters=HISTORY_TYPE_FILTERS,
         operators=operators,
         describe=lambda t: T.describe_transaction(t, plain=True),
         page=page,

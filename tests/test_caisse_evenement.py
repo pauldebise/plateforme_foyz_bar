@@ -3,8 +3,9 @@
 Exécutable sans pytest : python -m tests.test_caisse_evenement
 
 Couvre la vente des articles d'événement depuis la caisse classique (en plus
-de la passerelle), la fenêtre de disponibilité, le catalogue rafraîchi et le
-maintien du catalogue standard.
+de la passerelle), la fenêtre de disponibilité, le catalogue rafraîchi, le
+maintien du catalogue standard et le filtre « ventes d'évènement » de
+l'historique.
 """
 
 import os
@@ -12,6 +13,7 @@ import re
 import sys
 import tempfile
 from datetime import timedelta
+from html import unescape
 from itertools import count
 from pathlib import Path
 
@@ -251,6 +253,94 @@ def test_team_payment_event_articles():
             transaction.event_id is None,
             "panier multi-événements non rattaché à un seul",
         )
+
+
+def test_historique_filtre_ventes_evenement():
+    mandate_id = _user("Mandat filtre historique", team=True)
+    client = _login(app.test_client(), _username(mandate_id))
+
+    event_id = _event("Filtre historique événement", starts=-1, ends=4)
+    event_article = _article(
+        "Filtre article événement", kind="evenement", std=400, event_id=event_id
+    )
+    direct_article = _article(
+        "Filtre article événement direct", kind="evenement", std=450, event_id=event_id
+    )
+    standard_article = _article("Filtre article standard", std=250)
+
+    buyer_id = _user("Filtre acheteur événement")
+    other_buyer_id = _user("Filtre acheteur standard")
+    csrf = _csrf(client.get("/equipe/paiement").get_data(as_text=True))
+
+    def buy(article_id, contributor=None, direct=False):
+        payload = {"items": [{"article_id": article_id, "quantity": 1}]}
+        if direct:
+            payload.update({"direct": True, "payment_method": "cb"})
+        else:
+            payload["contributors"] = [contributor]
+        res = client.post("/api/purchase", json=payload, headers={"X-CSRFToken": csrf})
+        _expect(res.status_code == 200, f"vente créée ({res.status_code}, {res.get_json()})")
+
+    buy(event_article, buyer_id)
+    buy(direct_article, direct=True)
+    buy(standard_article, other_buyer_id)
+
+    with app.app_context():
+        event_name = db.session.get(Article, event_article).name
+        direct_name = db.session.get(Article, direct_article).name
+        standard_name = db.session.get(Article, standard_article).name
+        buyer_name = db.session.get(User, buyer_id).name
+
+    page = client.get("/equipe/historique?type=ventes_evenement").get_data(as_text=True)
+    _expect("Ventes d'évènement" in unescape(page), "option de filtre affichée")
+    _expect(
+        'value="ventes_evenement" selected' in page,
+        "filtre ventes d'évènement sélectionné",
+    )
+    _expect(
+        event_name in page and direct_name in page,
+        "ventes d'articles événement listées (achat et paiement direct)",
+    )
+    _expect(standard_name not in page, "vente d'article standard exclue")
+
+    composed = client.get(
+        "/equipe/historique",
+        query_string={
+            "type": "ventes_evenement",
+            "campus": "brest",
+            "user": buyer_name,
+        },
+    ).get_data(as_text=True)
+    _expect(
+        event_name in composed and standard_name not in composed,
+        "filtre composé avec campus et étudiant",
+    )
+    _expect(
+        direct_name not in composed, "paiement direct sans étudiant exclu par le filtre étudiant"
+    )
+
+    tomorrow = (utcnow() + timedelta(days=1)).date().isoformat()
+    dated = client.get(
+        "/equipe/historique",
+        query_string={"type": "ventes_evenement", "from": tomorrow},
+    ).get_data(as_text=True)
+    _expect("Aucune transaction." in dated, "filtre composé avec la date")
+
+    page = client.get("/equipe/historique?type=achat").get_data(as_text=True)
+    _expect(
+        event_name in page and standard_name in page,
+        "filtre achat existant inchangé",
+    )
+    page = client.get("/equipe/historique?type=direct").get_data(as_text=True)
+    _expect(
+        direct_name in page and standard_name not in page,
+        "filtre paiement direct existant inchangé",
+    )
+    page = client.get(
+        "/equipe/historique",
+        query_string={"type": "ventes_evenement", "campus": "paris"},
+    ).get_data(as_text=True)
+    _expect("Aucune transaction." in page, "filtre composé avec un autre campus")
 
 
 def main():

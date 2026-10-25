@@ -13,7 +13,7 @@
       <label class="form-label small">Type</label>
       <select class="form-select form-select-sm" name="type">
         <option value="">Tous</option>
-        {% for key, label in TRANSACTION_TYPES.items() %}
+        {% for key, label in type_filters.items() %}
         <option value="{{ key }}" {% if filters.get('type') == key %}selected{% endif %}>{{ label }}</option>
         {% endfor %}
       </select>
