@@ -1404,12 +1404,25 @@ def _journal_actions():
             )
     stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
     rows, page, pages, total = _journal_pagination(stmt)
+    # Acteurs et cibles des actions sur les comptes sont toujours des libellés
+    # de compte : on ne garde que le nom réel, même si le surnom a changé
+    # depuis l'écriture de la ligne. Les autres cibles (article, fût, tireuse…)
+    # ne sont ramenées à un nom que si le libellé correspond exactement.
+    account_targets = {
+        row.target for row in rows if row.target and row.action.startswith(("compte.", "equipe."))
+    }
+    plain = plain_names(
+        {row.actor for row in rows if row.actor} | account_targets,
+        160,
+        user_labels=True,
+    )
+    plain.update(plain_names({row.target for row in rows if row.target} - account_targets, 160))
     return {
         "logs": rows,
         "page": page,
         "pages": pages,
         "total": total,
-        "plain": plain_names({v for r in rows for v in (r.actor, r.target)}, 160),
+        "plain": plain,
     }
 
 

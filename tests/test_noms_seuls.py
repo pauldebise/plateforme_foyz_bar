@@ -3,7 +3,8 @@
 Exécutable sans pytest : python -m tests.test_noms_seuls
 
 Couvre : colonne Opérateur, libellé de l'opération et détail de l'historique ;
-acteur et cible du journal d'actions ; libellé tronqué à la longueur de la
+acteur et cible du journal d'actions (nom réel seul, sans surnom ni identifiant,
+même si le surnom a changé depuis) ; libellé tronqué à la longueur de la
 colonne ; libellé sans compte correspondant laissé tel quel ; les autres pages
 (comptes) gardent le surnom.
 """
@@ -37,6 +38,8 @@ from app.services.names import plain_names  # noqa: E402
 ADMIN_PASSWORD = "mot-de-passe-admin"
 OP_NICK = "SurnomOperateurTresLong"
 STUDENT_NICK = "SurnomEtudiantTresLong"
+CIBLE_NICK = "SurnomCibleTresLong"
+STALE_NICK = "AncienSurnom"
 LONG_NICK = "x" * 245
 _client = None
 
@@ -69,6 +72,8 @@ def _setup():
     with app.app_context():
         operator = _user("Zn Operateur", OP_NICK, team=True)
         student = _user("Zn Etudiant", STUDENT_NICK)
+        cible = _user("Zn Cible", CIBLE_NICK)
+        sans_surnom = _user("Zn Identifiant", None)
         long_op = _user("Zn Long", LONG_NICK, team=True)
         article = Article(name="Zn Biere", article_type="biere", campus="brest", price_std=100)
         db.session.add(article)
@@ -85,6 +90,42 @@ def _setup():
                 actor=operator.display_name,
                 target=student.display_name,
                 action="compte.modification",
+                campus="brest",
+            )
+        )
+        # Cibles de compte avec surnom + identifiant, identifiant seul, et
+        # surnom devenu obsolète depuis l'écriture de la ligne.
+        db.session.add(
+            AuditLog(
+                actor=operator.display_name,
+                target=f"{cible.display_name} ({cible.username})",
+                action="compte.modification",
+                campus="brest",
+            )
+        )
+        db.session.add(
+            AuditLog(
+                actor=operator.display_name,
+                target=f"{sans_surnom.name} ({sans_surnom.username})",
+                action="compte.modification",
+                campus="brest",
+            )
+        )
+        db.session.add(
+            AuditLog(
+                actor=f"{operator.name} ({STALE_NICK})",
+                target=f"{cible.name} ({STALE_NICK}) ({cible.username})",
+                action="compte.modification",
+                campus="brest",
+            )
+        )
+        # Cible non liée à un compte : le préfixe ressemble à un nom de compte,
+        # mais le libellé doit rester intact.
+        db.session.add(
+            AuditLog(
+                actor=operator.display_name,
+                target=f"{cible.name} (catégorie)",
+                action="article.modification",
                 campus="brest",
             )
         )
@@ -126,6 +167,20 @@ def test_journal_actions_sans_surnom():
     )
 
 
+def test_journal_cible_noms_reels():
+    """La colonne Cible ne montre que le nom réel, jamais surnom ni identifiant."""
+    page = _setup().get("/admin/journal?tab=actions").get_data(as_text=True)
+    for name in ("Zn Cible", "Zn Identifiant", "Zn Operateur"):
+        _expect(name in page, f"{name} affiché dans le journal")
+    for hidden in (CIBLE_NICK, "zn.cible", "zn.identifiant", STALE_NICK):
+        _expect(hidden not in page, f"{hidden} absent de la colonne Cible")
+    _expect("Cible (abc)" in page, "cible non liée à un compte laissée telle quelle")
+    _expect(
+        "Zn Cible (catégorie)" in page,
+        "cible non liée à un compte dont le préfixe ressemble à un nom laissée telle quelle",
+    )
+
+
 def test_autres_pages_gardent_le_surnom():
     client = _setup()
     page = client.get("/admin/comptes?q=Zn+Operateur").get_data(as_text=True)
@@ -140,6 +195,26 @@ def test_plain_names_service():
         found = plain_names({full, "Sans surnom", "Zn Operateur (autre surnom)", None, ""}, 255)
         _expect(found == {full: "Zn Operateur"}, f"seul le libellé exact est résolu ({found})")
         _expect(plain_names(set(), 255) == {}, "ensemble vide")
+
+
+def test_plain_names_libelle_compte():
+    app = create_app()
+    with app.app_context():
+        _setup()
+        operator = db.session.query(User).filter(User.username == "zn.operateur").one()
+        surname_username = f"{operator.name} ({operator.nickname}) ({operator.username})"
+        username_only = f"{operator.name} ({operator.username})"
+        stale_target = f"{operator.name} ({STALE_NICK}) ({operator.username})"
+        stale_actor = f"{operator.name} ({STALE_NICK})"
+        found = plain_names({surname_username, username_only}, 160)
+        _expect(
+            found == {surname_username: operator.name, username_only: operator.name},
+            f"surnom et identifiant retirés ({found})",
+        )
+        found = plain_names({stale_target, stale_actor, "Sans compte (xyz)"}, 160, user_labels=True)
+        _expect(found.get(stale_target) == operator.name, "surnom obsolète + identifiant retirés")
+        _expect(found.get(stale_actor) == operator.name, "surnom obsolète retiré de l'acteur")
+        _expect("Sans compte (xyz)" not in found, "libellé sans compte laissé tel quel")
 
 
 def main():
