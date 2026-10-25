@@ -33,6 +33,7 @@ SQLITE_SUITES = [
     "tests.test_identifiers",
     "tests.test_caisse",
     "tests.test_caisse_evenement",
+    "tests.test_recap_evenement",
     "tests.test_gateway",
     "tests.test_api_externe",
     "tests.test_securite_caisse",
@@ -66,6 +67,7 @@ SQLITE_SUITES = [
 POSTGRES_SUITES = [
     "tests.test_caisse",
     "tests.test_caisse_evenement",
+    "tests.test_recap_evenement",
     "tests.test_gateway",
     "tests.test_api_externe",
     "tests.test_securite_caisse",

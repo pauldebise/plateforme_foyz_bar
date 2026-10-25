@@ -1,4 +1,6 @@
 import contextlib
+import csv
+import io
 import math
 import os
 from datetime import datetime, timedelta
@@ -6,6 +8,7 @@ from functools import wraps
 
 from flask import (
     Blueprint,
+    Response,
     abort,
     current_app,
     flash,
@@ -41,6 +44,7 @@ from app.services import api_tokens as AT
 from app.services import audit as A
 from app.services import catalog as C
 from app.services import settings as S
+from app.services.event_recap import build_recap, export_rows as event_recap_export_rows
 from app.services.names import plain_names
 from app.services.stats import TOP_ARTICLES_DAYS, top_article_sales
 from app.utils import (
@@ -1269,6 +1273,57 @@ def evenement(event_id):
         temp_articles=temp_articles,
         writable=writable,
         own_campus=own_campus(),
+    )
+
+
+def _recap_event(event_id):
+    """Événement dont le récap est demandé ; None (avec message) s'il n'est
+    pas encore terminé ou clôturé."""
+    ev = db.session.get(Event, event_id)
+    if ev is None:
+        abort(404)
+    if not ev.is_finished:
+        flash(
+            "Le récap est disponible une fois l'événement terminé ou clôturé.",
+            "warning",
+        )
+        return None
+    return ev
+
+
+@bp.route("/evenements/<int(max=2147483647):event_id>/recap")
+@login_required
+def evenement_recap(event_id):
+    ev = _recap_event(event_id)
+    if ev is None:
+        return redirect(url_for("admin.evenement", event_id=event_id))
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    return render_template(
+        "admin/evenement_recap.html",
+        ev=ev,
+        recap=build_recap(ev, page=page),
+    )
+
+
+@bp.route("/evenements/<int(max=2147483647):event_id>/recap.csv")
+@login_required
+def evenement_recap_export(event_id):
+    ev = _recap_event(event_id)
+    if ev is None:
+        return redirect(url_for("admin.evenement", event_id=event_id))
+    header, rows = event_recap_export_rows(ev)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, delimiter=";")
+    writer.writerow(header)
+    writer.writerows(rows)
+    data = "\ufeff" + buffer.getvalue()
+    return Response(
+        data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=recap_evenement_{ev.id}.csv"},
     )
 
 

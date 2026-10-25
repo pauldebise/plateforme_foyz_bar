@@ -50,3 +50,8 @@ class Event(db.Model):
     @property
     def is_upcoming_or_running(self):
         return (not self.closed) and utcnow() <= self.ends_at
+
+    @property
+    def is_finished(self):
+        """Terminé (fin passée) ou clôturé : le récap est consultable."""
+        return self.closed or self.ends_at <= utcnow()

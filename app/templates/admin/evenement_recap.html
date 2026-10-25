@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% import "_pagination.html" as pg %}
+{% block title %}Récap — {{ ev.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
+  <div>
+    <h1 class="h3 mb-1"><i class="bi bi-clipboard-data"></i> Récap — {{ ev.name }}</h1>
+    <p class="text-muted small mb-0">
+      {{ CAMPUSSES[ev.campus] }} · {{ ev.starts_at|dt }} → {{ ev.ends_at|dt }}
+      · {% if ev.closed %}clôturé{% else %}terminé{% endif %}
+    </p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.evenement', event_id=ev.id) }}"><i class="bi bi-arrow-left"></i> Retour</a>
+    <a class="btn btn-primary" href="{{ url_for('admin.evenement_recap_export', event_id=ev.id) }}"><i class="bi bi-download"></i> Export CSV</a>
+  </div>
+</div>
+
+<div class="row row-cols-2 row-cols-lg-3 g-3 mb-4">
+  <div class="col">
+    <div class="card stat-card h-100"><div class="card-body">
+      <div class="text-muted small">Recettes hors consignes</div>
+      <h2 class="mb-0">{{ recap.summary.revenue|eur }}</h2>
+      <span class="text-muted small">{{ recap.summary.sold_items }} article{{ 's' if recap.summary.sold_items > 1 }} vendu{{ 's' if recap.summary.sold_items > 1 }}</span>
+    </div></div>
+  </div>
+  <div class="col">
+    <div class="card stat-card h-100"><div class="card-body">
+      <div class="text-muted small">Total encaissé</div>
+      <h2 class="mb-0">{{ recap.summary.collected|eur }}</h2>
+      <span class="text-muted small">dont {{ recap.summary.deposits|eur }} de consignes</span>
+    </div></div>
+  </div>
+  <div class="col">
+    <div class="card stat-card h-100"><div class="card-body">
+      <div class="text-muted small">Ventes</div>
+      <h2 class="mb-0">{{ recap.summary.sales_count }}</h2>
+      <span class="text-muted small">panier moyen {{ recap.summary.average_basket|eur }}</span>
+    </div></div>
+  </div>
+  <div class="col">
+    <div class="card stat-card h-100"><div class="card-body">
+      <div class="text-muted small">Acheteurs uniques</div>
+      <h2 class="mb-0">{{ recap.buyers.unique }}</h2>
+      <span class="text-muted small">portefeuille étudiant</span>
+    </div></div>
+  </div>
+  <div class="col">
+    <div class="card stat-card h-100"><div class="card-body">
+      <div class="text-muted small">Heure de pointe</div>
+      <h2 class="h4 mb-0">{% if recap.peak %}{{ recap.peak.label }}{% else %}—{% endif %}</h2>
+      <span class="text-muted small">{% if recap.peak %}{{ recap.peak.sales }} vente{{ 's' if recap.peak.sales > 1 }}{% else %}aucune vente{% endif %}</span>
+    </div></div>
+  </div>
+  <div class="col">
+    <div class="card stat-card h-100"><div class="card-body">
+      <div class="text-muted small">Annulations exclues</div>
+      <h2 class="mb-0">{{ recap.summary.cancelled_count }}</h2>
+      <span class="text-muted small">{{ recap.summary.cancelled_revenue|eur }} de recettes{% if recap.summary.cancelled_deposits %} · {{ recap.summary.cancelled_deposits|eur }} de consignes{% endif %}</span>
+    </div></div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-receipt"></i> Détail des ventes par article</span>
+    <span class="small text-muted fw-normal">{{ recap.articles|length }} article{{ 's' if recap.articles|length > 1 }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Article</th><th>Catégorie</th><th class="text-end">Ventes</th><th class="text-end">Quantité</th><th class="text-end">Recettes</th><th class="text-end">Part</th></tr>
+      </thead>
+      <tbody>
+        {% for a in recap.articles %}
+        <tr>
+          <td class="fw-semibold">{{ a.name }}</td>
+          <td>{{ ARTICLE_TYPES.get(a.article_type, a.article_type) }}</td>
+          <td class="text-end">{{ a.sales }}</td>
+          <td class="text-end">{{ a.qty }}</td>
+          <td class="text-end fw-bold">{{ a.revenue|eur }}</td>
+          <td class="text-end text-muted">{{ '%.1f'|format(a.share)|replace('.', ',') }} %</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-4">Aucune vente rattachée à cet événement.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if recap.articles %}
+      <tfoot class="table-light">
+        <tr><th colspan="3">Total</th><th class="text-end">{{ recap.summary.sold_items }}</th><th class="text-end">{{ recap.summary.revenue|eur }}</th><th></th></tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-tags"></i> Répartition par catégorie</div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light"><tr><th>Catégorie</th><th class="text-end">Quantité</th><th class="text-end">Recettes</th></tr></thead>
+          <tbody>
+            {% for c in recap.categories %}
+            <tr><td>{{ c.label }}</td><td class="text-end">{{ c.qty }}</td><td class="text-end fw-bold">{{ c.revenue|eur }}</td></tr>
+            {% else %}
+            <tr><td colspan="3" class="text-center text-muted py-3">Aucune vente.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header"><i class="bi bi-cup-straw"></i> Volumes et fûts</div>
+      <div class="card-body">
+        <div class="row text-center g-2 mb-3">
+          <div class="col-4"><div class="text-muted small">Volume vendu</div><div class="h5 mb-0">{{ '%.2f'|format(recap.volumes.total_liters)|replace('.', ',') }} L</div></div>
+          <div class="col-4"><div class="text-muted small">Dont fûts</div><div class="h5 mb-0">{{ '%.2f'|format(recap.volumes.keg_liters)|replace('.', ',') }} L</div></div>
+          <div class="col-4"><div class="text-muted small">Équivalent fûts</div><div class="h5 mb-0">{{ '%.2f'|format(recap.volumes.total_equivalent)|replace('.', ',') }}</div></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>Fût</th><th class="text-end">Litres vendus</th><th class="text-end">Équivalent</th></tr></thead>
+            <tbody>
+              {% for k in recap.volumes.kegs %}
+              <tr>
+                <td>{{ k.name }} <span class="small text-muted">({{ '%.2f'|format(k.volume_l)|replace('.', ',') }} L)</span></td>
+                <td class="text-end">{{ '%.2f'|format(k.liters)|replace('.', ',') }} L</td>
+                <td class="text-end">{% if k.equivalent is not none %}{{ '%.2f'|format(k.equivalent)|replace('.', ',') }}{% else %}—{% endif %}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="text-center text-muted py-3">Aucun fût rattaché aux articles vendus.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if recap.volumes.other_liters %}
+        <p class="small text-muted mt-2 mb-0">Hors fûts : {{ '%.2f'|format(recap.volumes.other_liters)|replace('.', ',') }} L.</p>
+        {% endif %}
+        {% if recap.volumes.unknown_items %}
+        <p class="small text-muted mt-2 mb-0">{{ recap.volumes.unknown_items }} article{{ 's' if recap.volumes.unknown_items > 1 }} sans volume renseigné, non compté{{ 's' if recap.volumes.unknown_items > 1 }} dans les litres.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><i class="bi bi-bar-chart"></i> Fréquentation et horaires</div>
+  <div class="card-body">
+    <p class="text-muted small">Ventes par heure de la journée (heure de Paris). Les montants par acheteur incluent les consignes et la totalité des paniers partagés.</p>
+    <div class="table-responsive mb-4">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>Heure</th><th class="text-end">Ventes</th><th class="text-end">Recettes</th><th style="width: 40%;">Répartition</th></tr></thead>
+        <tbody>
+          {% for h in recap.hours if h.sales %}
+          <tr>
+            <td class="text-nowrap">{{ h.label }}{% if recap.peak and h.hour == recap.peak.hour %} <span class="badge bg-primary">pic</span>{% endif %}</td>
+            <td class="text-end">{{ h.sales }}</td>
+            <td class="text-end fw-bold">{{ h.revenue|eur }}</td>
+            <td><div class="progress" style="height: 10px;"><div class="progress-bar" style="width: {{ h.width }}%;" aria-hidden="true"></div></div></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-3">Aucune vente.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <h2 class="h6"><i class="bi bi-person"></i> Top acheteurs</h2>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>Acheteur</th><th>Promo</th><th class="text-end">Ventes</th><th class="text-end">Montant</th></tr></thead>
+            <tbody>
+              {% for b in recap.buyers.top %}
+              <tr>
+                <td>{{ b.name }}</td>
+                <td>{{ b.promotion if b.promotion is not none else '—' }}</td>
+                <td class="text-end">{{ b.nb }}</td>
+                <td class="text-end fw-bold">{{ b.spent|eur }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-muted py-3">Aucun acheteur identifié.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <h2 class="h6"><i class="bi bi-mortarboard"></i> Par promotion</h2>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>Promotion</th><th class="text-end">Acheteurs</th><th class="text-end">Montant</th></tr></thead>
+            <tbody>
+              {% for p in recap.buyers.promotions %}
+              <tr>
+                <td>{{ p.promotion if p.promotion is not none else 'Non renseignée' }}</td>
+                <td class="text-end">{{ p.buyers }}</td>
+                <td class="text-end fw-bold">{{ p.spent|eur }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="text-center text-muted py-3">Aucune donnée.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header"><i class="bi bi-person-badge"></i> Détail par opérateur</div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Opérateur</th><th class="text-end">Ventes</th><th class="text-end">Articles</th><th class="text-end">Recettes</th><th class="text-end">Consignes</th><th class="text-end">Total encaissé</th></tr>
+      </thead>
+      <tbody>
+        {% for o in recap.operators %}
+        <tr>
+          <td>{% if o.gateway %}<span class="badge bg-dark">Passerelle</span>{% else %}{{ o.display }}{% endif %}</td>
+          <td class="text-end">{{ o.sales }}</td>
+          <td class="text-end">{{ o.sold_items }}</td>
+          <td class="text-end">{{ o.revenue|eur }}</td>
+          <td class="text-end">{{ o.deposits|eur }}</td>
+          <td class="text-end fw-bold">{{ o.collected|eur }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-3">Aucune vente.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-clock-history"></i> Journal des ventes</span>
+    <span class="small text-muted fw-normal">{{ recap.transactions.total }} vente{{ 's' if recap.transactions.total > 1 }} · page {{ recap.transactions.page }} / {{ recap.transactions.pages }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Date</th><th>N°</th><th>Opérateur</th><th>Acheteurs</th><th>Détail</th><th class="text-end">Part événement</th><th>Statut</th></tr>
+      </thead>
+      <tbody>
+        {% for t in recap.transactions.rows %}
+        <tr class="{{ 'cancelled-row' if t.cancelled }}">
+          <td class="text-nowrap">{{ t.created_at|dt }}</td>
+          <td class="text-muted">#{{ t.id }}</td>
+          <td class="small">{{ t.operator }}</td>
+          <td class="small">{{ t.buyers|join(', ') if t.buyers else '—' }}</td>
+          <td class="small">
+            {% for line in t.lines %}
+            <div>{{ line.quantity }} × {{ line.article_name }} <span class="text-muted">({{ line.unit_price|eur }})</span> = {{ line.line_total|eur }}</div>
+            {% endfor %}
+            {% if t.deposit_glasses %}<div class="text-muted">+ {{ t.deposit_glasses }} consigne{{ 's' if t.deposit_glasses > 1 }} ({{ t.deposit_amount|eur }})</div>{% endif %}
+            <div class="text-muted">{% if t.payment_method %}{{ PAYMENT_METHODS.get(t.payment_method, t.payment_method) }}{% else %}Portefeuille étudiant{% endif %}</div>
+          </td>
+          <td class="text-end fw-bold">{{ t.total|eur }}</td>
+          <td>{% if t.cancelled %}<span class="badge bg-secondary">Annulée</span>{% else %}<span class="badge bg-success">Validée</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">Aucune vente.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if recap.transactions.pages > 1 %}
+  <div class="card-footer d-flex justify-content-center">
+    {{ pg.pagination(recap.transactions.page, recap.transactions.pages, 'admin.evenement_recap', {'event_id': ev.id}) }}
+  </div>
+  {% endif %}
+</div>
+
+<div class="alert alert-light border small text-muted mb-0">
+  <strong>Définitions.</strong>
+  Les recettes hors consignes correspondent aux articles vendus ; le total encaissé y ajoute les consignes.
+  Les ventes annulées sont exclues des totaux et signalées à part. Les ventes d'articles standards encaissées
+  via la passerelle ou rattachées à l'événement sont incluses. Un panier contenant des articles de plusieurs
+  événements n'est pas rattaché à un seul événement : seules ses lignes d'articles de cet événement sont comptées.
+</div>
+{% endblock %}
