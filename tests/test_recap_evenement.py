@@ -244,13 +244,12 @@ def test_recap_complet_et_export():
     html = page.get_data(as_text=True)
     _expect("built-in method" not in html, "aucune méthode Python affichée par erreur")
     for marker in (
-        "Recettes hors consignes",
-        "Total encaissé",
+        "Recette",
         "Détail des ventes par article",
         "Fréquentation et horaires",
         "Détail par opérateur",
-        "Volumes et fûts",
         "Journal des ventes",
+        "Rechercher un nom…",
         "Bière événement récap",
         "Snack événement récap",
         "Bouteille standard récap",
@@ -259,43 +258,69 @@ def test_recap_complet_et_export():
         "Bob",
         "Annulée",
         "28,00 €",
-        "30,00 €",
-        "1,66 L",
-        "1,00 L",
     ):
         _expect(marker in html, f"marqueur « {marker} » présent")
+    for removed in (
+        "Annulations exclues",
+        "Répartition par catégorie",
+        "Volumes et fûts",
+        "Définitions.",
+    ):
+        _expect(removed not in html, f"bloc retiré « {removed} » absent")
 
     with app.app_context():
         event = db.session.get(Event, event_id)
         recap = build_recap(event)
+        buyer_name = db.session.get(User, buyer_id).name
     summary = recap["summary"]
     _expect(summary["sales_count"] == 3, "trois ventes actives")
     _expect(summary["sold_items"] == 7, "sept articles vendus")
     _expect(summary["revenue"] == 2800, "recettes hors consignes")
-    _expect(summary["deposits"] == 200, "consignes encaissées")
-    _expect(summary["collected"] == 3000, "total encaissé")
     _expect(summary["average_basket"] == 933, "panier moyen arrondi")
-    _expect(summary["cancelled_count"] == 1, "une annulation")
-    _expect(summary["cancelled_revenue"] == 500, "recettes annulées")
+    _expect("deposits" not in summary, "plus de total avec consignes")
+    _expect("collected" not in summary, "plus de total encaissé")
+    _expect("cancelled_count" not in summary, "plus de carte annulations")
     _expect(recap["buyers"]["unique"] == 1, "un acheteur unique")
     _expect(recap["buyers"]["top"][0]["spent"] == 2500, "montant du top acheteur")
     _expect(recap["buyers"]["promotions"][0]["promotion"] == 2027, "promotion de l'acheteur")
     _expect(len(recap["operators"]) == 3, "trois opérateurs")
     _expect(recap["peak"]["sales"] == 3, "trois ventes à l'heure de pointe")
-    _expect(recap["volumes"]["total_liters"] == 1.66, "volume total vendu")
-    _expect(recap["volumes"]["keg_liters"] == 1.0, "volume en fût")
-    _expect(recap["volumes"]["other_liters"] == 0.66, "volume hors fût")
-    _expect(recap["volumes"]["unknown_items"] == 1, "article sans volume")
-    _expect(recap["volumes"]["kegs"][0]["equivalent"] == 0.03, "équivalent fût")
     _expect(recap["transactions"]["total"] == 4, "quatre ventes au journal")
     _expect(recap["transactions"]["pages"] == 1, "une page de journal")
+    _expect("categories" not in recap, "plus de répartition par catégorie")
+    _expect("volumes" not in recap, "plus de volumes")
 
     with app.app_context():
         event = db.session.get(Event, event_id)
         paged = build_recap(event, page=9, per_page=2)
+        by_article = build_recap(event, search="snack evenement")
+        by_buyer = build_recap(event, search=buyer_name)
+        by_operator = build_recap(event, search="bob")
+        by_accent = build_recap(event, search="biere evenement")
+        no_result = build_recap(event, search="introuvable")
     _expect(paged["transactions"]["pages"] == 2, "deux pages avec deux lignes")
     _expect(paged["transactions"]["page"] == 2, "page demandée ramenée à la dernière")
     _expect(len(paged["transactions"]["rows"]) == 2, "deux lignes sur la dernière page")
+    _expect(by_article["transactions"]["total"] == 1, "recherche par nom d'article")
+    _expect(by_buyer["transactions"]["total"] == 3, "recherche par nom d'acheteur")
+    _expect(by_operator["transactions"]["total"] == 1, "recherche par opérateur")
+    _expect(by_accent["transactions"]["total"] == 4, "recherche sans accents")
+    _expect(no_result["transactions"]["total"] == 0, "recherche sans résultat")
+    _expect(no_result["transactions"]["rows"] == [], "journal vide sans résultat")
+
+    searched_page = client.get(
+        f"/admin/evenements/{event_id}/recap", query_string={"q": "snack evenement"}
+    )
+    searched_html = searched_page.get_data(as_text=True)
+    _expect('value="snack evenement"' in searched_html, "recherche conservée dans le champ")
+    _expect("1 résultat" in searched_html, "compteur de résultats")
+    empty_search = client.get(
+        f"/admin/evenements/{event_id}/recap", query_string={"q": "zzz introuvable"}
+    )
+    _expect(
+        "Aucune vente ne correspond à la recherche." in empty_search.get_data(as_text=True),
+        "message de recherche vide",
+    )
 
     csv_response = client.get(f"/admin/evenements/{event_id}/recap.csv")
     _expect(csv_response.status_code == 200, f"export CSV ({csv_response.status_code})")
@@ -367,7 +392,6 @@ def test_panier_multi_evenements():
         first_recap["articles"][0]["name"].startswith("Article récap multi un"),
         "nom du premier article",
     )
-    _expect(first_recap["summary"]["deposits"] == 0, "consigne non attribuée")
     _expect(second_recap["summary"]["revenue"] == 700, "recettes du second événement")
     _expect(second_recap["summary"]["sold_items"] == 1, "un article du second événement")
 

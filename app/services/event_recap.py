@@ -3,18 +3,18 @@
 Les ventes sont rattachées à l'événement de deux façons : par
 ``transactions.event_id`` (passerelle et paniers entièrement rattachables) et
 par les lignes dont l'article appartient à l'événement (paniers multi-
-événements non rattachables). Les montants et volumes sont calculés en SQL
-autant que possible ; seules les répartitions horaires (heure de Paris, heure
-d'été/hiver) et les agrégations par fût sont faites en Python.
+événements non rattachables). Les montants sont calculés en SQL autant que
+possible ; seules les répartitions horaires (heure de Paris, heure d'été/hiver)
+sont faites en Python.
 """
 
 from sqlalchemy import case, cast, exists, func, literal, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.extensions import db
-from app.models import Article, Contribution, Keg, Transaction, TransactionLine, User
+from app.models import Article, Contribution, Transaction, TransactionLine, User
 from app.services.names import plain_names
-from app.utils import ARTICLE_TYPES, PAYMENT_METHODS, to_paris
+from app.utils import ARTICLE_TYPES, PAYMENT_METHODS, fold_text, to_paris
 
 SALE_TYPES = ("achat", "direct")
 GATEWAY_PREFIX = "Passerelle · "
@@ -89,7 +89,7 @@ def _sales_rows(event):
 
 def _article_rows(event):
     """Détail par article vendu (identifiant, sinon nom pour un article
-    supprimé), avec volume et fût associés quand ils existent."""
+    supprimé)."""
     key = case(
         (
             TransactionLine.article_id.isnot(None),
@@ -105,15 +105,9 @@ def _article_rows(event):
             func.sum(TransactionLine.quantity).label("qty"),
             func.sum(TransactionLine.line_total).label("revenue"),
             func.count(func.distinct(Transaction.id)).label("sales"),
-            func.max(Article.volume_cl).label("volume_cl"),
-            func.max(Article.keg_id).label("keg_id"),
-            func.max(Keg.name).label("keg_name"),
-            func.max(Keg.volume_l).label("keg_volume_l"),
         )
         .select_from(TransactionLine)
         .join(Transaction, TransactionLine.transaction_id == Transaction.id)
-        .outerjoin(Article, TransactionLine.article_id == Article.id)
-        .outerjoin(Keg, Article.keg_id == Keg.id)
         .where(
             Transaction.type.in_(SALE_TYPES),
             Transaction.cancelled.is_(False),
@@ -128,10 +122,6 @@ def _article_rows(event):
             "qty": int(row.qty or 0),
             "revenue": int(row.revenue or 0),
             "sales": int(row.sales or 0),
-            "volume_cl": row.volume_cl,
-            "keg_id": row.keg_id,
-            "keg_name": row.keg_name,
-            "keg_volume_l": float(row.keg_volume_l or 0),
         }
         for row in rows
     ]
@@ -289,7 +279,40 @@ def transactions_for_export(event, article_ids=None):
     return [_view_transaction(row, event.id, article_ids) for row in rows]
 
 
-def _transaction_page(event, page, per_page, article_ids):
+def _matches_search(row, needle):
+    if needle in str(row["id"]) or needle in fold_text(row["operator_label"]):
+        return True
+    if any(needle in fold_text(name) for name in row["buyers"]):
+        return True
+    return any(needle in fold_text(line.article_name) for line in row["lines"])
+
+
+def _transaction_page(event, page, per_page, article_ids, search=""):
+    if search:
+        needle = fold_text(search)
+        rows = db.session.scalars(
+            _matched_transaction_query(event).order_by(
+                Transaction.created_at.desc(), Transaction.id.desc()
+            )
+        ).all()
+        views = [
+            view
+            for view in (_view_transaction(row, event.id, article_ids) for row in rows)
+            if _matches_search(view, needle)
+        ]
+        total = len(views)
+        pages = max(1, (total + per_page - 1) // per_page)
+        page = min(max(1, page), pages)
+        start = (page - 1) * per_page
+        return {
+            "rows": views[start : start + per_page],
+            "page": page,
+            "pages": pages,
+            "total": total,
+            "per_page": per_page,
+            "search": search,
+        }
+
     base = (
         select(Transaction.id)
         .join(TransactionLine, TransactionLine.transaction_id == Transaction.id)
@@ -311,88 +334,28 @@ def _transaction_page(event, page, per_page, article_ids):
         "pages": pages,
         "total": int(total),
         "per_page": per_page,
+        "search": "",
     }
 
 
-def build_recap(event, page=1, per_page=50):
+def build_recap(event, page=1, per_page=50, search=""):
     article_ids = set(db.session.scalars(select(Article.id).where(Article.event_id == event.id)))
     all_sales = _sales_rows(event)
     active = [row for row in all_sales if not row["cancelled"]]
-    cancelled = [row for row in all_sales if row["cancelled"]]
 
     revenue = sum(row["lines_total"] for row in active)
-    deposits = sum(_deposit(row, event.id) for row in active)
     sales_count = len(active)
     summary = {
         "sales_count": sales_count,
         "sold_items": sum(row["items"] for row in active),
         "revenue": revenue,
-        "deposits": deposits,
-        "collected": revenue + deposits,
         "average_basket": round(revenue / sales_count) if sales_count else 0,
-        "cancelled_count": len(cancelled),
-        "cancelled_revenue": sum(row["lines_total"] for row in cancelled),
-        "cancelled_deposits": sum(_deposit(row, event.id) for row in cancelled),
     }
 
     articles = _article_rows(event)
     for article in articles:
-        article["liters"] = round(article["qty"] * (article["volume_cl"] or 0) / 100, 2)
         article["share"] = round(article["revenue"] / revenue * 100, 1) if revenue else 0
     articles.sort(key=lambda row: (-row["revenue"], -row["qty"], row["name"].casefold()))
-
-    categories = {}
-    for article in articles:
-        category = categories.setdefault(
-            article["article_type"],
-            {
-                "type": article["article_type"],
-                "label": ARTICLE_TYPES.get(article["article_type"], article["article_type"]),
-                "qty": 0,
-                "revenue": 0,
-                "sales": 0,
-            },
-        )
-        category["qty"] += article["qty"]
-        category["revenue"] += article["revenue"]
-        category["sales"] += article["sales"]
-    category_rows = sorted(categories.values(), key=lambda row: -row["revenue"])
-
-    kegs = {}
-    unknown_volume_items = 0
-    for article in articles:
-        if article["volume_cl"] is None:
-            unknown_volume_items += article["qty"]
-        if article["keg_id"] is None or not article["volume_cl"]:
-            continue
-        keg = kegs.setdefault(
-            article["keg_id"],
-            {
-                "name": article["keg_name"] or "Fût",
-                "volume_l": article["keg_volume_l"],
-                "liters": 0.0,
-            },
-        )
-        keg["liters"] += article["liters"]
-    for keg in kegs.values():
-        keg["liters"] = round(keg["liters"], 2)
-        keg["equivalent"] = (
-            round(keg["liters"] / keg["volume_l"], 2) if keg["volume_l"] > 0 else None
-        )
-    keg_rows = sorted(kegs.values(), key=lambda row: -row["liters"])
-    keg_liters = round(sum(keg["liters"] for keg in keg_rows), 2)
-    total_liters = round(sum(article["liters"] for article in articles), 2)
-    volumes = {
-        "total_liters": total_liters,
-        "keg_liters": keg_liters,
-        "other_liters": round(total_liters - keg_liters, 2),
-        "unknown_items": unknown_volume_items,
-        "kegs": keg_rows,
-        "total_equivalent": round(
-            sum(keg["equivalent"] or 0 for keg in keg_rows),
-            2,
-        ),
-    }
 
     operators = {}
     for row in active:
@@ -449,7 +412,7 @@ def build_recap(event, page=1, per_page=50):
             return "Passerelle"
         return transparent_names.get(label, label or "—")
 
-    transactions = _transaction_page(event, page, per_page, article_ids)
+    transactions = _transaction_page(event, page, per_page, article_ids, search)
     for row in transactions["rows"]:
         row["operator"] = operator_display(row["operator_label"])
     for operator in operator_rows:
@@ -458,13 +421,12 @@ def build_recap(event, page=1, per_page=50):
     return {
         "summary": summary,
         "articles": articles,
-        "categories": category_rows,
-        "volumes": volumes,
         "operators": operator_rows,
         "hours": hours,
         "peak": peak,
         "buyers": buyers,
         "transactions": transactions,
+        "search": search,
     }
 
 

@@ -1301,10 +1301,11 @@ def evenement_recap(event_id):
         page = max(1, int(request.args.get("page", 1)))
     except (TypeError, ValueError):
         page = 1
+    search = (request.args.get("q") or "").strip()[:100]
     return render_template(
         "admin/evenement_recap.html",
         ev=ev,
-        recap=build_recap(ev, page=page),
+        recap=build_recap(ev, page=page, search=search),
     )
 
 

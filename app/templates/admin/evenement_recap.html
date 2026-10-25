@@ -16,19 +16,12 @@
   </div>
 </div>
 
-<div class="row row-cols-2 row-cols-lg-3 g-3 mb-4">
+<div class="row row-cols-2 row-cols-lg-4 g-3 mb-4">
   <div class="col">
     <div class="card stat-card h-100"><div class="card-body">
-      <div class="text-muted small">Recettes hors consignes</div>
+      <div class="text-muted small">Recette</div>
       <h2 class="mb-0">{{ recap.summary.revenue|eur }}</h2>
-      <span class="text-muted small">{{ recap.summary.sold_items }} article{{ 's' if recap.summary.sold_items > 1 }} vendu{{ 's' if recap.summary.sold_items > 1 }}</span>
-    </div></div>
-  </div>
-  <div class="col">
-    <div class="card stat-card h-100"><div class="card-body">
-      <div class="text-muted small">Total encaissé</div>
-      <h2 class="mb-0">{{ recap.summary.collected|eur }}</h2>
-      <span class="text-muted small">dont {{ recap.summary.deposits|eur }} de consignes</span>
+      <span class="text-muted small">hors consignes · {{ recap.summary.sold_items }} article{{ 's' if recap.summary.sold_items > 1 }} vendu{{ 's' if recap.summary.sold_items > 1 }}</span>
     </div></div>
   </div>
   <div class="col">
@@ -50,13 +43,6 @@
       <div class="text-muted small">Heure de pointe</div>
       <h2 class="h4 mb-0">{% if recap.peak %}{{ recap.peak.label }}{% else %}—{% endif %}</h2>
       <span class="text-muted small">{% if recap.peak %}{{ recap.peak.sales }} vente{{ 's' if recap.peak.sales > 1 }}{% else %}aucune vente{% endif %}</span>
-    </div></div>
-  </div>
-  <div class="col">
-    <div class="card stat-card h-100"><div class="card-body">
-      <div class="text-muted small">Annulations exclues</div>
-      <h2 class="mb-0">{{ recap.summary.cancelled_count }}</h2>
-      <span class="text-muted small">{{ recap.summary.cancelled_revenue|eur }} de recettes{% if recap.summary.cancelled_deposits %} · {{ recap.summary.cancelled_deposits|eur }} de consignes{% endif %}</span>
     </div></div>
   </div>
 </div>
@@ -91,60 +77,6 @@
       </tfoot>
       {% endif %}
     </table>
-  </div>
-</div>
-
-<div class="row g-4 mb-4">
-  <div class="col-lg-6">
-    <div class="card h-100">
-      <div class="card-header"><i class="bi bi-tags"></i> Répartition par catégorie</div>
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-          <thead class="table-light"><tr><th>Catégorie</th><th class="text-end">Quantité</th><th class="text-end">Recettes</th></tr></thead>
-          <tbody>
-            {% for c in recap.categories %}
-            <tr><td>{{ c.label }}</td><td class="text-end">{{ c.qty }}</td><td class="text-end fw-bold">{{ c.revenue|eur }}</td></tr>
-            {% else %}
-            <tr><td colspan="3" class="text-center text-muted py-3">Aucune vente.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  <div class="col-lg-6">
-    <div class="card h-100">
-      <div class="card-header"><i class="bi bi-cup-straw"></i> Volumes et fûts</div>
-      <div class="card-body">
-        <div class="row text-center g-2 mb-3">
-          <div class="col-4"><div class="text-muted small">Volume vendu</div><div class="h5 mb-0">{{ '%.2f'|format(recap.volumes.total_liters)|replace('.', ',') }} L</div></div>
-          <div class="col-4"><div class="text-muted small">Dont fûts</div><div class="h5 mb-0">{{ '%.2f'|format(recap.volumes.keg_liters)|replace('.', ',') }} L</div></div>
-          <div class="col-4"><div class="text-muted small">Équivalent fûts</div><div class="h5 mb-0">{{ '%.2f'|format(recap.volumes.total_equivalent)|replace('.', ',') }}</div></div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead class="table-light"><tr><th>Fût</th><th class="text-end">Litres vendus</th><th class="text-end">Équivalent</th></tr></thead>
-            <tbody>
-              {% for k in recap.volumes.kegs %}
-              <tr>
-                <td>{{ k.name }} <span class="small text-muted">({{ '%.2f'|format(k.volume_l)|replace('.', ',') }} L)</span></td>
-                <td class="text-end">{{ '%.2f'|format(k.liters)|replace('.', ',') }} L</td>
-                <td class="text-end">{% if k.equivalent is not none %}{{ '%.2f'|format(k.equivalent)|replace('.', ',') }}{% else %}—{% endif %}</td>
-              </tr>
-              {% else %}
-              <tr><td colspan="3" class="text-center text-muted py-3">Aucun fût rattaché aux articles vendus.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% if recap.volumes.other_liters %}
-        <p class="small text-muted mt-2 mb-0">Hors fûts : {{ '%.2f'|format(recap.volumes.other_liters)|replace('.', ',') }} L.</p>
-        {% endif %}
-        {% if recap.volumes.unknown_items %}
-        <p class="small text-muted mt-2 mb-0">{{ recap.volumes.unknown_items }} article{{ 's' if recap.volumes.unknown_items > 1 }} sans volume renseigné, non compté{{ 's' if recap.volumes.unknown_items > 1 }} dans les litres.</p>
-        {% endif %}
-      </div>
-    </div>
   </div>
 </div>
 
@@ -242,7 +174,14 @@
 <div class="card mb-4">
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="bi bi-clock-history"></i> Journal des ventes</span>
-    <span class="small text-muted fw-normal">{{ recap.transactions.total }} vente{{ 's' if recap.transactions.total > 1 }} · page {{ recap.transactions.page }} / {{ recap.transactions.pages }}</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="small text-muted fw-normal">{% if recap.search %}{{ recap.transactions.total }} résultat{{ 's' if recap.transactions.total > 1 }}{% else %}{{ recap.transactions.total }} vente{{ 's' if recap.transactions.total > 1 }}{% endif %} · page {{ recap.transactions.page }} / {{ recap.transactions.pages }}</span>
+      <form class="d-flex gap-1" method="get" role="search">
+        <input class="form-control form-control-sm" type="search" name="q" value="{{ recap.search }}" placeholder="Rechercher un nom…" aria-label="Rechercher dans le journal des ventes" style="width: 190px;">
+        <button class="btn btn-sm btn-outline-secondary" title="Rechercher" aria-label="Rechercher"><i class="bi bi-search"></i></button>
+        {% if recap.search %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.evenement_recap', event_id=ev.id) }}" title="Effacer la recherche" aria-label="Effacer la recherche"><i class="bi bi-x-lg"></i></a>{% endif %}
+      </form>
+    </div>
   </div>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
@@ -267,23 +206,19 @@
           <td>{% if t.cancelled %}<span class="badge bg-secondary">Annulée</span>{% else %}<span class="badge bg-success">Validée</span>{% endif %}</td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">Aucune vente.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-4">{% if recap.search %}Aucune vente ne correspond à la recherche.{% else %}Aucune vente.{% endif %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% if recap.transactions.pages > 1 %}
   <div class="card-footer d-flex justify-content-center">
+    {% if recap.search %}
+    {{ pg.pagination(recap.transactions.page, recap.transactions.pages, 'admin.evenement_recap', {'event_id': ev.id, 'q': recap.search}) }}
+    {% else %}
     {{ pg.pagination(recap.transactions.page, recap.transactions.pages, 'admin.evenement_recap', {'event_id': ev.id}) }}
+    {% endif %}
   </div>
   {% endif %}
-</div>
-
-<div class="alert alert-light border small text-muted mb-0">
-  <strong>Définitions.</strong>
-  Les recettes hors consignes correspondent aux articles vendus ; le total encaissé y ajoute les consignes.
-  Les ventes annulées sont exclues des totaux et signalées à part. Les ventes d'articles standards encaissées
-  via la passerelle ou rattachées à l'événement sont incluses. Un panier contenant des articles de plusieurs
-  événements n'est pas rattaché à un seul événement : seules ses lignes d'articles de cet événement sont comptées.
 </div>
 {% endblock %}
