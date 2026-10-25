@@ -281,6 +281,27 @@ def test_gateway_standard_toggle_and_live_catalogue():
     _expect(res.status_code == 200, "article événement toujours encaissable")
 
 
+def test_gateway_affiche_evenement():
+    """L'affiche de l'événement est présentée dans une carte, comme la photo
+    déco de l'interface équipe, uniquement quand elle existe."""
+    app = create_app()
+    ids = _seed(app, "poster")
+    client = app.test_client()
+
+    html = client.get(f"/passerelle/{ids['token']}").get_data(as_text=True)
+    _expect('id="poster-card"' not in html, "aucune carte affiche sans affiche")
+
+    with app.app_context():
+        ev = db.session.get(Event, ids["event"])
+        ev.poster = "affiche-soiree-test.webp"
+        db.session.commit()
+
+    html = client.get(f"/passerelle/{ids['token']}").get_data(as_text=True)
+    _expect('id="poster-card"' in html, "carte affiche présente avec affiche")
+    _expect('src="/uploads/affiche-soiree-test.webp"' in html, "affiche servie")
+    _expect('alt="Affiche — Soirée test"' in html, "texte alternatif de l'affiche")
+
+
 def main():
     tests = [
         (name, fn)
