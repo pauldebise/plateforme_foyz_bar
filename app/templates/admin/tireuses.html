@@ -36,7 +36,7 @@
               <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
               <select class="form-select form-select-sm" name="keg_id" required>
                 <option value="">Choisir un fût…</option>
-                {% for k in free_kegs if not t.keg %}
+                {% for k in kegs if not t.keg %}
                 <option value="{{ k.id }}">{{ k.name }}</option>
                 {% endfor %}
               </select>
@@ -79,18 +79,27 @@
 </div>
 
 <div class="card">
-  <div class="card-header d-flex justify-content-between align-items-center">
+  <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
     <span>Fûts enregistrés{% if not writable %} (consultation){% endif %}</span>
-    {% if writable %}
-    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#new-keg-modal"><i class="bi bi-plus-lg"></i> Nouveau fût</button>
-    {% endif %}
+    <div class="d-flex align-items-center gap-2">
+      {% if kegs %}
+      <div class="input-group input-group-sm" style="max-width: 220px;">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input id="keg-search" type="search" class="form-control" placeholder="Rechercher un fût…"
+               aria-label="Rechercher un fût" autocomplete="off" maxlength="100">
+      </div>
+      {% endif %}
+      {% if writable %}
+      <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#new-keg-modal"><i class="bi bi-plus-lg"></i> Nouveau fût</button>
+      {% endif %}
+    </div>
   </div>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead class="table-light"><tr><th>Fût</th><th>Degré</th><th>Volume</th><th>En service</th><th></th></tr></thead>
       <tbody>
         {% for k in kegs %}
-        <tr>
+        <tr data-keg-row data-search="{{ k.name }}">
           <td><strong>{{ k.name }}</strong></td>
           <td>{{ '%.1f'|format(k.alcohol_degree) }}°</td>
           <td>{{ '%.0f'|format(k.volume_l) }} L</td>
@@ -108,6 +117,11 @@
         {% else %}
         <tr><td colspan="5" class="text-center text-muted py-4">Aucun fût enregistré.</td></tr>
         {% endfor %}
+        {% if kegs %}
+        <tr id="keg-search-empty" hidden>
+          <td colspan="5" class="text-center text-muted py-4">Aucun fût ne correspond à cette recherche.</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
   </div>
@@ -125,11 +139,17 @@
         <div class="col-md-6"><label class="form-label">Nom du fût</label><input class="form-control" name="name" required></div>
         <div class="col-md-2"><label class="form-label">Degré (°)</label><input class="form-control" name="alcohol_degree" type="number" step="0.1" value="5.0"></div>
         <div class="col-md-2"><label class="form-label">Volume (L)</label><input class="form-control" name="volume_l" type="number" step="0.5" value="30"></div>
+        <div class="col-12">
+          <p class="text-muted small mb-0">
+            Tous les prix sont obligatoires, pour les deux campus. Saisissez 0 pour un prix
+            volontairement gratuit.
+          </p>
+        </div>
         {% for c, label in [('brest','Brest'), ('paris','Paris')] %}
         <div class="col-12"><strong>{{ label }}</strong></div>
         {% for size, slabel in [('half','Demi'), ('pint','Pinte'), ('pot','Pot')] %}
-        <div class="col-md-3"><label class="form-label small">{{ slabel }} standard (€)</label><input class="form-control form-control-sm" name="{{ c }}_{{ size }}_std" value="0.00"></div>
-        <div class="col-md-3"><label class="form-label small">{{ slabel }} équipe (€)</label><input class="form-control form-control-sm" name="{{ c }}_{{ size }}_team" value="0.00"></div>
+        <div class="col-md-3"><label class="form-label small">{{ slabel }} standard (€)</label><input class="form-control form-control-sm" name="{{ c }}_{{ size }}_std" placeholder="0.00" required></div>
+        <div class="col-md-3"><label class="form-label small">{{ slabel }} équipe (€)</label><input class="form-control form-control-sm" name="{{ c }}_{{ size }}_team" placeholder="0.00" required></div>
         {% endfor %}
         {% endfor %}
       </div>
@@ -140,4 +160,7 @@
     </form>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static_url('js/admin_tireuses.js') }}"></script>
 {% endblock %}

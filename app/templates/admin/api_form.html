@@ -183,7 +183,6 @@
                     {% if item.taps %}tireuse(s) {{ item.taps|join(', ') }}{% else %}non monté{% endif %}
                   </span>
                   {% if item.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[item.campus] }}</span>{% endif %}
-                  {% if not item.keg.active %}<span class="badge bg-secondary">inactif</span>{% endif %}
                 </label>
               </div>
               {% else %}

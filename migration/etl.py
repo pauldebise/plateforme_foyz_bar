@@ -93,8 +93,8 @@ _ARTICLE_SQL = (
     ":is_alcohol, :is_tap, :tap_number, :keg_id, :active, :created_at) RETURNING id"
 )
 _KEG_SQL = (
-    "INSERT INTO kegs (name, alcohol_degree, volume_l, active, created_at) "
-    "VALUES (:name, :alcohol_degree, :volume_l, :active, :created_at) "
+    "INSERT INTO kegs (name, alcohol_degree, volume_l, created_at) "
+    "VALUES (:name, :alcohol_degree, :volume_l, :created_at) "
     "RETURNING id"
 )
 _KEG_PRICE_SQL = (
@@ -634,7 +634,6 @@ class Migrator:
             "name": obj["name"],
             "alcohol_degree": obj["alcohol_degree"],
             "volume_l": obj["volume_l"],
-            "active": True,
             "created_at": now_utc(),
         }
         keg_id = self.conn.execute(sa.text(_KEG_SQL), params).scalar_one()

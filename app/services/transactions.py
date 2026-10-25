@@ -369,6 +369,9 @@ def create_purchase(
     `allow_standard_articles` qui ne concerne que la passerelle. La transaction
     est rattachée à l'événement quand tous les articles d'événement du panier
     viennent du même événement.
+
+    Un panier dont le total est nul (article offert) est encaissé et enregistré
+    comme une vente à 0 €.
     """
     if idempotency_key is not None and (
         not isinstance(idempotency_key, str) or len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH
@@ -471,8 +474,10 @@ def create_purchase(
             deposit_total = glasses * S.deposit_value()
 
     total = article_total + deposit_total
-    if total <= 0:
-        raise OperationError("invalid", "Montant nul.")
+    # Un total nul est autorisé : article offert, fût à 0 €, etc. La caisse
+    # enregistre alors une vente à 0 € au lieu de refuser l'opération.
+    if total < 0:
+        raise OperationError("invalid", "Montant invalide.")
     max_total = GATEWAY_MAX_TOTAL_CENTS if gateway else MAX_OPERATION_CENTS
     if total > max_total:
         raise OperationError("invalid", f"Montant maximal par transaction : {euros(max_total)}.")
@@ -808,7 +813,7 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
 
 
 def cancel_transaction(transaction, admin_password, *, verified=False):
-    """Annule une transaction et rétablit soldes, consignes et fûts.
+    """Annule une transaction et rétablit les soldes et les consignes.
 
     `verified=True` : l'appelant a déjà vérifié le mot de passe administrateur
     (annulation en lot, une seule vérification journalisée).

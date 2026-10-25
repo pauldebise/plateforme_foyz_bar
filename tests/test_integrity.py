@@ -33,6 +33,7 @@ from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import Article, Keg, Tap, Transaction, User  # noqa: E402
 from app.services.transactions import cancel_transaction, create_purchase  # noqa: E402
+from app.utils import TAP_SIZES  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
 
@@ -208,6 +209,214 @@ def test_tireuse_accepts_keg_without_stock():
     _expect('name="remaining_l"' not in html, "champ restant absent de l'onglet tireuses")
 
 
+def test_fut_sans_champ_actif_et_articles_encaissables():
+    app = create_app()
+    with app.app_context():
+        keg = Keg(name="Fût assignable", volume_l=30.0)
+        tap = Tap(number=503, name="Tireuse assignable", campus="brest")
+        db.session.add_all([keg, tap])
+        db.session.flush()
+        row = keg.price_row("brest")
+        row.price_half_std = 200
+        row.price_pint_std = 400
+        row.price_pot_std = 300
+        db.session.commit()
+        keg_id, tap_id, tap_number = keg.id, tap.id, tap.number
+
+    client = app.test_client()
+    _login(client)
+    page = client.get(f"/admin/tireuses/kegs/{keg_id}").get_data(as_text=True)
+    _expect("Fût actif" not in page, "champ « fût actif » retiré du formulaire")
+    _expect('name="active"' not in page, "aucune case active sur le fût")
+
+    token = _csrf(client.get("/admin/tireuses").get_data(as_text=True))
+    res = client.post(
+        f"/admin/tireuses/taps/{tap_id}/assigner",
+        data={"keg_id": str(keg_id), "_csrf": token},
+    )
+    _expect(res.status_code == 302, f"assignation acceptée ({res.status_code})")
+    with app.app_context():
+        articles = db.session.scalars(
+            select(Article).where(Article.tap_number == tap_number, Article.is_tap.is_(True))
+        ).all()
+        _expect(len(articles) == len(TAP_SIZES), "trois articles pression créés")
+        _expect(all(a.active for a in articles), "articles pression encaissables")
+
+
+def test_meme_fut_sur_deux_tireuses():
+    app = create_app()
+    with app.app_context():
+        keg = Keg(name="Cidre Kerne", volume_l=30.0)
+        taps = [
+            Tap(number=505, name="Tireuse cidre 1", campus="brest"),
+            Tap(number=506, name="Tireuse cidre 2", campus="brest"),
+        ]
+        db.session.add(keg)
+        db.session.add_all(taps)
+        db.session.flush()
+        row = keg.price_row("brest")
+        row.price_half_std = 200
+        row.price_pint_std = 400
+        row.price_pot_std = 300
+        db.session.commit()
+        keg_id = keg.id
+        tap_ids = [tap.id for tap in taps]
+        tap_numbers = [tap.number for tap in taps]
+
+    client = app.test_client()
+    _login(client)
+    for index, tap_id in enumerate(tap_ids):
+        page = client.get("/admin/tireuses").get_data(as_text=True)
+        _expect(
+            f'<option value="{keg_id}">Cidre Kerne</option>' in page,
+            "fût déjà monté encore proposé sur une autre tireuse",
+        )
+        token = _csrf(page)
+        res = client.post(
+            f"/admin/tireuses/taps/{tap_id}/assigner",
+            data={"keg_id": str(keg_id), "_csrf": token},
+        )
+        _expect(res.status_code == 302, f"assignation {index + 1} acceptée")
+
+    with app.app_context():
+        for number in tap_numbers:
+            tap = db.session.scalars(select(Tap).where(Tap.number == number)).one()
+            _expect(tap.keg_id == keg_id, "même fût monté sur les deux tireuses")
+            articles = db.session.scalars(
+                select(Article).where(
+                    Article.tap_number == number,
+                    Article.is_tap.is_(True),
+                    Article.active.is_(True),
+                )
+            ).all()
+            _expect(len(articles) == len(TAP_SIZES), "articles propres à chaque tireuse")
+
+
+def test_modification_fut_regenere_toujours_les_articles():
+    app = create_app()
+    with app.app_context():
+        keg = Keg(name="Fût à modifier", volume_l=30.0)
+        tap = Tap(number=507, name="Tireuse à modifier", campus="brest")
+        db.session.add_all([keg, tap])
+        db.session.flush()
+        row = keg.price_row("brest")
+        row.price_half_std = 200
+        row.price_pint_std = 400
+        row.price_pot_std = 300
+        db.session.commit()
+        keg_id, tap_id, tap_number = keg.id, tap.id, tap.number
+
+    client = app.test_client()
+    _login(client)
+    token = _csrf(client.get("/admin/tireuses").get_data(as_text=True))
+    res = client.post(
+        f"/admin/tireuses/taps/{tap_id}/assigner",
+        data={"keg_id": str(keg_id), "_csrf": token},
+    )
+    _expect(res.status_code == 302, "fût monté")
+
+    token = _csrf(client.get(f"/admin/tireuses/kegs/{keg_id}").get_data(as_text=True))
+    res = client.post(
+        f"/admin/tireuses/kegs/{keg_id}",
+        data={
+            "name": "Fût à modifier",
+            "alcohol_degree": "5",
+            "volume_l": "30",
+            "brest_half_std": "2.50",
+            "brest_pint_std": "5.00",
+            "brest_pot_std": "4.00",
+            "brest_half_team": "2.00",
+            "brest_pint_team": "4.00",
+            "brest_pot_team": "3.00",
+            "_csrf": token,
+        },
+    )
+    _expect(res.status_code == 302, "modification du fût acceptée")
+
+    with app.app_context():
+        articles = db.session.scalars(
+            select(Article).where(
+                Article.tap_number == tap_number,
+                Article.is_tap.is_(True),
+                Article.active.is_(True),
+            )
+        ).all()
+        by_volume = {article.volume_cl: article for article in articles}
+        _expect(len(by_volume) == len(TAP_SIZES), "articles régénérés")
+        _expect(by_volume[25].price_std == 250, "prix demi mis à jour sans case à cocher")
+        _expect(by_volume[50].price_std == 500, "prix pinte mis à jour sans case à cocher")
+        _expect(by_volume[33].price_std == 400, "prix pot mis à jour sans case à cocher")
+
+
+def test_creation_fut_exige_tous_les_prix_et_accepte_zero():
+    app = create_app()
+    client = app.test_client()
+    _login(client)
+
+    form = {"name": "Fût prix explicites", "alcohol_degree": "5", "volume_l": "30"}
+    for campus in ("brest", "paris"):
+        for size in ("half", "pint", "pot"):
+            for kind in ("std", "team"):
+                form[f"{campus}_{size}_{kind}"] = "0"
+
+    incomplete = {key: value for key, value in form.items() if key != "paris_pint_team"}
+    token = _csrf(client.get("/admin/tireuses").get_data(as_text=True))
+    res = client.post(
+        "/admin/tireuses/kegs/nouveau",
+        data={**incomplete, "_csrf": token},
+    )
+    _expect(res.status_code == 302, "prix manquant refusé proprement")
+    with app.app_context():
+        _expect(
+            db.session.scalar(select(Keg).where(Keg.name == "Fût prix explicites")) is None,
+            "aucun fût créé sans tous les prix",
+        )
+
+    token = _csrf(client.get("/admin/tireuses").get_data(as_text=True))
+    res = client.post(
+        "/admin/tireuses/kegs/nouveau",
+        data={**form, "_csrf": token},
+    )
+    _expect(res.status_code == 302, "prix explicitement à 0 acceptés")
+    with app.app_context():
+        keg = db.session.scalars(select(Keg).where(Keg.name == "Fût prix explicites")).one()
+        _expect(
+            {price.campus for price in keg.prices} == {"brest", "paris"},
+            "prix enregistrés pour les deux campus",
+        )
+        _expect(
+            all(
+                price.price_half_std == 0
+                and price.price_pint_std == 0
+                and price.price_pot_std == 0
+                and price.price_half_team == 0
+                and price.price_pint_team == 0
+                and price.price_pot_team == 0
+                for price in keg.prices
+            ),
+            "prix à 0 conservés",
+        )
+
+
+def test_recherche_fut_dans_la_carte_des_futs():
+    app = create_app()
+    with app.app_context():
+        keg = Keg(name="Fût recherché unique", volume_l=30.0)
+        db.session.add(keg)
+        db.session.commit()
+
+    client = app.test_client()
+    _login(client)
+    html = client.get("/admin/tireuses").get_data(as_text=True)
+    _expect('id="keg-search"' in html, "barre de recherche présente")
+    _expect(
+        'data-keg-row data-search="Fût recherché unique"' in html,
+        "ligne de fût indexée pour la recherche",
+    )
+    _expect('id="keg-search-empty"' in html, "message de recherche sans résultat présent")
+    _expect("js/admin_tireuses.js" in html, "script de recherche chargé")
+
+
 def test_schema_upgrade_adds_idempotency_key():
     if not IS_SQLITE:
         print("  (ignoré : évolution de schéma SQLite)")
@@ -246,6 +455,119 @@ def test_schema_upgrade_drops_keg_remaining():
         ensure_schema_upgrades()
         columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("kegs")}
         _expect("remaining_l" not in columns, "colonne remaining_l retirée")
+
+
+def test_schema_upgrade_drops_keg_active():
+    if not IS_SQLITE:
+        print("  (ignoré : évolution de schéma SQLite)")
+        return
+    from app import ensure_schema_upgrades
+
+    app = create_app()
+    with app.app_context():
+        keg = Keg(name="Fût inactif", volume_l=30.0)
+        tap = Tap(number=504, name="Tireuse inactive", campus="brest")
+        db.session.add_all([keg, tap])
+        db.session.flush()
+        tap.keg_id = keg.id
+        article = Article(
+            name="Pinte de tireuse inactive",
+            article_type="biere",
+            volume_cl=50,
+            is_alcohol=True,
+            is_tap=True,
+            tap_number=tap.number,
+            keg_id=keg.id,
+            campus="brest",
+            price_std=200,
+            active=False,
+        )
+        db.session.add(article)
+        db.session.commit()
+        keg_id, article_id = keg.id, article.id
+
+        columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("kegs")}
+        if "active" not in columns:
+            with db.engine.begin() as conn:
+                conn.execute(text("ALTER TABLE kegs ADD COLUMN active BOOLEAN NOT NULL DEFAULT 1"))
+        with db.engine.begin() as conn:
+            conn.execute(text("UPDATE kegs SET active = 0 WHERE id = :id"), {"id": keg_id})
+
+        ensure_schema_upgrades()
+        columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("kegs")}
+        _expect("active" not in columns, "colonne active retirée")
+        db.session.expire_all()
+        _expect(
+            db.session.get(Article, article_id).active is True,
+            "articles d'une tireuse montée réactivés",
+        )
+
+
+def test_schema_upgrade_drops_keg_active_ignore_les_anciens_articles():
+    if not IS_SQLITE:
+        print("  (ignoré : évolution de schéma SQLite)")
+        return
+    from app import ensure_schema_upgrades
+    from app.services.catalog import assign_keg
+
+    app = create_app()
+    with app.app_context():
+        keg = Keg(name="Fût réactivé", volume_l=30.0)
+        tap = Tap(number=508, name="Tireuse réactivée", campus="brest")
+        db.session.add_all([keg, tap])
+        db.session.flush()
+        row = keg.price_row("brest")
+        row.price_half_std = 200
+        row.price_pint_std = 400
+        row.price_pot_std = 300
+        db.session.commit()
+        # Deux régénérations successives : le premier jeu d'articles reste en
+        # base, inactif, avec le même tap_number et le même keg_id.
+        assign_keg(tap, keg)
+        assign_keg(tap, keg)
+        articles = db.session.scalars(
+            select(Article).where(
+                Article.tap_number == tap.number,
+                Article.is_tap.is_(True),
+            )
+        ).all()
+        _expect(len(articles) == 2 * len(TAP_SIZES), "deux jeux d'articles en base")
+        latest_ids = {
+            max(
+                (a for a in articles if a.volume_cl == volume),
+                key=lambda a: a.id,
+            ).id
+            for _, volume in TAP_SIZES.values()
+        }
+        # Avant la révision 0016, un fût inactif laissait tous ces articles
+        # désactivés, y compris le jeu courant.
+        for a in articles:
+            a.active = False
+        db.session.commit()
+        keg_id = keg.id
+
+        columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("kegs")}
+        if "active" not in columns:
+            with db.engine.begin() as conn:
+                conn.execute(text("ALTER TABLE kegs ADD COLUMN active BOOLEAN NOT NULL DEFAULT 1"))
+        with db.engine.begin() as conn:
+            conn.execute(text("UPDATE kegs SET active = 0 WHERE id = :id"), {"id": keg_id})
+
+        ensure_schema_upgrades()
+        columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("kegs")}
+        _expect("active" not in columns, "colonne active retirée")
+        db.session.expire_all()
+        active_ids = set(
+            db.session.scalars(
+                select(Article.id).where(
+                    Article.tap_number == tap.number,
+                    Article.is_tap.is_(True),
+                    Article.active.is_(True),
+                )
+            ).all()
+        )
+        _expect(active_ids == latest_ids, "seul le dernier article de chaque taille est réactivé")
+        _expect(len(active_ids) == len(TAP_SIZES), "un seul jeu d'articles actif")
 
 
 def test_schema_upgrade_campus_catalog():

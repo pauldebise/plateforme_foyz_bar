@@ -688,14 +688,32 @@ def test_validation_aucune_entree_ne_produit_un_500():
             items=[{"article_id": article.id, "quantity": 1}],
             payment_method="cheque",
         )
+
+
+def test_achat_total_zero_accepte():
+    """Un article à 0 € peut être encaissé : la vente reste enregistrée."""
+    app = create_app()
+    with app.app_context():
         gratuit = _article(std=0)
-        _refus(
-            "invalid",
-            T.create_purchase,
-            **base,
+        user = _user(balance=1000)
+
+        t = T.create_purchase(
+            operator_label="test",
+            campus="brest",
             items=[{"article_id": gratuit.id, "quantity": 1}],
             contributor_ids=[user.id],
         )
+        _expect(t.total == 0, "total nul accepté")
+        _expect(_balance(user.id) == 1000, "solde inchangé pour un achat gratuit")
+
+        direct = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": gratuit.id, "quantity": 1}],
+            direct=True,
+            payment_method="especes",
+        )
+        _expect(direct.total == 0, "vente directe à 0 € acceptée")
 
 
 def test_encaissement_limite_au_campus_de_l_article():

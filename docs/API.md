@@ -108,7 +108,6 @@ curl -H "Authorization: Bearer $JETON" https://foyz.fr/api/v1/catalog
       "id": 4,
       "name": "IPA",
       "volume_l": 30.0,
-      "active": true,
       "price_half_std_cents": 200,
       "price_pint_std_cents": 400,
       "price_pot_std_cents": 300,
@@ -177,7 +176,7 @@ curl -H "Authorization: Bearer $JETON" \
     }
   ],
   "kegs": [
-    {"id": 4, "name": "IPA", "volume_l": 30.0, "active": true}
+    {"id": 4, "name": "IPA", "volume_l": 30.0}
   ]
 }
 ```

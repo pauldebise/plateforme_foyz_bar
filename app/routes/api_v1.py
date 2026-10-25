@@ -71,7 +71,6 @@ def _keg_payload(keg, price=None, include_team=False):
         "id": keg.id,
         "name": keg.name,
         "volume_l": keg.volume_l,
-        "active": keg.active,
         "price_half_std_cents": price.price_half_std if price else 0,
         "price_pint_std_cents": price.price_pint_std if price else 0,
         "price_pot_std_cents": price.price_pot_std if price else 0,
@@ -302,7 +301,6 @@ def consumption():
                 "id": keg.id,
                 "name": keg.name,
                 "volume_l": keg.volume_l,
-                "active": keg.active,
             }
             for keg in kegs
         ],

@@ -100,6 +100,23 @@ def ensure_schema_upgrades():
         # SQLite de développement antérieures n'ont pas encore ce retrait.
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE kegs DROP COLUMN remaining_l"))
+    if "kegs" in table_columns and "active" in table_columns["kegs"]:
+        # Suppression du champ « fût actif » (révision 0016), inutilisé et
+        # source de tireuses sans article encaissable. Les articles dont la
+        # tireuse est encore branchée sur leur fût sont réactivés, en se
+        # limitant au dernier article de chaque taille : les jeux historiques
+        # d'un même fût ne doivent pas redevenir actifs en double.
+        with db.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "UPDATE articles SET active = TRUE WHERE is_tap = TRUE "
+                    "AND EXISTS (SELECT 1 FROM taps WHERE taps.number = articles.tap_number "
+                    "AND taps.keg_id = articles.keg_id) "
+                    "AND articles.id IN (SELECT MAX(a.id) FROM articles AS a "
+                    "WHERE a.is_tap = TRUE GROUP BY a.tap_number, a.volume_cl)"
+                )
+            )
+            conn.execute(text("ALTER TABLE kegs DROP COLUMN active"))
     if "users" in table_columns and "legacy_password" not in table_columns["users"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN legacy_password VARCHAR(255)"))

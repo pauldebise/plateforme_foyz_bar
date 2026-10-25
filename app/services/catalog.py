@@ -6,6 +6,12 @@ from app.utils import TAP_SIZES, clamp_text
 
 
 def assign_keg(tap, keg):
+    """Monte un fût sur une tireuse et régénère ses trois articles.
+
+    Les articles déjà présents sur la tireuse sont désactivés : seuls les
+    nouveaux articles, créés avec le nom et les prix actuels du fût, restent
+    proposés à la caisse.
+    """
     tap.keg_id = keg.id
     for a in db.session.scalars(
         select(Article).where(Article.tap_number == tap.number, Article.is_tap.is_(True))
@@ -32,7 +38,7 @@ def assign_keg(tap, keg):
                 is_tap=True,
                 tap_number=tap.number,
                 keg_id=keg.id,
-                active=keg.active,
+                active=True,
             )
         )
     db.session.commit()
@@ -57,6 +63,13 @@ def delete_tap(tap):
 
 
 def refresh_tap_articles(keg, campus=None):
+    """Régénère les articles des tireuses portant ce fût.
+
+    Appelée après chaque modification du fût pour que la caisse voie
+    immédiatement les nouvelles valeurs. Un même fût peut être monté sur
+    plusieurs tireuses : celles du campus demandé sont régénérées ; sans
+    `campus`, toutes le sont.
+    """
     stmt = select(Tap).where(Tap.keg_id == keg.id)
     if campus:
         stmt = stmt.where(Tap.campus == campus)

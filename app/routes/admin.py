@@ -872,6 +872,21 @@ def _optional_cents(value):
     return cents(raw) if raw else 0
 
 
+def _required_cents(field):
+    """Prix obligatoire d'un fût : vide refusé, 0 € accepté.
+
+    Le prix nul doit être une saisie explicite de l'opérateur, jamais la
+    conséquence d'un champ laissé vide.
+    """
+    raw = (request.form.get(field) or "").strip()
+    if not raw:
+        raise ValueError(field)
+    amount = cents(raw)
+    if amount < 0:
+        raise ValueError(field)
+    return amount
+
+
 def _article_from_form(a, writable_campus):
     a.name = clamp_text((request.form.get("name") or "Sans nom").strip(), 255)
     a.article_type = request.form.get("article_type", "biere")
@@ -891,15 +906,12 @@ def _article_from_form(a, writable_campus):
 def tireuses():
     campus = view_campus()
     writable = campus == own_campus()
-    kegs = db.session.scalars(select(Keg).order_by(Keg.active.desc(), Keg.name)).unique().all()
+    kegs = db.session.scalars(select(Keg).order_by(Keg.name)).unique().all()
     taps = db.session.scalars(select(Tap).where(Tap.campus == campus).order_by(Tap.number)).all()
-    all_taps = db.session.scalars(select(Tap)).all()
-    free_kegs = [k for k in kegs if not any(t.keg_id == k.id for t in all_taps)]
     return render_template(
         "admin/tireuses.html",
         kegs=kegs,
         taps=taps,
-        free_kegs=free_kegs,
         campus=campus,
         writable=writable,
         own_campus=own_campus(),
@@ -910,9 +922,14 @@ def tireuses():
 @login_required
 def keg_nouveau():
     try:
-        keg = _keg_from_form(Keg(), own_campus())
+        keg = _keg_from_form(Keg(), own_campus(), all_campuses=True)
     except ValueError:
-        flash("Volume ou degré invalide (nombres positifs attendus).", "danger")
+        db.session.rollback()
+        flash(
+            "Valeurs invalides : vérifiez le volume, le degré et les prix "
+            "(0 € accepté, champ vide refusé).",
+            "danger",
+        )
         return redirect(url_for("admin.tireuses"))
     db.session.add(keg)
     A.record(
@@ -936,7 +953,11 @@ def keg(keg_id):
             _keg_from_form(keg, own_campus())
         except ValueError:
             db.session.rollback()
-            flash("Volume ou degré invalide (nombres positifs attendus).", "danger")
+            flash(
+                "Valeurs invalides : vérifiez le volume, le degré et les prix "
+                "(0 € accepté, champ vide refusé).",
+                "danger",
+            )
             return redirect(url_for("admin.keg", keg_id=keg.id))
         A.record(
             "fut.modification",
@@ -944,8 +965,10 @@ def keg(keg_id):
             details=f"{keg.volume_l:g} L",
         )
         db.session.commit()
-        if request.form.get("refresh_articles") == "on":
-            C.refresh_tap_articles(keg, campus=own_campus())
+        # Les articles de tireuse sont toujours régénérés : ils portent le nom
+        # et les prix du fût, et une case à cocher oubliée laisserait la caisse
+        # sur d'anciens prix.
+        C.refresh_tap_articles(keg, campus=own_campus())
         flash("Fût mis à jour.", "success")
         return redirect(url_for("admin.tireuses"))
     return render_template("admin/keg_form.html", keg=keg, own=own_campus())
@@ -989,22 +1012,29 @@ def _positive_float(field, default, maximum):
     return number
 
 
-def _keg_from_form(k, writable_campus):
+def _keg_from_form(k, writable_campus, *, all_campuses=False):
+    """Applique le formulaire fût.
+
+    À la création (`all_campuses=True`), les prix des deux campus sont exigés :
+    un prix nul doit être saisi explicitement. À la modification, seul le
+    campus de l'opérateur est modifiable, l'autre reste en lecture seule.
+    """
     k.name = clamp_text((request.form.get("name") or "Sans nom").strip(), 255)
     k.alcohol_degree = _positive_float("alcohol_degree", k.alcohol_degree or 0.0, 100.0)
     k.volume_l = _positive_float("volume_l", k.volume_l or 30.0, 10_000.0)
-    k.active = request.form.get("active", "on") == "on"
     for c in CAMPUSSES:
         row = k.price_row(c)
-        if c != writable_campus:
+        if c != writable_campus and not all_campuses:
             # les prix de l'autre campus sont consultables mais non modifiables
             continue
-        row.price_half_std = cents(request.form.get(f"{c}_half_std", "0"))
-        row.price_pint_std = cents(request.form.get(f"{c}_pint_std", "0"))
-        row.price_pot_std = cents(request.form.get(f"{c}_pot_std", "0"))
-        row.price_half_team = cents(request.form.get(f"{c}_half_team", "0"))
-        row.price_pint_team = cents(request.form.get(f"{c}_pint_team", "0"))
-        row.price_pot_team = cents(request.form.get(f"{c}_pot_team", "0"))
+        # À la création, les deux campus sont saisis explicitement : aucun prix
+        # ne reste à 0 par simple oubli.
+        row.price_half_std = _required_cents(f"{c}_half_std")
+        row.price_pint_std = _required_cents(f"{c}_pint_std")
+        row.price_pot_std = _required_cents(f"{c}_pot_std")
+        row.price_half_team = _required_cents(f"{c}_half_team")
+        row.price_pint_team = _required_cents(f"{c}_pint_team")
+        row.price_pot_team = _required_cents(f"{c}_pot_team")
     return k
 
 

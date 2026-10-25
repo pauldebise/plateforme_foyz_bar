@@ -173,7 +173,7 @@ def _keg(
     mounted=True,
 ):
     with app.app_context():
-        keg = Keg(name=name, volume_l=30, active=True)
+        keg = Keg(name=name, volume_l=30)
         db.session.add(keg)
         db.session.flush()
         row = keg.price_row(campus)
@@ -551,6 +551,7 @@ def test_consumption_aggregates_and_privacy():
     _expect("Conso Étudiant" not in res.get_data(as_text=True), "aucun nom d'étudiant")
     keg_row = body["kegs"][0]
     _expect("remaining_l" not in keg_row, "aucun volume restant exposé")
+    _expect("active" not in keg_row, "aucun état actif de fût exposé")
     _expect(keg_row["volume_l"] == 30.0, "volume déclaré du fût")
 
     res = _get(client, raw, "/api/v1/consumption", query_string={"group_by": "category"})
@@ -761,6 +762,10 @@ def test_unmounted_keg_scope():
     client = app.test_client()
     body = _get(client, raw, "/api/v1/catalog").get_json()
     _expect(any(keg["id"] == keg_id for keg in body["kegs"]), "fût non monté accessible")
+    _expect(
+        all("active" not in keg for keg in body["kegs"]),
+        "aucun état actif de fût dans le catalogue",
+    )
     _expect(not body["articles"], "aucun article de tireuse avant montage")
 
     res = _patch(
