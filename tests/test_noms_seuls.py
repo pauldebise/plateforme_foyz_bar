@@ -40,6 +40,8 @@ OP_NICK = "SurnomOperateurTresLong"
 STUDENT_NICK = "SurnomEtudiantTresLong"
 CIBLE_NICK = "SurnomCibleTresLong"
 STALE_NICK = "AncienSurnom"
+OLD_NAME = "Ancien Nom"
+OLD_ACTOR = "Ancien Acteur"
 LONG_NICK = "x" * 245
 _client = None
 
@@ -74,6 +76,7 @@ def _setup():
         student = _user("Zn Etudiant", STUDENT_NICK)
         cible = _user("Zn Cible", CIBLE_NICK)
         sans_surnom = _user("Zn Identifiant", None)
+        renamed_actor = _user("Zn Acteur Renomme", None)
         long_op = _user("Zn Long", LONG_NICK, team=True)
         article = Article(name="Zn Biere", article_type="biere", campus="brest", price_std=100)
         db.session.add(article)
@@ -115,6 +118,33 @@ def _setup():
             AuditLog(
                 actor=f"{operator.name} ({STALE_NICK})",
                 target=f"{cible.name} ({STALE_NICK}) ({cible.username})",
+                action="compte.modification",
+                campus="brest",
+            )
+        )
+        # Nom réel modifié depuis l'écriture : l'identifiant permet de retrouver
+        # le compte, sinon le préfixe (nom de l'époque) reste affiché.
+        db.session.add(
+            AuditLog(
+                actor=operator.display_name,
+                target=f"{OLD_NAME} ({CIBLE_NICK}) ({cible.username})",
+                action="compte.modification",
+                campus="brest",
+            )
+        )
+        db.session.add(
+            AuditLog(
+                actor=operator.display_name,
+                target=f"{OLD_NAME} ({CIBLE_NICK})",
+                action="compte.modification",
+                campus="brest",
+            )
+        )
+        db.session.add(
+            AuditLog(
+                actor=f"{OLD_ACTOR} ({STALE_NICK})",
+                user_id=renamed_actor.id,
+                target=student.name,
                 action="compte.modification",
                 campus="brest",
             )
@@ -174,6 +204,8 @@ def test_journal_cible_noms_reels():
         _expect(name in page, f"{name} affiché dans le journal")
     for hidden in (CIBLE_NICK, "zn.cible", "zn.identifiant", STALE_NICK):
         _expect(hidden not in page, f"{hidden} absent de la colonne Cible")
+    _expect(OLD_NAME in page, "nom réel de l'époque conservé quand le compte a été renommé")
+    _expect(OLD_ACTOR in page, "acteur renommé affiché avec son nom réel")
     _expect("Cible (abc)" in page, "cible non liée à un compte laissée telle quelle")
     _expect(
         "Zn Cible (catégorie)" in page,
@@ -202,18 +234,23 @@ def test_plain_names_libelle_compte():
     with app.app_context():
         _setup()
         operator = db.session.query(User).filter(User.username == "zn.operateur").one()
+        cible = db.session.query(User).filter(User.username == "zn.cible").one()
         surname_username = f"{operator.name} ({operator.nickname}) ({operator.username})"
         username_only = f"{operator.name} ({operator.username})"
         stale_target = f"{operator.name} ({STALE_NICK}) ({operator.username})"
         stale_actor = f"{operator.name} ({STALE_NICK})"
+        renamed = f"{OLD_NAME} ({CIBLE_NICK}) ({cible.username})"
         found = plain_names({surname_username, username_only}, 160)
         _expect(
             found == {surname_username: operator.name, username_only: operator.name},
             f"surnom et identifiant retirés ({found})",
         )
-        found = plain_names({stale_target, stale_actor, "Sans compte (xyz)"}, 160, user_labels=True)
+        found = plain_names(
+            {stale_target, stale_actor, renamed, "Sans compte (xyz)"}, 160, user_labels=True
+        )
         _expect(found.get(stale_target) == operator.name, "surnom obsolète + identifiant retirés")
         _expect(found.get(stale_actor) == operator.name, "surnom obsolète retiré de l'acteur")
+        _expect(found.get(renamed) == cible.name, "identifiant retrouve le compte renommé")
         _expect("Sans compte (xyz)" not in found, "libellé sans compte laissé tel quel")
 
 

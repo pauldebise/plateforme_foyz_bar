@@ -1411,11 +1411,16 @@ def _journal_actions():
     account_targets = {
         row.target for row in rows if row.target and row.action.startswith(("compte.", "equipe."))
     }
+    actor_labels = {row.actor for row in rows if row.actor and row.user_id is not None}
     plain = plain_names(
         {row.actor for row in rows if row.actor} | account_targets,
         160,
         user_labels=True,
     )
+    # Compte supprimé ou nom réel modifié depuis l'écriture : le préfixe reste
+    # le nom réel au moment de l'action, sans le surnom ni l'identifiant.
+    for label in actor_labels | account_targets:
+        plain.setdefault(label, label.split(" (", 1)[0])
     plain.update(plain_names({row.target for row in rows if row.target} - account_targets, 160))
     return {
         "logs": rows,

@@ -25,12 +25,20 @@ def plain_names(labels, max_length, *, user_labels=False):
     libellé de cette longueur peut avoir été tronqué. `user_labels` autorise
     la résolution par préfixe pour les libellés dont on sait qu'ils désignent
     un compte (voir la docstring du module)."""
+    labels = {item for item in labels if item and " (" in item}
     candidates = {}
-    for label in {item for item in labels if item and " (" in item}:
+    username_labels = {}
+    for label in labels:
         start = label.find(" (")
         while start != -1:
             candidates.setdefault(label[:start], set()).add(label)
             start = label.find(" (", start + 1)
+        # Libellé de compte complet : le dernier segment entre parenthèses est
+        # l'identifiant, qui reste unique même si le nom ou le surnom a changé.
+        if user_labels and label.endswith(")"):
+            username = label.rsplit(" (", 1)[1][:-1]
+            if username:
+                username_labels.setdefault(username, set()).add(label)
     if not candidates:
         return {}
     users = db.session.execute(
@@ -47,5 +55,12 @@ def plain_names(labels, max_length, *, user_labels=False):
                 label == form or (len(label) == max_length and form.startswith(label))
                 for form in forms
             ):
+                result[label] = name
+    if username_labels:
+        renamed = db.session.execute(
+            select(User.name, User.username).where(User.username.in_(list(username_labels)))
+        ).all()
+        for name, username in renamed:
+            for label in username_labels[username]:
                 result[label] = name
     return result
