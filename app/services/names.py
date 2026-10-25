@@ -54,6 +54,30 @@ def plain_details(action, details):
     return _without_parentheticals(details)
 
 
+def public_note_authors(notes):
+    """{note.id: nom réel} pour les signatures des post-it publics.
+
+    Les notes privées ne passent pas par ici : elles conservent leur
+    `author_name`, surnom compris. Pour une note publique, le compte actuel est
+    préféré (nom réel à jour) ; s'il a été supprimé, le nom réel conservé avant
+    la parenthèse sert de repli."""
+    notes = list(notes)
+    author_ids = {note.author_id for note in notes if note.author_id}
+    names = {}
+    if author_ids:
+        names = dict(
+            db.session.execute(select(User.id, User.name).where(User.id.in_(author_ids))).all()
+        )
+    result = {}
+    for note in notes:
+        name = names.get(note.author_id) if note.author_id else None
+        if not name:
+            author = note.author_name or ""
+            name = author.split(" (", 1)[0].strip() or author
+        result[note.id] = name
+    return result
+
+
 def plain_names(labels, max_length, *, user_labels=False):
     """{libellé: nom seul} pour les libellés qui portent un surnom ou un identifiant.
 

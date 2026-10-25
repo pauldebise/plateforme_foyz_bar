@@ -71,7 +71,7 @@
               <input type="hidden" name="note_id" value="{{ n.id }}">
               <textarea name="content" class="form-control form-control-sm border-0 bg-transparent p-0" rows="4" style="white-space: pre-line; resize: none;">{{ n.content }}</textarea>
               <div class="d-flex justify-content-between align-items-center mt-2">
-                <span class="small text-muted">{{ n.author_name }} · {{ n.updated_at|dt }}</span>
+                <span class="small text-muted">{{ public_authors.get(n.id, n.author_name) }} · {{ n.updated_at|dt }}</span>
                 <span>
                   <button class="btn btn-sm" title="Enregistrer"><i class="bi bi-check2"></i></button>
                   <button type="button" class="btn btn-sm" data-bs-toggle="modal" data-bs-target="#del-modal" data-nid="{{ n.id }}" title="Supprimer"><i class="bi bi-trash text-danger"></i></button>

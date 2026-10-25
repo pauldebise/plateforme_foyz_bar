@@ -24,7 +24,7 @@ from app.services import transactions as T
 from app.services import adminpw as AP
 from app.services.events import running_events
 from app.services.settings import int_setting
-from app.services.names import plain_names
+from app.services.names import plain_names, public_note_authors
 from app.services.stats import sales_stats, students_stats, top_article_ids, top_articles_stats
 from app.services.treasury import treasury
 from app.utils import (
@@ -599,6 +599,7 @@ def notes():
         "team/notes.html",
         private=private,
         public=public,
+        public_authors=public_note_authors(public),
         show_all=show_all,
         total_private=total_private,
         total_public=total_public,
@@ -620,11 +621,14 @@ def notes_action():
 
     if action == "create":
         if content:
+            # Les post-it publics signent avec le nom réel ; les notes privées
+            # gardent le surnom d'usage de l'équipe.
+            author_name = g.current_user.name if scope_public else g.current_user.display_name
             n = Note(
                 content=content,
                 is_public=scope_public,
                 author_id=g.current_user.id,
-                author_name=g.current_user.display_name[:120],
+                author_name=author_name[:120],
             )
             db.session.add(n)
             db.session.commit()

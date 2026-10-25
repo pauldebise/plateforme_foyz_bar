@@ -12,6 +12,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,6 +153,76 @@ def test_b_notes_conservees():
             db.session.query(Note).filter_by(is_public=False).count() == 5,
             "suppression explicite toujours possible",
         )
+
+
+def test_b_notes_signatures():
+    """Post-it publics : nom réel ; notes privées : surnom conservé."""
+    app = create_app()
+    with app.app_context():
+        set_setting("max_postits_private", "50")
+        set_setting("max_postits_public", "50")
+        auteur = User(
+            name="Nom Public",
+            nickname="SurnomPublic",
+            username="notes.public",
+            team_status="mandat",
+            team_campus="brest",
+        )
+        db.session.add(auteur)
+        db.session.flush()
+        db.session.add_all(
+            [
+                Note(
+                    content="Post-it public historique",
+                    is_public=True,
+                    author_id=auteur.id,
+                    author_name=auteur.display_name,
+                ),
+                Note(
+                    content="Post-it public supprime",
+                    is_public=True,
+                    author_id=None,
+                    author_name=auteur.display_name,
+                ),
+            ]
+        )
+        db.session.commit()
+        auteur_id = auteur.id
+        nom = auteur.name
+        signature_privee = auteur.display_name
+
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["user_id"] = auteur_id
+        sess["campus"] = "brest"
+        sess["last_activity"] = time.time()
+    token = _csrf(client, "/equipe/notes")
+    for scope, content in (
+        ("public", "Post-it public cree"),
+        ("private", "Post-it prive cree"),
+    ):
+        res = client.post(
+            "/equipe/notes/action",
+            data={"action": "create", "scope": scope, "content": content, "_csrf": token},
+        )
+        _expect(res.status_code == 302, f"création du post-it {scope}")
+
+    with app.app_context():
+        public_note = db.session.query(Note).filter_by(content="Post-it public cree").one()
+        private_note = db.session.query(Note).filter_by(content="Post-it prive cree").one()
+        _expect(public_note.author_name == nom, "post-it public : nom réel enregistré")
+        _expect(private_note.author_name == signature_privee, "note privée : surnom conservé")
+
+    home = client.get("/").get_data(as_text=True)
+    _expect("Nom Public" in home, "post-it public : nom réel affiché")
+    _expect("SurnomPublic" not in home, "post-it public : surnom absent de la page publique")
+
+    team = client.get("/equipe/notes").get_data(as_text=True)
+    public_block = team.split("Post-it public cree", 1)[1][:250]
+    _expect("Nom Public" in public_block, "post-it public : nom réel dans l'équipe")
+    _expect("SurnomPublic" not in public_block, "post-it public : surnom absent dans l'équipe")
+    private_block = team.split("Post-it prive cree", 1)[1][:250]
+    _expect("SurnomPublic" in private_block, "note privée : surnom conservé à l'affichage")
 
 
 def test_c_annulation_multiple():

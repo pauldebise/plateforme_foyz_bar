@@ -44,7 +44,7 @@
             {% for n in notes %}
             <div class="postit postit-public" style="max-width: 260px;">
               <div style="white-space: pre-line;">{{ n.content }}</div>
-              <div class="small text-muted mt-2">— {{ n.author_name }}, {{ n.updated_at|dt }}</div>
+              <div class="small text-muted mt-2">— {{ note_authors.get(n.id, n.author_name) }}, {{ n.updated_at|dt }}</div>
             </div>
             {% endfor %}
           </div>

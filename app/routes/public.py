@@ -3,6 +3,7 @@ from sqlalchemy import select
 
 from app.extensions import db
 from app.models import Article, Event, Note, Tap, UsefulLink
+from app.services.names import public_note_authors
 from app.services.settings import get_setting, int_setting
 from app.services.stats import top_article_ids
 from app.utils import ARTICLE_TYPES, CAMPUSSES, HIDDEN_PUBLIC_TYPES, utcnow
@@ -35,6 +36,7 @@ def home():
         "public/home.html",
         events_by_campus=events_by_campus,
         notes=notes,
+        note_authors=public_note_authors(notes),
         homepage_text=get_setting("homepage_text"),
     )
 
