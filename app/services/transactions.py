@@ -510,7 +510,7 @@ def create_purchase(
             admin_password,
             campus,
             "encaissement sur compte déjà à découvert : "
-            + ", ".join(u.display_name for u in already_negative),
+            + ", ".join(u.name for u in already_negative),
         ):
             raise OperationError(
                 "admin_password_required",

@@ -33,7 +33,7 @@ from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import Article, AuditLog, User  # noqa: E402
 from app.services import transactions as T  # noqa: E402
-from app.services.names import plain_names  # noqa: E402
+from app.services.names import plain_details, plain_names  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
 OP_NICK = "SurnomOperateurTresLong"
@@ -149,6 +149,39 @@ def _setup():
                 campus="brest",
             )
         )
+        # Détails d'une opération protégée : les libellés de compte y portent
+        # aussi surnom et identifiant.
+        db.session.add(
+            AuditLog(
+                actor=operator.display_name,
+                target="Brest",
+                action="mot_de_passe_admin.succes",
+                details=(
+                    "encaissement sur compte déjà à découvert : "
+                    f"{student.display_name}, {cible.display_name}"
+                ),
+                campus="brest",
+            )
+        )
+        db.session.add(
+            AuditLog(
+                actor=operator.display_name,
+                target="Brest",
+                action="mot_de_passe_admin.succes",
+                details="changement du mot de passe administrateur (Brest)",
+                campus="brest",
+            )
+        )
+        # Détail d'une autre action : ses parenthèses sont utiles.
+        db.session.add(
+            AuditLog(
+                actor=operator.display_name,
+                target=student.name,
+                action="compte.modification",
+                details="blacklist : oui (par Brest)",
+                campus="brest",
+            )
+        )
         # Cible non liée à un compte : le préfixe ressemble à un nom de compte,
         # mais le libellé doit rester intact.
         db.session.add(
@@ -206,6 +239,14 @@ def test_journal_cible_noms_reels():
         _expect(hidden not in page, f"{hidden} absent de la colonne Cible")
     _expect(OLD_NAME in page, "nom réel de l'époque conservé quand le compte a été renommé")
     _expect(OLD_ACTOR in page, "acteur renommé affiché avec son nom réel")
+    _expect(
+        "blacklist : oui (par Brest)" in page,
+        "les parenthèses utiles des autres détails sont conservées",
+    )
+    _expect(
+        "changement du mot de passe administrateur (Brest)" in page,
+        "le campus entre parenthèses du changement de mot de passe est conservé",
+    )
     _expect("Cible (abc)" in page, "cible non liée à un compte laissée telle quelle")
     _expect(
         "Zn Cible (catégorie)" in page,
@@ -252,6 +293,26 @@ def test_plain_names_libelle_compte():
         _expect(found.get(stale_actor) == operator.name, "surnom obsolète retiré de l'acteur")
         _expect(found.get(renamed) == cible.name, "identifiant retrouve le compte renommé")
         _expect("Sans compte (xyz)" not in found, "libellé sans compte laissé tel quel")
+
+
+def test_plain_details():
+    details = (
+        "encaissement sur compte déjà à découvert : "
+        "Zn Etudiant (surnom), Zn Cible (surnom (imbriqué))"
+    )
+    _expect(
+        plain_details("mot_de_passe_admin.succes", details)
+        == "encaissement sur compte déjà à découvert : Zn Etudiant, Zn Cible",
+        "surnoms retirés des détails, parenthèses imbriquées comprises",
+    )
+    price = "Prix standard 0,86 € → 0,89 € (jeton token_lyna_taep)"
+    _expect(plain_details("api.prix_article", price) == price, "détail hors journal protégé intact")
+    password = "changement du mot de passe administrateur (Brest)"
+    _expect(
+        plain_details("mot_de_passe_admin.succes", password) == password,
+        "parenthèses du changement de mot de passe conservées",
+    )
+    _expect(plain_details("mot_de_passe_admin.succes", "") == "", "détail vide")
 
 
 def main():

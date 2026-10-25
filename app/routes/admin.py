@@ -45,7 +45,7 @@ from app.services import audit as A
 from app.services import catalog as C
 from app.services import settings as S
 from app.services.event_recap import build_recap, export_rows as event_recap_export_rows
-from app.services.names import plain_names
+from app.services.names import plain_details, plain_names
 from app.services.stats import TOP_ARTICLES_DAYS, top_article_sales
 from app.utils import (
     ARTICLE_TYPES,
@@ -418,7 +418,7 @@ def compte(user_id):
             if removals and not AP.verify(
                 request.form.get("admin_password", ""),
                 own_campus(),
-                f"retrait de blacklist pour {u.display_name} ({u.username})",
+                f"retrait de blacklist pour {u.name}",
             ):
                 flash(
                     "Le retrait d'un statut blacklist exige le mot de passe administrateur.",
@@ -546,7 +546,7 @@ def compte_supprimer(user_id):
     if not AP.verify(
         request.form.get("admin_password", ""),
         own_campus(),
-        f"suppression du compte {u.display_name} ({u.username})",
+        f"suppression du compte {u.name}",
     ):
         flash("La suppression d'un compte exige le mot de passe administrateur.", "danger")
         return redirect(url_for("admin.compte", user_id=u.id))
@@ -1428,6 +1428,9 @@ def _journal_actions():
         "pages": pages,
         "total": total,
         "plain": plain,
+        "details_plain": {
+            row.id: plain_details(row.action, row.details) for row in rows if row.details
+        },
     }
 
 

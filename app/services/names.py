@@ -12,10 +12,46 @@ action sur un compte). Le nom réel est alors le préfixe avant la parenthèse,
 même si le surnom ou l'identifiant a changé depuis l'écriture de la ligne.
 """
 
+import re
+
 from sqlalchemy import select
 
 from app.extensions import db
 from app.models import User
+
+
+def _without_parentheticals(text):
+    """Retire les groupes entre parenthèses, y compris imbriqués.
+
+    Si les parenthèses sont déséquilibrées, le texte est renvoyé tel quel pour
+    ne rien tronquer au hasard."""
+    out = []
+    depth = 0
+    for char in text:
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth:
+            depth -= 1
+        elif depth == 0:
+            out.append(char)
+    if depth:
+        return text
+    cleaned = " ".join("".join(out).split())
+    return re.sub(r"\s+([,;])", r"\1", cleaned)
+
+
+def plain_details(action, details):
+    """Détails du journal sans surnom ni identifiant de compte.
+
+    Les opérations protégées par le mot de passe administrateur inscrivent des
+    libellés de comptes (« Nom (surnom) », « Nom (identifiant) ») dans leurs
+    détails. Les autres détails gardent leurs parenthèses utiles (jeton d'API,
+    campus, etc.)."""
+    if not details or not action.startswith("mot_de_passe_admin."):
+        return details
+    if details.startswith("changement du mot de passe administrateur"):
+        return details
+    return _without_parentheticals(details)
 
 
 def plain_names(labels, max_length, *, user_labels=False):
