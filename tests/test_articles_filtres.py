@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import tempfile
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +30,7 @@ from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
-from app.models import Article, User  # noqa: E402
+from app.models import Article, Event, User  # noqa: E402
 from app.services import transactions as T  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
@@ -42,7 +43,7 @@ def _expect(cond, label):
         raise AssertionError(f"échec : {label}")
 
 
-def _article(name, kind, volume, price, campus="brest"):
+def _article(name, kind, volume, price, campus="brest", **extra):
     article = Article(
         name=name,
         article_type=kind,
@@ -51,6 +52,7 @@ def _article(name, kind, volume, price, campus="brest"):
         price_std=price,
         price_team=price // 2,
         active=True,
+        **extra,
     )
     db.session.add(article)
     db.session.flush()
@@ -69,6 +71,17 @@ def _setup():
         d = _article("Zart D", "snack", None, 100)
         _article("Zart E", "vin", 75, 900)
         _article("Zart P", "biere", 33, 400, campus="paris")
+        _article("Zart T", "biere", 25, 300, is_tap=True, tap_number=42)
+        event = Event(
+            name="Zart Événement",
+            campus="brest",
+            starts_at=datetime(2026, 1, 1, 18, 0),
+            ends_at=datetime(2026, 1, 2, 2, 0),
+            token="zart-event-token",
+        )
+        db.session.add(event)
+        db.session.flush()
+        _article("Zart V", "evenement", 33, 400, event_id=event.id)
         buyer = User(
             name="Zart Acheteur",
             username="zart.acheteur",
@@ -113,6 +126,15 @@ def test_sans_filtre_et_sans_fuite_entre_campus():
     _expect("Zart P" not in _page(""), "article de Paris absent du catalogue de Brest")
     paris = _setup().get("/admin/articles?q=Zart&campus=paris").get_data(as_text=True)
     _expect("Zart P" in paris and "Zart A" not in paris, "catalogue de Paris isolé")
+
+
+def test_articles_tireuse_et_evenement_exclus():
+    """Les articles gérés dans Tireuses ou Événements ne polluent pas la liste."""
+    page = _page("")
+    _expect("Zart T" not in page, "article de tireuse absent de l'onglet Articles")
+    _expect("Zart V" not in page, "article d'événement absent de l'onglet Articles")
+    _expect("géré dans Tireuses" not in page, "renvoi vers l'onglet Tireuses retiré")
+    _expect('<span class="badge bg-dark">tireuse</span>' not in page, "badge tireuse retiré")
 
 
 def test_filtres_type_volume_prix():

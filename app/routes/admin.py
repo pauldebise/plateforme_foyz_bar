@@ -706,7 +706,14 @@ def articles():
     prix_min = _filter_cents(prix_min_raw)
     prix_max = _filter_cents(prix_max_raw)
 
-    stmt = select(Article).where(Article.campus == campus)
+    # Seuls les articles du catalogue permanent sont gérés ici : les articles
+    # de tireuse et d'événement ont leurs propres onglets et ne doivent pas
+    # encombrer la liste.
+    stmt = select(Article).where(
+        Article.campus == campus,
+        Article.is_tap.is_(False),
+        Article.event_id.is_(None),
+    )
     if q:
         stmt = stmt.where(Article.name.ilike(f"%{q}%"))
     if article_type:
@@ -721,7 +728,7 @@ def articles():
         stmt = stmt.where(Article.price_std <= prix_max)
 
     if tri == "nom":
-        stmt = stmt.order_by(Article.is_tap, Article.name, Article.id)
+        stmt = stmt.order_by(Article.name, Article.id)
     elif tri.startswith("prix"):
         price = Article.price_std.asc() if tri == "prix_asc" else Article.price_std.desc()
         stmt = stmt.order_by(price, Article.name, Article.id)
@@ -745,7 +752,13 @@ def articles():
 
     volumes = db.session.scalars(
         select(Article.volume_cl)
-        .where(Article.campus == campus, Article.volume_cl.is_not(None), Article.volume_cl > 0)
+        .where(
+            Article.campus == campus,
+            Article.is_tap.is_(False),
+            Article.event_id.is_(None),
+            Article.volume_cl.is_not(None),
+            Article.volume_cl > 0,
+        )
         .distinct()
         .order_by(Article.volume_cl)
     ).all()
