@@ -59,10 +59,10 @@ from .util import normalize_key, slug_username, to_cents, unescape_html, utcnow 
 _USERS_SQL = (
     "INSERT INTO users (username, nickname, name, promotion, password_hash, "
     "legacy_password, team_status, team_campus, blacklist, blacklist_alcohol, "
-    "blacklist_reason, disabled, created_at) "
+    "blacklist_reason, blacklist_alcohol_reason, disabled, created_at) "
     "VALUES (:username, :nickname, :name, :promotion, :password_hash, "
     ":legacy_password, :team_status, :team_campus, :blacklist, :blacklist_alcohol, "
-    ":blacklist_reason, :disabled, :created_at) RETURNING id"
+    ":blacklist_reason, :blacklist_alcohol_reason, :disabled, :created_at) RETURNING id"
 )
 _WALLET_SQL = (
     "INSERT INTO wallets (user_id, campus, balance, glasses_outstanding) "
@@ -550,6 +550,16 @@ class Migrator:
                 or slug_username(name)
                 or "user"
             )
+            blacklist = bool(primary["blacklist"] or (secondary and secondary["blacklist"]))
+            blacklist_alcohol = bool(
+                primary["blacklist_alcohol"] or (secondary and secondary["blacklist_alcohol"])
+            )
+            # L'ancienne base ne porte qu'un motif pour les deux statuts. Il est
+            # rattaché au statut effectivement posé ; si les deux le sont, le
+            # motif reste sur la blacklist comportementale.
+            reason = primary["blacklist_reason"] or (
+                secondary["blacklist_reason"] if secondary else None
+            )
             params = {
                 "name": name,
                 "nickname": nickname,
@@ -559,16 +569,16 @@ class Migrator:
                 "legacy_password": legacy_password,
                 "team_status": team_status,
                 "team_campus": team_campus,
-                "blacklist": bool(primary["blacklist"] or (secondary and secondary["blacklist"])),
-                "blacklist_alcohol": bool(
-                    primary["blacklist_alcohol"] or (secondary and secondary["blacklist_alcohol"])
+                "blacklist": blacklist,
+                "blacklist_alcohol": blacklist_alcohol,
+                "blacklist_reason": reason if blacklist else None,
+                "blacklist_alcohol_reason": (
+                    reason if blacklist_alcohol and not blacklist else None
                 ),
-                "blacklist_reason": primary["blacklist_reason"]
-                or (secondary["blacklist_reason"] if secondary else None),
                 "disabled": False,  # les comptes désactivés ne sont pas migrés
                 "created_at": created_at or now_utc(),
             }
-            if params["blacklist_reason"]:
+            if reason:
                 self.counts["motifs_blacklist"] += 1
             user_id = self.conn.execute(sa.text(_USERS_SQL), params).scalar_one()
             self.target_id_by_key[key] = user_id

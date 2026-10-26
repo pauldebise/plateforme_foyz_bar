@@ -182,7 +182,14 @@ def test_comptes():
     )
     _fuzz_form(
         f"/admin/comptes/{s['target']}",
-        {"name": "Fuzz Cible", "nickname": "n", "username": "fuzz.cible", "promotion": "2027"},
+        {
+            "name": "Fuzz Cible",
+            "nickname": "n",
+            "username": "fuzz.cible",
+            "promotion": "2027",
+            "blacklist_reason": "motif",
+            "blacklist_alcohol_reason": "motif alcool",
+        },
     )
     _fuzz_form(
         f"/admin/comptes/{s['target']}/arbitrer-solde",

@@ -196,6 +196,7 @@ def _ensure_schema(engine):
 
     db.metadata.create_all(engine)
     _ensure_column(engine, "users", "blacklist_reason", "VARCHAR(255)")
+    _ensure_column(engine, "users", "blacklist_alcohol_reason", "VARCHAR(255)")
     _ensure_column(engine, "users", "username", "VARCHAR(64)")
     _ensure_column(engine, "users", "nickname", "VARCHAR(255)")
     _ensure_column(engine, "users", "disabled", "BOOLEAN DEFAULT FALSE")

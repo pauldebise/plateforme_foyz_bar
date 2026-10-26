@@ -38,6 +38,14 @@
             {% if u.blacklist %}
             <div class="form-text">Posée par l'équipe de {{ CAMPUSSES[bl.origin] }} — {% if bl.can_lift %}vous pouvez la retirer avec le mot de passe administrateur{% else %}seule cette équipe peut la retirer{% endif %}.</div>
             {% endif %}
+            <div class="mt-2">
+              <label class="form-label small mb-1" for="bl-reason">Motif de la blacklist <span class="text-muted">(facultatif)</span></label>
+              <input class="form-control form-control-sm" id="bl-reason" name="blacklist_reason" maxlength="255"
+                     value="{{ u.blacklist_reason if u.blacklist else '' }}"
+                     placeholder="Ex : comportement en soirée"
+                     {% if u.blacklist and not bl.can_lift %}readonly{% endif %}>
+              <div class="form-text">Visible uniquement sur cette fiche, jamais à l'encaissement.</div>
+            </div>
           </div>
           {% set ba = blacklists.blacklist_alcohol %}
           <div class="form-check form-switch mb-3">
@@ -47,6 +55,14 @@
             {% if u.blacklist_alcohol %}
             <div class="form-text">Posée par l'équipe de {{ CAMPUSSES[ba.origin] }} — {% if ba.can_lift %}vous pouvez la retirer avec le mot de passe administrateur{% else %}seule cette équipe peut la retirer{% endif %}.</div>
             {% endif %}
+            <div class="mt-2">
+              <label class="form-label small mb-1" for="bla-reason">Motif de la blacklist alcool <span class="text-muted">(facultatif)</span></label>
+              <input class="form-control form-control-sm" id="bla-reason" name="blacklist_alcohol_reason" maxlength="255"
+                     value="{{ u.blacklist_alcohol_reason if u.blacklist_alcohol else '' }}"
+                     placeholder="Ex : refus de vente d'alcool"
+                     {% if u.blacklist_alcohol and not ba.can_lift %}readonly{% endif %}>
+              <div class="form-text">Visible uniquement sur cette fiche, jamais à l'encaissement.</div>
+            </div>
           </div>
           <div class="mb-3">
             <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[current_campus] if current_campus else '' }} <span class="text-muted small">(requis pour retirer un statut blacklist)</span></label>

@@ -615,6 +615,12 @@ def test_e2e_run_and_invariants():
     alcool_bit = c.execute(
         "SELECT blacklist_alcohol FROM users WHERE username='manon.robin'"
     ).fetchone()[0]
+    motif_alcool = c.execute(
+        "SELECT blacklist_alcohol_reason FROM users WHERE username='manon.robin'"
+    ).fetchone()[0]
+    motif_alcool_classique = c.execute(
+        "SELECT blacklist_reason FROM users WHERE username='manon.robin'"
+    ).fetchone()[0]
     # ---- opérations éclatées Brest : payments / withdrawals / transfert
     pay = c.execute(
         "SELECT t.total, t.payment_method, t.operator_label, u.name "
@@ -727,6 +733,11 @@ def test_e2e_run_and_invariants():
     )
     _expect(motif == "Comportement inacceptable en soirée (fixture)", "motif blacklist importé")
     _expect(alcool_bit == 1, "bit(1) alcohol_blacklisted -> blacklist_alcohol")
+    _expect(
+        motif_alcool == "Refus de vente d'alcool (fixture)",
+        "motif blacklist alcool importé dans sa colonne",
+    )
+    _expect(motif_alcool_classique is None, "motif alcool non dupliqué sur la blacklist classique")
     remaining = [p.name for p in (src / "sources").iterdir() if p.name != "manifest.json"]
     _expect(remaining == [], f"fichiers sources supprimés ({remaining})")
     # double run impossible : plus de fichiers

@@ -736,6 +736,100 @@ def test_blacklist_removal_requires_admin_password():
     auth_module.reset_throttle(app)
 
 
+def test_blacklist_reasons_stay_on_account_page():
+    """Les motifs de blacklist ne fuitent ni dans la liste, ni en caisse, ni au journal."""
+    app = create_app()
+    with app.app_context():
+        user = User(name="Motif Test", username="motif.test")
+        db.session.add(user)
+        db.session.commit()
+        user_id = user.id
+
+    client = _client(app)
+    page = client.get(f"/admin/comptes/{user_id}").get_data(as_text=True)
+    _expect('name="blacklist_reason"' in page, "champ motif blacklist présent")
+    _expect('name="blacklist_alcohol_reason"' in page, "champ motif blacklist alcool présent")
+    token = _csrf(page)
+    motif = "Motif comportemental confidentiel"
+    motif_alcool = "Motif alcool confidentiel"
+    res = client.post(
+        f"/admin/comptes/{user_id}",
+        data={
+            "name": "Motif Test",
+            "username": "motif.test",
+            "blacklist": "on",
+            "blacklist_alcohol": "on",
+            "blacklist_reason": motif,
+            "blacklist_alcohol_reason": motif_alcool,
+            "_csrf": token,
+        },
+    )
+    _expect(res.status_code == 302, f"blacklists et motifs enregistrés ({res.status_code})")
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        _expect(user.blacklist and user.blacklist_alcohol, "blacklists activées")
+        _expect(user.blacklist_reason == motif, "motif blacklist enregistré")
+        _expect(user.blacklist_alcohol_reason == motif_alcool, "motif blacklist alcool enregistré")
+
+    page = client.get(f"/admin/comptes/{user_id}").get_data(as_text=True)
+    _expect(motif in page and motif_alcool in page, "motifs visibles sur la fiche du compte")
+
+    listing = client.get("/admin/comptes?q=motif.test").get_data(as_text=True)
+    _expect(motif not in listing and motif_alcool not in listing, "motifs absents de la liste")
+    students = client.get("/api/students?q=motif.test").get_json()
+    _expect(
+        motif not in str(students) and motif_alcool not in str(students),
+        "motifs absents de la recherche caisse",
+    )
+    wallet = client.get(f"/api/wallet/{user_id}").get_json()
+    _expect(
+        motif not in str(wallet) and motif_alcool not in str(wallet),
+        "motifs absents du portefeuille caisse",
+    )
+    journal = client.get("/admin/journal?tab=actions&user=Motif+Test").get_data(as_text=True)
+    _expect(motif not in journal and motif_alcool not in journal, "motifs absents du journal")
+
+    # Modification du motif tant que la blacklist est active.
+    token = _csrf(client.get(f"/admin/comptes/{user_id}").get_data(as_text=True))
+    nouveau_motif = "Motif comportemental mis à jour"
+    client.post(
+        f"/admin/comptes/{user_id}",
+        data={
+            "name": "Motif Test",
+            "username": "motif.test",
+            "blacklist": "on",
+            "blacklist_alcohol": "on",
+            "blacklist_reason": nouveau_motif,
+            "blacklist_alcohol_reason": motif_alcool,
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        _expect(
+            db.session.get(User, user_id).blacklist_reason == nouveau_motif,
+            "motif blacklist modifiable",
+        )
+
+    # Le retrait des blacklists efface les motifs.
+    token = _csrf(client.get(f"/admin/comptes/{user_id}").get_data(as_text=True))
+    client.post(
+        f"/admin/comptes/{user_id}",
+        data={
+            "name": "Motif Test",
+            "username": "motif.test",
+            "admin_password": ADMIN_PASSWORD,
+            "_csrf": token,
+        },
+    )
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        _expect(not user.blacklist and not user.blacklist_alcohol, "blacklists retirées")
+        _expect(
+            user.blacklist_reason is None and user.blacklist_alcohol_reason is None,
+            "motifs effacés avec les blacklists",
+        )
+
+
 def test_blacklist_lift_reservee_a_equipe_origine():
     """Une blacklist posée par une équipe ne peut être levée que par celle-ci,
     avec son mot de passe administrateur ; l'admin global est exempté et les

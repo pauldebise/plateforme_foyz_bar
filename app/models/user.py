@@ -41,7 +41,12 @@ class User(db.Model):
     blacklist_alcohol_by: db.Mapped[str | None] = db.mapped_column(
         db.String(10), nullable=True, default=None
     )
+    # Motifs des blacklists : affichés exclusivement sur la fiche du compte,
+    # jamais dans la caisse, les API ou les listes.
     blacklist_reason: db.Mapped[str | None] = db.mapped_column(
+        db.String(255), nullable=True, default=None
+    )
+    blacklist_alcohol_reason: db.Mapped[str | None] = db.mapped_column(
         db.String(255), nullable=True, default=None
     )
     # Compte désactivé côté ancienne base : conservé désactivé à la migration,

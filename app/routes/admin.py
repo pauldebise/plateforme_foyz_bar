@@ -364,6 +364,8 @@ def compte(user_id):
             "promotion": u.promotion,
             "blacklist": u.blacklist,
             "blacklist_alcohol": u.blacklist_alcohol,
+            "blacklist_reason": u.blacklist_reason,
+            "blacklist_alcohol_reason": u.blacklist_alcohol_reason,
         }
         if protected:
             # Compte figé : nom et identifiant « admin » (l'identifiant porte le
@@ -376,6 +378,8 @@ def compte(user_id):
             u.blacklist_alcohol = False
             u.blacklist_by = None
             u.blacklist_alcohol_by = None
+            u.blacklist_reason = None
+            u.blacklist_alcohol_reason = None
         else:
             new_name = clamp_text((request.form.get("name") or "").strip(), 255)
             if new_name and new_name != u.name:
@@ -397,6 +401,13 @@ def compte(user_id):
             u.promotion = _optional_int(promotion, maximum=3000)
             new_bl = request.form.get("blacklist") == "on"
             new_ba = request.form.get("blacklist_alcohol") == "on"
+            new_bl_reason = (
+                clamp_text((request.form.get("blacklist_reason") or "").strip(), 255) or None
+            )
+            new_ba_reason = (
+                clamp_text((request.form.get("blacklist_alcohol_reason") or "").strip(), 255)
+                or None
+            )
             removals = [
                 (label, origin)
                 for was, now, origin, label in (
@@ -434,6 +445,19 @@ def compte(user_id):
                 u.blacklist_alcohol_by = own_campus()
             if not new_ba:
                 u.blacklist_alcohol_by = None
+            # Le motif suit le statut : il est saisi à l'activation, modifiable
+            # par l'équipe d'origine tant que la blacklist est active, et effacé
+            # au retrait. L'autre équipe peut le consulter sans le modifier.
+            if new_bl:
+                if not u.blacklist or _can_lift_blacklist(u.blacklist_by):
+                    u.blacklist_reason = new_bl_reason
+            else:
+                u.blacklist_reason = None
+            if new_ba:
+                if not u.blacklist_alcohol or _can_lift_blacklist(u.blacklist_alcohol_by):
+                    u.blacklist_alcohol_reason = new_ba_reason
+            else:
+                u.blacklist_alcohol_reason = None
             u.blacklist = new_bl
             u.blacklist_alcohol = new_ba
         if u.blacklist:
@@ -462,6 +486,21 @@ def compte(user_id):
                 else ""
             )
             changes.append(f"blacklist alcool : {'oui' if u.blacklist_alcohol else 'non'}{origine}")
+        # Le contenu du motif reste sur la fiche du compte : le journal signale
+        # seulement qu'il a été renseigné, modifié ou effacé.
+        for key, label in (
+            ("blacklist_reason", "motif blacklist"),
+            ("blacklist_alcohol_reason", "motif blacklist alcool"),
+        ):
+            before_reason = before[key]
+            after_reason = getattr(u, key)
+            if before_reason != after_reason:
+                if not after_reason:
+                    changes.append(f"{label} : effacé")
+                elif not before_reason:
+                    changes.append(f"{label} : renseigné")
+                else:
+                    changes.append(f"{label} : modifié")
         A.record(
             "compte.modification",
             target=f"{u.display_name} ({u.username})",

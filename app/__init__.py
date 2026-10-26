@@ -133,6 +133,19 @@ def ensure_schema_upgrades():
     if "users" in table_columns and "legacy_password" not in table_columns["users"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN legacy_password VARCHAR(255)"))
+    if "users" in table_columns and "blacklist_alcohol_reason" not in table_columns["users"]:
+        # Motif distinct de la blacklist alcool (révision 0019). Les anciens
+        # motifs d'un compte uniquement blacklisté alcool y sont repris.
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE users ADD COLUMN blacklist_alcohol_reason VARCHAR(255)"))
+            if "blacklist_reason" in table_columns["users"]:
+                conn.execute(
+                    text(
+                        "UPDATE users SET blacklist_alcohol_reason = blacklist_reason "
+                        "WHERE blacklist_alcohol = TRUE AND COALESCE(blacklist, FALSE) = FALSE "
+                        "AND blacklist_reason IS NOT NULL AND blacklist_reason <> ''"
+                    )
+                )
     if "events" in table_columns and "allow_standard_articles" not in table_columns["events"]:
         # Passerelle événement : autorisation des articles standards (révision
         # 0010). Par défaut on conserve le comportement historique (autorisés).

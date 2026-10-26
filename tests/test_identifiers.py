@@ -216,6 +216,10 @@ def test_schema_upgrade_legacy_db():
         "INSERT INTO users (name, created_at) VALUES (?, '2026-01-01 00:00:00')",
         [("Paul Debise",), ("Marie Le Goff",), ("admin",), ("Paul  Debise",)],
     )
+    conn.execute(
+        "INSERT INTO users (name, blacklist_alcohol, blacklist_reason, created_at) "
+        "VALUES ('Alcool Legacy', 1, 'Motif alcool legacy', '2026-01-01 00:00:00')"
+    )
     conn.commit()
     conn.close()
 
@@ -229,6 +233,14 @@ def test_schema_upgrade_legacy_db():
         ensure_schema_upgrades()
         cols = {c["name"] for c in inspect(db.engine).get_columns("users")}
         _expect("username" in cols and "nickname" in cols, "colonnes ajoutées")
+        _expect("blacklist_alcohol_reason" in cols, "motif blacklist alcool ajouté")
+        alcool_reason = db.session.execute(
+            text("SELECT blacklist_alcohol_reason FROM users WHERE name = 'Alcool Legacy'")
+        ).scalar_one()
+        _expect(
+            alcool_reason == "Motif alcool legacy",
+            "motif alcool historique repris dans la colonne dédiée",
+        )
         mapping = dict(db.session.execute(text("SELECT name, username FROM users")).fetchall())
         _expect(mapping["Paul Debise"] == "paul.debise", "backfill slug simple")
         _expect(mapping["Marie Le Goff"] == "marie.le.goff", "backfill slug multi-mots")
