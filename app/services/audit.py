@@ -43,6 +43,7 @@ ACTION_LABELS = {
     "evenement.jeton": "Régénération du jeton d'événement",
     "evenement.fermeture": "Ouverture/fermeture d'un événement",
     "reglages.modification": "Modification des réglages",
+    "reglages.deco_noel": "Modification du décor de Noël",
     "reglages.couleurs": "Réinitialisation des couleurs",
     "reglages.mot_de_passe": "Changement du mot de passe administrateur",
     "mot_de_passe_admin.succes": "Mot de passe administrateur accepté",

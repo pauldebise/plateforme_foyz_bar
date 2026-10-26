@@ -624,6 +624,7 @@ def create_app():
 
     @app.context_processor
     def inject_globals():
+        from app.services.christmas import is_active as christmas_deco_active
         from app.services.settings import get_setting, int_setting, bool_setting
 
         campus = session.get("campus") or ""
@@ -659,6 +660,7 @@ def create_app():
             "deposit_value": int_setting("deposit_value_cents"),
             "deposit_enabled": bool_setting("deposit_enabled"),
             "overdraft_limit": int_setting("overdraft_limit_cents"),
+            "christmas_deco_active": christmas_deco_active(),
         }
 
     def ensure_csrf():

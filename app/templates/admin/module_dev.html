@@ -168,6 +168,43 @@
     </div>
   </div>
 
+  {% if current_user.is_super_admin %}
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span><i class="bi bi-snow"></i> Décor de Noël</span>
+        {% if christmas_deco_active %}
+        <span class="badge text-bg-success">actif aujourd'hui</span>
+        {% else %}
+        <span class="badge text-bg-light border">inactif aujourd'hui</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin.module_dev_deco_noel') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label" for="deco-noel-start">Début</label>
+              <input class="form-control" id="deco-noel-start" type="date" name="christmas_deco_start" value="{{ deco_start }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="deco-noel-end">Fin</label>
+              <input class="form-control" id="deco-noel-end" type="date" name="christmas_deco_end" value="{{ deco_end }}">
+            </div>
+            <div class="col-md-4 d-grid">
+              <button class="btn btn-primary"><i class="bi bi-save"></i> Enregistrer les dates</button>
+            </div>
+          </div>
+          <div class="form-text mt-2">
+            Le Père Noël et les flocons reviennent chaque année entre ces deux dates ;
+            l'année est ignorée. Laissez les deux champs vides pour désactiver le décor.
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="col-lg-7">
     <div class="card mb-4">
       <div class="card-header">Liens utiles (interface publique)</div>

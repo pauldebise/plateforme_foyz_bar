@@ -24,6 +24,9 @@ DEFAULTS = {
     "session_timeout_minutes": "30",
     "max_postits_private": "20",
     "max_postits_public": "10",
+    # Décor de Noël : dates annuelles au format « MM-JJ » (sans année).
+    "christmas_deco_start": "12-01",
+    "christmas_deco_end": "12-31",
     # Mot de passe administrateur (opérations sensibles) : un par campus, saisi
     # et vérifié dans le contexte du campus de l'opération (voir
     # check_admin_password / set_admin_password).

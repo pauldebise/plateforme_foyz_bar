@@ -44,6 +44,7 @@ from app.services import adminpw as AP
 from app.services import api_tokens as AT
 from app.services import audit as A
 from app.services import catalog as C
+from app.services import christmas
 from app.services import settings as S
 from app.services.event_recap import build_recap, export_rows as event_recap_export_rows
 from app.services.names import plain_details, plain_names
@@ -1971,6 +1972,35 @@ SETTING_LABELS = {
 }
 
 
+@bp.route("/module-dev/deco-noel", methods=["POST"])
+@login_required
+@super_admin_required
+def module_dev_deco_noel():
+    """Dates du décor de Noël : réglage réservé au compte admin global."""
+    start_raw = (request.form.get("christmas_deco_start") or "").strip()
+    end_raw = (request.form.get("christmas_deco_end") or "").strip()
+    if not start_raw and not end_raw:
+        start = end = ""
+    else:
+        start = christmas.parse_form_date(start_raw)
+        end = christmas.parse_form_date(end_raw)
+        if start is None or end is None:
+            flash(
+                "Décor de Noël : saisissez deux dates valides, ou laissez les deux champs vides.",
+                "danger",
+            )
+            return redirect(url_for("admin.module_dev"))
+    S.set_setting("christmas_deco_start", start)
+    S.set_setting("christmas_deco_end", end)
+    A.record("reglages.deco_noel", details=f"du {start or '—'} au {end or '—'}")
+    db.session.commit()
+    flash(
+        "Dates du décor de Noël enregistrées." if start else "Décor de Noël désactivé.",
+        "success",
+    )
+    return redirect(url_for("admin.module_dev"))
+
+
 @bp.route("/module-dev", methods=["GET", "POST"])
 @login_required
 def module_dev():
@@ -2105,4 +2135,14 @@ def module_dev():
         return redirect(url_for("admin.module_dev"))
     links = db.session.scalars(select(UsefulLink).order_by(UsefulLink.position)).all()
     values = {k: S.get_setting(k) for k in S.DEFAULTS}
-    return render_template("admin/module_dev.html", values=values, links=links, own_campus=own)
+    deco_start, deco_end = christmas.date_input_values(
+        values["christmas_deco_start"], values["christmas_deco_end"]
+    )
+    return render_template(
+        "admin/module_dev.html",
+        values=values,
+        links=links,
+        own_campus=own,
+        deco_start=deco_start,
+        deco_end=deco_end,
+    )

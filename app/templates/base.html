@@ -120,6 +120,9 @@
 
 <script src="{{ static_url('vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 <script src="{{ static_url('js/base.js') }}"></script>
+{% if christmas_deco_active %}
+<script src="{{ static_url('js/santa-deco.js') }}" defer></script>
+{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

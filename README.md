@@ -630,3 +630,13 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
   l'ancienne coquille hors ligne la remplacent à la prochaine visite, purgent les
   caches et se désenregistrent. À conserver tant que d'anciens postes peuvent
   demander une mise à jour.
+
+### 7.7 Décor de Noël
+
+- Du 1er au 31 décembre (par défaut), les pages chargent `santa-deco.js` : un Père
+  Noël traverse le bas de l'écran et des flocons tombent devant la page. L'overlay
+  est en `pointer-events: none` : boutons, liens et formulaires restent utilisables ;
+  `prefers-reduced-motion` fige la scène.
+- Les dates sont réglables dans **Module dev → Décor de Noël**, réservé au compte
+  `admin` (superadmin). Elles sont annuelles (`MM-JJ`, l'année est ignorée) et
+  peuvent chevaucher le Nouvel An ; vider les deux champs désactive le décor.
