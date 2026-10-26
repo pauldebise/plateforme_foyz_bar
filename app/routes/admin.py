@@ -913,8 +913,8 @@ def _article_from_form(a, writable_campus):
     a.is_private = request.form.get("is_private") == "on"
     a.alcohol_degree = _optional_degree("alcohol_degree") if a.is_alcohol else None
     a.campus = writable_campus
-    a.price_std = _optional_cents(request.form.get("price_std", "0"))
-    a.price_team = _optional_cents(request.form.get("price_team", "0"))
+    a.price_std = _required_cents("price_std")
+    a.price_team = _required_cents("price_team")
     return a
 
 

@@ -258,6 +258,17 @@ def test_degre_alcool_modifiable_et_efface_si_non_alcoolise():
 
     fiche = client.get(f"/admin/articles/{article_id}?campus=brest").get_data(as_text=True)
     _expect('name="alcohol_degree"' in fiche, "champ degré présent sur la fiche article")
+    _expect("Affiché dans le catalogue public" not in fiche, "commentaire du champ degré retiré")
+    _expect("Prix standard (€, optionnel)" not in fiche, "prix standard rendu obligatoire")
+    _expect("Prix équipe (€, optionnel)" not in fiche, "prix équipe rendu obligatoire")
+    _expect(
+        re.search(r'name="price_std"[^>]*\srequired', fiche) is not None,
+        "champ prix standard marqué obligatoire",
+    )
+    _expect(
+        re.search(r'name="price_team"[^>]*\srequired', fiche) is not None,
+        "champ prix équipe marqué obligatoire",
+    )
     token = _form_token(fiche)
     data = {
         "_csrf": token,

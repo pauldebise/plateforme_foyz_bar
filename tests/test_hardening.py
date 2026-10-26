@@ -261,21 +261,40 @@ def test_admin_rejects_invalid_numbers_without_500():
         )
 
 
-def test_optional_article_fields_are_optional():
+def test_optional_fields_and_required_prices():
     app = create_app()
     authed = _client(app)
     token = _csrf(authed.get("/admin/articles/nouveau").get_data(as_text=True))
     res = authed.post(
         "/admin/articles/nouveau",
-        data={"name": "Snack sans volume", "article_type": "snack", "_csrf": token},
+        data={"name": "Snack sans prix", "article_type": "snack", "_csrf": token},
     )
-    _expect(res.status_code == 302, f"paramètres optionnels acceptés ({res.status_code})")
+    _expect(res.status_code == 302, f"prix absents refusés proprement ({res.status_code})")
     with app.app_context():
-        stored = db.session.query(Article).filter(Article.name == "Snack sans volume").first()
-        _expect(stored is not None, "article créé sans paramètres optionnels")
+        _expect(
+            db.session.query(Article).filter(Article.name == "Snack sans prix").first() is None,
+            "aucun article créé sans prix",
+        )
+
+    res = authed.post(
+        "/admin/articles/nouveau",
+        data={
+            "name": "Snack gratuit sans volume",
+            "article_type": "snack",
+            "price_std": "0",
+            "price_team": "0",
+            "_csrf": token,
+        },
+    )
+    _expect(res.status_code == 302, f"prix à 0 explicitement acceptés ({res.status_code})")
+    with app.app_context():
+        stored = (
+            db.session.query(Article).filter(Article.name == "Snack gratuit sans volume").first()
+        )
+        _expect(stored is not None, "article créé avec les champs optionnels vides")
         _expect(stored.volume_cl is None, "volume absent stocké à NULL")
         _expect(stored.alcohol_degree is None, "degré absent stocké à NULL")
-        _expect(stored.price_std == 0 and stored.price_team == 0, "prix absents stockés à 0")
+        _expect(stored.price_std == 0 and stored.price_team == 0, "prix à 0 explicitement stockés")
 
 
 def test_invalid_csrf_renders_dedicated_error_page():
