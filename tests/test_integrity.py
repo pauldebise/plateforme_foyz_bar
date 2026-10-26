@@ -207,6 +207,10 @@ def test_tireuse_accepts_keg_without_stock():
         "fût proposé à l'assignation sans condition de volume",
     )
     _expect('name="remaining_l"' not in html, "champ restant absent de l'onglet tireuses")
+    _expect(
+        "Tous les prix sont obligatoires" not in html,
+        "commentaire sur les prix obligatoires retiré du formulaire de fût",
+    )
 
 
 def test_fut_sans_champ_actif_et_articles_encaissables():

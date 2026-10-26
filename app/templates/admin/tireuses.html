@@ -139,12 +139,6 @@
         <div class="col-md-6"><label class="form-label">Nom du fût</label><input class="form-control" name="name" required></div>
         <div class="col-md-2"><label class="form-label">Degré (°)</label><input class="form-control" name="alcohol_degree" type="number" step="0.1" value="5.0"></div>
         <div class="col-md-2"><label class="form-label">Volume (L)</label><input class="form-control" name="volume_l" type="number" step="0.5" value="30"></div>
-        <div class="col-12">
-          <p class="text-muted small mb-0">
-            Tous les prix sont obligatoires, pour les deux campus. Saisissez 0 pour un prix
-            volontairement gratuit.
-          </p>
-        </div>
         {% for c, label in [('brest','Brest'), ('paris','Paris')] %}
         <div class="col-12"><strong>{{ label }}</strong></div>
         {% for size, slabel in [('half','Demi'), ('pint','Pinte'), ('pot','Pot')] %}
