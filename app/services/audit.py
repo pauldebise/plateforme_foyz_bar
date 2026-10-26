@@ -22,6 +22,7 @@ from app.utils import clamp_text, client_ip, utcnow
 ACTION_LABELS = {
     "compte.creation": "Création de compte",
     "compte.modification": "Modification de compte",
+    "compte.arbitrage_solde": "Arbitrage de solde",
     "compte.suppression": "Suppression de compte",
     "equipe.modification": "Modification d'un membre d'équipe",
     "article.creation": "Création d'article",

@@ -2,6 +2,7 @@
 {% block title %}Compte de {{ u.display_name }}{% endblock %}
 {% block content %}
 {% set admin_account = u.is_super_admin %}
+{% set can_arbitrate = not admin_account and (current_user.team_status == 'mandat' or current_user.is_super_admin) %}
 <a class="btn btn-sm btn-outline-secondary mb-3" href="{{ list_url('comptes') }}"><i class="bi bi-arrow-left"></i> Retour à la liste</a>
 <h1 class="h3 mb-1"><i class="bi bi-person"></i> {{ u.display_name }}</h1>
 <p class="text-muted">
@@ -81,6 +82,38 @@
         <a class="btn btn-outline-dark btn-sm" href="{{ url_for('team.historique', user=u.name) }}">Historique</a>
       </div>
     </div>
+    {% if can_arbitrate %}
+    <div class="card mt-4" id="balance-arbitration">
+      <div class="card-header">Arbitrer le solde — {{ CAMPUSSES[own_campus] }}</div>
+      <div class="card-body">
+        <p class="mb-3">Solde actuel : <strong>{{ u.wallet(own_campus).balance|eur }}</strong></p>
+        <form method="post" action="{{ url_for('admin.compte_arbitrer_solde', user_id=u.id) }}"
+              data-confirm="Confirmer l'arbitrage du solde ? Cette opération est journalisée.">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label" for="arbitrage-amount">Montant (€)</label>
+              <input class="form-control" id="arbitrage-amount" name="amount" type="number"
+                     min="0.01" max="5000" step="0.01" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label" for="arbitrage-direction">Sens</label>
+              <select class="form-select" id="arbitrage-direction" name="direction">
+                <option value="credit">Augmenter le solde</option>
+                <option value="debit">Diminuer le solde</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="arbitrage-password">Mot de passe administrateur {{ CAMPUSSES[own_campus] }}</label>
+            <input class="form-control" id="arbitrage-password" type="password"
+                   name="admin_password" required autocomplete="current-password">
+          </div>
+          <button class="btn btn-warning"><i class="bi bi-pencil-square"></i> Arbitrer le solde</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 </div>

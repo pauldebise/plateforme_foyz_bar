@@ -56,6 +56,7 @@ from app.utils import (
     login_required,
     new_token,
     paris_to_utc,
+    parse_amount,
     safe_color,
     slug_username,
     to_paris,
@@ -475,6 +476,73 @@ def compte(user_id):
         warnings=_compte_warnings(u),
         blacklists=_blacklists_view(u),
     )
+
+
+@bp.route("/comptes/<int(max=2147483647):user_id>/arbitrer-solde", methods=["POST"])
+@login_required
+def compte_arbitrer_solde(user_id):
+    """Arbitrage manuel du solde du campus, réservé aux membres de mandat.
+
+    L'opération ne passe pas par la caisse : elle corrige directement le
+    portefeuille du campus d'appartenance. Le mot de passe administrateur du
+    campus est exigé et l'ajustement est inscrit dans le journal des actions.
+    """
+    if g.current_user.team_status != "mandat" and not g.current_user.is_super_admin:
+        abort(403)
+    u = db.session.get(User, user_id)
+    if u is None:
+        abort(404)
+    # Le compte d'administration global n'a pas de solde à arbitrer.
+    if u.is_super_admin:
+        abort(403)
+
+    direction = request.form.get("direction", "")
+    if direction not in ("credit", "debit"):
+        flash("Choisissez d'augmenter ou de diminuer le solde.", "danger")
+        return redirect(url_for("admin.compte", user_id=u.id))
+    try:
+        amount = parse_amount(request.form.get("amount", ""))
+    except ValueError:
+        flash("Montant invalide (de 0,01 € à 5 000,00 €).", "danger")
+        return redirect(url_for("admin.compte", user_id=u.id))
+
+    campus = own_campus()
+    if not AP.verify(
+        request.form.get("admin_password", ""),
+        campus,
+        f"arbitrage du solde {CAMPUSSES[campus]} de {u.name}",
+    ):
+        flash(
+            "L'arbitrage du solde exige le mot de passe administrateur du campus.",
+            "danger",
+        )
+        return redirect(url_for("admin.compte", user_id=u.id))
+
+    delta = amount if direction == "credit" else -amount
+    wallet = u.wallet(campus)
+    db.session.flush()
+    # Verrou de ligne : deux arbitrages simultanés ne doivent pas s'écraser.
+    wallet = db.session.scalars(
+        select(Wallet).where(Wallet.id == wallet.id).with_for_update()
+    ).one()
+    before = wallet.balance
+    wallet.balance = Wallet.balance + delta
+    db.session.flush()
+    after = wallet.balance
+    movement = f"{'+' if delta > 0 else '-'}{euros(abs(delta))}"
+    A.record(
+        "compte.arbitrage_solde",
+        target=f"{u.display_name} ({u.username})",
+        details=f"{CAMPUSSES[campus]} : {movement} (solde {euros(before)} -> {euros(after)})",
+        campus=campus,
+    )
+    db.session.commit()
+    flash(
+        f"Solde {CAMPUSSES[campus]} de {u.display_name} arbitré : {movement} "
+        f"(nouveau solde {euros(after)}).",
+        "success",
+    )
+    return redirect(url_for("admin.compte", user_id=u.id))
 
 
 def _compte_warnings(u):

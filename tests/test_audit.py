@@ -251,6 +251,159 @@ def test_acces_reserve_aux_mandats():
     _expect(client.get("/admin/journal").status_code == 403, "journal interdit aux anciens membres")
 
 
+def test_arbitrage_solde_mandat_et_audit():
+    """Un mandat peut corriger le solde de son campus ; l'action est auditée."""
+    app = create_app()
+    with app.app_context():
+        mandat = User(
+            name="Mandat Arbitrage",
+            username="mandat.arbitrage",
+            team_status="mandat",
+            team_campus="brest",
+            password_hash=generate_password_hash("secret123"),
+        )
+        target = User(
+            name="Cible Arbitrage",
+            username="cible.arbitrage",
+            password_hash=generate_password_hash("secret123"),
+        )
+        db.session.add_all([mandat, target])
+        db.session.flush()
+        target.wallet("brest").balance = 1000
+        target.wallet("paris").balance = 4200
+        db.session.commit()
+        target_id = target.id
+
+    client = app.test_client()
+    _expect(
+        _login(client, "mandat.arbitrage", "secret123").status_code == 302,
+        "connexion mandat",
+    )
+    fiche = client.get(f"/admin/comptes/{target_id}").get_data(as_text=True)
+    _expect("Arbitrer le solde" in fiche, "formulaire d'arbitrage visible pour un mandat")
+    _expect('name="direction"' in fiche and 'name="amount"' in fiche, "champs d'arbitrage présents")
+
+    token = _csrf(client, f"/admin/comptes/{target_id}")
+
+    # Mauvais mot de passe : aucun mouvement.
+    res = client.post(
+        f"/admin/comptes/{target_id}/arbitrer-solde",
+        data={
+            "_csrf": token,
+            "amount": "2.50",
+            "direction": "credit",
+            "admin_password": "mauvais",
+        },
+    )
+    _expect(res.status_code == 302, "mot de passe refusé proprement")
+    with app.app_context():
+        _expect(
+            db.session.get(User, target_id).wallet("brest").balance == 1000,
+            "solde intact après refus du mot de passe",
+        )
+
+    # Augmentation.
+    token = _csrf(client, f"/admin/comptes/{target_id}")
+    res = client.post(
+        f"/admin/comptes/{target_id}/arbitrer-solde",
+        data={
+            "_csrf": token,
+            "amount": "12,50",
+            "direction": "credit",
+            "admin_password": ADMIN_PASSWORD,
+        },
+    )
+    _expect(res.status_code == 302, "arbitrage créditeur accepté")
+    with app.app_context():
+        target = db.session.get(User, target_id)
+        _expect(target.wallet("brest").balance == 2250, "solde Brest augmenté")
+        _expect(target.wallet("paris").balance == 4200, "solde Paris inchangé")
+        logged = (
+            db.session.query(AuditLog)
+            .filter(AuditLog.action == "compte.arbitrage_solde")
+            .order_by(AuditLog.id.desc())
+            .first()
+        )
+        _expect(logged is not None, "arbitrage journalisé")
+        _expect("Cible Arbitrage" in logged.target, "compte cible journalisé")
+        _expect(
+            "Brest : +12,50 € (solde 10,00 € -> 22,50 €)" in logged.details,
+            f"mouvement décrit ({logged.details})",
+        )
+
+    # Diminution.
+    token = _csrf(client, f"/admin/comptes/{target_id}")
+    res = client.post(
+        f"/admin/comptes/{target_id}/arbitrer-solde",
+        data={
+            "_csrf": token,
+            "amount": "2,50",
+            "direction": "debit",
+            "admin_password": ADMIN_PASSWORD,
+        },
+    )
+    _expect(res.status_code == 302, "arbitrage débiteur accepté")
+    with app.app_context():
+        _expect(
+            db.session.get(User, target_id).wallet("brest").balance == 2000,
+            "solde Brest diminué",
+        )
+
+    journal = client.get("/admin/journal?tab=actions&action=compte.arbitrage_solde").get_data(
+        as_text=True
+    )
+    _expect("Arbitrage de solde" in journal, "action visible dans le journal")
+    _expect("Cible Arbitrage" in journal, "cible visible dans le journal")
+    _expect("Brest : +12,50 €" in journal, "détail du crédit visible dans le journal")
+    _expect("Brest : -2,50 €" in journal, "détail du débit visible dans le journal")
+
+
+def test_arbitrage_solde_interdit_aux_anciens():
+    app = create_app()
+    with app.app_context():
+        old = User(
+            name="Ancien Arbitrage",
+            username="ancien.arbitrage",
+            team_status="ancien",
+            team_campus="brest",
+            password_hash=generate_password_hash("secret123"),
+        )
+        target = User(
+            name="Cible Ancien Arbitrage",
+            username="cible.ancien.arbitrage",
+            password_hash=generate_password_hash("secret123"),
+        )
+        db.session.add_all([old, target])
+        db.session.flush()
+        target.wallet("brest").balance = 500
+        db.session.commit()
+        target_id = target.id
+
+    client = app.test_client()
+    _expect(
+        _login(client, "ancien.arbitrage", "secret123").status_code == 302,
+        "connexion ancien membre",
+    )
+    fiche = client.get(f"/admin/comptes/{target_id}").get_data(as_text=True)
+    _expect("Arbitrer le solde" not in fiche, "formulaire masqué pour un ancien membre")
+    token = _csrf(client, f"/admin/comptes/{target_id}")
+    res = client.post(
+        f"/admin/comptes/{target_id}/arbitrer-solde",
+        data={
+            "_csrf": token,
+            "amount": "5",
+            "direction": "credit",
+            "admin_password": ADMIN_PASSWORD,
+        },
+    )
+    _expect(res.status_code == 403, f"arbitrage interdit aux anciens ({res.status_code})")
+    with app.app_context():
+        _expect(
+            db.session.get(User, target_id).wallet("brest").balance == 500,
+            "solde inchangé après tentative d'un ancien",
+        )
+
+
 def test_tresorerie_reservee_aux_mandats():
     app = create_app()
     with app.app_context():

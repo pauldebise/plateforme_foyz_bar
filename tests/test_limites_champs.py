@@ -185,6 +185,10 @@ def test_comptes():
         {"name": "Fuzz Cible", "nickname": "n", "username": "fuzz.cible", "promotion": "2027"},
     )
     _fuzz_form(
+        f"/admin/comptes/{s['target']}/arbitrer-solde",
+        {"amount": "1", "direction": "credit", "admin_password": ADMIN_PASSWORD},
+    )
+    _fuzz_form(
         f"/admin/equipe/{s['target']}",
         {"team_status": "mandat", "campus": "brest", "password": ""},
     )
