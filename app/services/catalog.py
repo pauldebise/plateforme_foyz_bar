@@ -45,6 +45,7 @@ def assign_keg(tap, keg):
                 price_std=std,
                 price_team=team,
                 is_alcohol=True,
+                alcohol_degree=keg.alcohol_degree if (keg.alcohol_degree or 0) > 0 else None,
                 is_tap=True,
                 tap_number=tap.number,
                 keg_id=keg.id,

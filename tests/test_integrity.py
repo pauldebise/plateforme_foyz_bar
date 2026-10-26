@@ -246,6 +246,7 @@ def test_fut_sans_champ_actif_et_articles_encaissables():
             by_volume[50].name == "Pinte de Tireuse assignable (Fût assignable - 6.5°)",
             f"nom avec degré du fût ({by_volume[50].name})",
         )
+        _expect(by_volume[50].alcohol_degree == 6.5, "degré du fût repris sur l'article")
 
 
 def test_meme_fut_sur_deux_tireuses():
@@ -577,6 +578,47 @@ def test_schema_upgrade_drops_keg_active_ignore_les_anciens_articles():
         )
         _expect(active_ids == latest_ids, "seul le dernier article de chaque taille est réactivé")
         _expect(len(active_ids) == len(TAP_SIZES), "un seul jeu d'articles actif")
+
+
+def test_schema_upgrade_article_alcohol_degree():
+    if not IS_SQLITE:
+        print("  (ignoré : évolution de schéma SQLite)")
+        return
+    from app import ensure_schema_upgrades
+
+    app = create_app()
+    with app.app_context():
+        keg = Keg(name="Fût degré schéma", volume_l=30.0, alcohol_degree=7.5)
+        tap = Tap(number=509, name="Tireuse degré schéma", campus="brest")
+        db.session.add_all([keg, tap])
+        db.session.flush()
+        tap.keg_id = keg.id
+        article = Article(
+            name="Pinte de tireuse degré schéma",
+            article_type="biere",
+            volume_cl=50,
+            is_alcohol=True,
+            is_tap=True,
+            tap_number=tap.number,
+            keg_id=keg.id,
+            campus="brest",
+            price_std=500,
+            active=True,
+        )
+        db.session.add(article)
+        db.session.commit()
+        article_id = article.id
+
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE articles DROP COLUMN alcohol_degree"))
+        ensure_schema_upgrades()
+        columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("articles")}
+        _expect("alcohol_degree" in columns, "colonne alcohol_degree rétablie")
+        db.session.expire_all()
+        _expect(
+            db.session.get(Article, article_id).alcohol_degree == 7.5,
+            "degré du fût repris par l'article de tireuse",
+        )
 
 
 def test_schema_upgrade_campus_catalog():

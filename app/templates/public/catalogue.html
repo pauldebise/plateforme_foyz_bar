@@ -32,6 +32,9 @@
               <td class="text-muted">{{ loop.index }}</td>
               <td class="catalogue-name">{{ a.name }} <span class="text-muted small d-block d-sm-inline"><span class="d-none d-sm-inline">· </span>{{ ARTICLE_TYPES[a.article_type] }}</span></td>
               <td class="text-muted">{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
+              {% if top_has_degree %}
+              <td class="text-muted text-nowrap">{% if a.alcohol_degree %}{{ '%.1f'|format(a.alcohol_degree) }}°{% else %}—{% endif %}</td>
+              {% endif %}
               <td class="text-end fw-bold">{{ price|eur }}</td>
             </tr>
             {% endfor %}
@@ -49,13 +52,16 @@
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 catalogue-table">
           <thead class="table-light">
-            <tr><th>{{ _("Article") }}</th><th>{{ _("Volume") }}</th><th class="text-end">{{ _("Prix") }} — {{ CAMPUSSES[campus] }}</th></tr>
+            <tr><th>{{ _("Article") }}</th><th>{{ _("Volume") }}</th>{% if type in degree_types %}<th>{{ _("Degré") }}</th>{% endif %}<th class="text-end">{{ _("Prix") }} — {{ CAMPUSSES[campus] }}</th></tr>
           </thead>
           <tbody>
             {% for a, price in items %}
             <tr class="catalogue-row" data-search="{{ a.name }} {{ ARTICLE_TYPES[type] }}">
               <td class="catalogue-name">{{ a.name }}</td>
               <td class="text-muted">{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
+              {% if type in degree_types %}
+              <td class="text-muted text-nowrap">{% if a.alcohol_degree %}{{ '%.1f'|format(a.alcohol_degree) }}°{% else %}—{% endif %}</td>
+              {% endif %}
               <td class="text-end fw-bold">{{ price|eur }}</td>
             </tr>
             {% endfor %}

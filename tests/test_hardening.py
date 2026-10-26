@@ -274,6 +274,7 @@ def test_optional_article_fields_are_optional():
         stored = db.session.query(Article).filter(Article.name == "Snack sans volume").first()
         _expect(stored is not None, "article créé sans paramètres optionnels")
         _expect(stored.volume_cl is None, "volume absent stocké à NULL")
+        _expect(stored.alcohol_degree is None, "degré absent stocké à NULL")
         _expect(stored.price_std == 0 and stored.price_team == 0, "prix absents stockés à 0")
 
 

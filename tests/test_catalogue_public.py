@@ -74,7 +74,14 @@ def _setup():
         specs += [(f"Vin {i:02d}", "vin", "brest") for i in range(1, 9)]
         for name, kind, campus in specs:
             db.session.add(
-                Article(name=name, article_type=kind, campus=campus, price_std=100, price_team=100)
+                Article(
+                    name=name,
+                    article_type=kind,
+                    campus=campus,
+                    price_std=100,
+                    price_team=100,
+                    alcohol_degree=6.5 if name == "Zzz biere" else None,
+                )
             )
         # Très vendus mais jamais affichés au public : privé, inactif, type masqué.
         for name, kind, private in (
@@ -148,6 +155,19 @@ def test_categories_gardent_leur_ordre():
         "les plus vendus ces derniers temps" not in html,
         "phrase d'explication du classement retirée",
     )
+
+
+def test_degre_alcool_dans_le_catalogue():
+    html = _setup()["client"].get("/catalogue?campus=brest").get_data(as_text=True)
+    beer = html[html.index('id="cat-biere"') : html.index('id="cat-vin"')]
+    snack = html[html.index('id="cat-snack"') :]
+    top = html[html.index('id="catalogue-top"') : html.index('id="cat-biere"')]
+    _expect("<th>Degré</th>" in beer, "colonne Degré présente pour les bières renseignées")
+    _expect("6.5°" in beer, "degré de l'article affiché")
+    _expect("6.5°" in top, "degré affiché dans la carte des plus vendus")
+    aaa = beer[beer.index("Aaa biere") :].split("</tr>", 1)[0]
+    _expect("—" in aaa, "article sans degré : cellule vide")
+    _expect("<th>Degré</th>" not in snack, "colonne absente quand aucun degré n'est renseigné")
 
 
 def test_libelles_carte_catalogue_accueil():

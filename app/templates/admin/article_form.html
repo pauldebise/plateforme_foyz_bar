@@ -42,6 +42,11 @@
             <label class="form-check-label" for="alcohol">Article alcoolisé (contrôle « blacklist alcool »)</label>
           </div>
         </div>
+        <div class="col-md-4">
+          <label class="form-label">Degré d'alcool (°, optionnel)</label>
+          <input class="form-control" name="alcohol_degree" type="number" min="0" max="100" step="0.1" value="{{ '%.1f'|format(a.alcohol_degree) if a and a.alcohol_degree else '' }}" {% if not writable %}disabled{% endif %}>
+          <div class="form-text">Affiché dans le catalogue public lorsqu'il est renseigné.</div>
+        </div>
         <div class="col-md-6">
           <label class="form-label">Prix standard (€, optionnel)</label>
           <input class="form-control" name="price_std" value="{{ '%.2f'|format(a.price_std / 100) if a else '0.00' }}" {% if not writable %}disabled{% endif %}>

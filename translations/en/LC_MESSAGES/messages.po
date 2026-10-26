@@ -91,6 +91,10 @@ msgid "Volume"
 msgstr "Volume"
 
 #: app/templates/public/catalogue.html:13
+msgid "Degré"
+msgstr "ABV"
+
+#: app/templates/public/catalogue.html:13
 msgid "Prix Brest"
 msgstr "Brest price"
 

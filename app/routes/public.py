@@ -77,7 +77,18 @@ def catalogue():
     # Coup d'œil rapide : les plus vendus toutes catégories confondues, parmi les
     # seuls articles affichés au public (jamais d'article sans vente récente).
     top = [priced[aid] for aid in ranking if aid in priced][:PUBLIC_TOP_COUNT]
-    return render_template("public/catalogue.html", grouped=ordered, top=top, campus=campus)
+    # La colonne « Degré » n'apparaît que là où au moins un article la renseigne.
+    degree_types = {
+        kind for kind, entries in ordered if any(a.alcohol_degree for a, _price in entries)
+    }
+    return render_template(
+        "public/catalogue.html",
+        grouped=ordered,
+        top=top,
+        campus=campus,
+        degree_types=degree_types,
+        top_has_degree=any(a.alcohol_degree for a, _price in top),
+    )
 
 
 def _public_price(article, taps):

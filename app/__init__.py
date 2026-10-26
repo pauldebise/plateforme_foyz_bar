@@ -117,6 +117,19 @@ def ensure_schema_upgrades():
                 )
             )
             conn.execute(text("ALTER TABLE kegs DROP COLUMN active"))
+    if "articles" in table_columns and "alcohol_degree" not in table_columns["articles"]:
+        # Degré d'alcool facultatif des articles (révision 0018). Les articles
+        # de tireuse reprennent le degré de leur fût.
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE articles ADD COLUMN alcohol_degree FLOAT"))
+            conn.execute(
+                text(
+                    "UPDATE articles SET alcohol_degree = ("
+                    "SELECT CASE WHEN kegs.alcohol_degree > 0 THEN kegs.alcohol_degree END "
+                    "FROM kegs WHERE kegs.id = articles.keg_id"
+                    ") WHERE is_tap = TRUE AND keg_id IS NOT NULL"
+                )
+            )
     if "users" in table_columns and "legacy_password" not in table_columns["users"]:
         with db.engine.begin() as conn:
             conn.execute(text("ALTER TABLE users ADD COLUMN legacy_password VARCHAR(255)"))

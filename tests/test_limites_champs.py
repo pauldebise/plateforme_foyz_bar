@@ -196,6 +196,8 @@ def test_articles():
         "name": "Fuzz Article",
         "article_type": "biere",
         "volume_cl": "25",
+        "is_alcohol": "on",
+        "alcohol_degree": "5",
         "price_std": "1",
         "price_team": "1",
     }

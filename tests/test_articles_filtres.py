@@ -249,6 +249,44 @@ def test_filtres_conserves_apres_modification_et_suppression():
     _expect("tri=" not in res.headers["Location"], "liste vierge : aucun filtre restitué")
 
 
+def test_degre_alcool_modifiable_et_efface_si_non_alcoolise():
+    client = _setup()
+    with create_app().app_context():
+        article = _article("Degré test", "biere", 33, 500)
+        db.session.commit()
+        article_id = article.id
+
+    fiche = client.get(f"/admin/articles/{article_id}?campus=brest").get_data(as_text=True)
+    _expect('name="alcohol_degree"' in fiche, "champ degré présent sur la fiche article")
+    token = _form_token(fiche)
+    data = {
+        "_csrf": token,
+        "name": "Degré test",
+        "article_type": "biere",
+        "volume_cl": "33",
+        "is_alcohol": "on",
+        "alcohol_degree": "6,5",
+        "price_std": "5.00",
+        "price_team": "3.00",
+    }
+    res = client.post(f"/admin/articles/{article_id}?campus=brest", data=data)
+    _expect(res.status_code == 302, f"degré enregistré ({res.status_code})")
+    with create_app().app_context():
+        _expect(
+            db.session.get(Article, article_id).alcohol_degree == 6.5,
+            "degré stocké avec la virgule décimale",
+        )
+
+    data.pop("is_alcohol")
+    res = client.post(f"/admin/articles/{article_id}?campus=brest", data=data)
+    _expect(res.status_code == 302, f"article non alcoolisé accepté ({res.status_code})")
+    with create_app().app_context():
+        _expect(
+            db.session.get(Article, article_id).alcohol_degree is None,
+            "degré effacé quand l'article n'est plus alcoolisé",
+        )
+
+
 def main():
     tests = [
         (name, fn)

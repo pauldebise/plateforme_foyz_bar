@@ -22,6 +22,9 @@ class Article(db.Model):
     price_std: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
     price_team: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
     is_alcohol: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False)
+    # Degré d'alcool facultatif (°) : renseigné pour les boissons dont
+    # l'équipe connaît la valeur, affiché dans le catalogue public.
+    alcohol_degree: db.Mapped[float | None] = db.mapped_column(db.Float, nullable=True)
     # Article privé : conserve toutes ses fonctionnalités (vente en caisse,
     # passerelle, statistiques) mais n'apparaît pas dans le catalogue public.
     is_private: db.Mapped[bool] = db.mapped_column(

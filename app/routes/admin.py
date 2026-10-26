@@ -782,7 +782,7 @@ def article_nouveau():
         try:
             a = _article_from_form(Article(), own_campus())
         except ValueError:
-            flash("Prix invalide : saisissez un montant numérique raisonnable.", "danger")
+            flash("Valeurs invalides : vérifiez le prix et le degré d'alcool.", "danger")
             return redirect(url_for("admin.article_nouveau"))
         db.session.add(a)
         A.record(
@@ -815,7 +815,7 @@ def article(article_id):
             _article_from_form(a, own_campus())
         except ValueError:
             db.session.rollback()
-            flash("Prix invalide : saisissez un montant numérique raisonnable.", "danger")
+            flash("Valeurs invalides : vérifiez le prix et le degré d'alcool.", "danger")
             return redirect(url_for("admin.article", article_id=a.id))
         A.record(
             "article.modification",
@@ -892,6 +892,17 @@ def _required_cents(field):
     return amount
 
 
+def _optional_degree(field):
+    """Degré d'alcool facultatif : vide = inconnu, sinon 0 < degré <= 100."""
+    raw = (request.form.get(field) or "").strip().replace(",", ".")
+    if not raw:
+        return None
+    number = float(raw)  # ValueError -> remontée à l'appelant
+    if not math.isfinite(number) or number <= 0 or number > 100:
+        raise ValueError(field)
+    return number
+
+
 def _article_from_form(a, writable_campus):
     a.name = clamp_text((request.form.get("name") or "Sans nom").strip(), 255)
     a.article_type = request.form.get("article_type", "biere")
@@ -900,6 +911,7 @@ def _article_from_form(a, writable_campus):
     a.volume_cl = _optional_int(request.form.get("volume_cl"))
     a.is_alcohol = request.form.get("is_alcohol") == "on"
     a.is_private = request.form.get("is_private") == "on"
+    a.alcohol_degree = _optional_degree("alcohol_degree") if a.is_alcohol else None
     a.campus = writable_campus
     a.price_std = _optional_cents(request.form.get("price_std", "0"))
     a.price_team = _optional_cents(request.form.get("price_team", "0"))
