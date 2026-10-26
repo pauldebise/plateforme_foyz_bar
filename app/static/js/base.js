@@ -108,5 +108,14 @@
       }
     });
   }
-  document.querySelectorAll('tr[data-href]').forEach(activateRow);
+  // Réutilisable après un remplacement partiel de tableau (filtrage
+  // instantané des listes Comptes et Articles).
+  window.initClickableRows = function initClickableRows(root = document) {
+    root.querySelectorAll('tr[data-href]').forEach((row) => {
+      if (row.dataset.clickableReady) return;
+      row.dataset.clickableReady = '1';
+      activateRow(row);
+    });
+  };
+  window.initClickableRows();
 })();

@@ -1,0 +1,21 @@
+{% for a in articles %}
+<tr data-href="{{ url_for('admin.article', article_id=a.id) }}">
+  <td>{{ a.name }}{% if a.is_private %} <span class="badge bg-secondary">privé</span>{% endif %}</td>
+  <td>{{ ARTICLE_TYPES.get(a.article_type, a.article_type) }}</td>
+  <td>{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
+  <td class="text-end">{{ a.price_std|eur }}</td>
+  <td class="text-end text-muted">{{ a.price_team|eur }}</td>
+  <td class="text-end">{% if sales.get(a.id) %}<strong>{{ sales[a.id] }}</strong>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+  <td class="text-end text-nowrap">
+    {% if writable %}
+      <form class="d-inline" method="post" action="{{ url_for('admin.article_supprimer', article_id=a.id) }}"
+            data-confirm="Supprimer cet article ? L'historique des ventes est conservé.">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
+      </form>
+    {% endif %}
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="7" class="text-center text-muted py-4">{% if q %}Aucun article ne correspond à « {{ q }} »{{ ' avec ces filtres' if filtres_actifs and (article_type or volume or prix_min or prix_max) }}.{% elif filtres_actifs %}Aucun article ne correspond à ces critères.{% else %}Aucun article sur ce campus.{% endif %}</td></tr>
+{% endfor %}

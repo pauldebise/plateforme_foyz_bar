@@ -188,6 +188,44 @@ def test_parametres_invalides_ignores():
     _expect(_names("volume=%27%3B--&prix_min=1e999") == list("ABCDE"), "injection ignorée")
 
 
+def test_filtrage_instantane_et_fragments_json():
+    """La liste se met à jour par fragments, sans bouton « Appliquer »."""
+    client = _setup()
+    page = client.get("/admin/articles?campus=brest").get_data(as_text=True)
+    _expect("data-live-filter" in page, "formulaire relié au filtrage instantané")
+    _expect('id="articles-rows"' in page, "lignes remplaçables")
+    _expect('id="articles-footer"' in page, "pied de liste remplaçable")
+    _expect("js/admin_filter.js" in page, "script de filtrage chargé")
+    _expect('<i class="bi bi-funnel"></i> Appliquer' not in page, "bouton Appliquer retiré")
+
+    res = client.get(
+        "/admin/articles?campus=brest&q=Zart&type=biere&volume=25",
+        headers={"X-Foyz-Partiel": "1"},
+    )
+    _expect(res.is_json, f"réponse partielle JSON ({res.status_code})")
+    data = res.get_json()
+    _expect("<html" not in data["rows_html"], "fragment de lignes seulement")
+    _expect(
+        "<td>Zart A" in data["rows_html"] and "<td>Zart B" not in data["rows_html"],
+        "fragment filtré",
+    )
+    _expect("1 article" in data["footer_html"], "total du fragment à jour")
+
+    res = client.get(
+        "/admin/articles?campus=brest&q=Zart&type=biere&tri=prix_desc",
+        headers={"X-Foyz-Partiel": "1"},
+    )
+    data = res.get_json()
+    rows = data["rows_html"]
+    _expect(
+        "<td>Zart A" in rows
+        and "<td>Zart B" in rows
+        and rows.index("<td>Zart B") < rows.index("<td>Zart A"),
+        "fragment trié par prix décroissant",
+    )
+    _expect("2 articles" in data["footer_html"], "compteur du fragment à jour")
+
+
 def test_fiche_article_derniere_vente():
     """La fiche indique la date du dernier encaissement non annulé, s'il existe."""
     client = _setup()

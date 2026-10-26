@@ -13,6 +13,7 @@ from flask import (
     current_app,
     flash,
     g,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -175,6 +176,22 @@ def list_url(name):
     return url_for(f"admin.{name}", **args)
 
 
+def _render_list_page(template, rows_template, footer_template, **context):
+    """Page complète, ou fragment JSON pour le filtrage instantané.
+
+    Les listes Comptes et Articles se mettent à jour à chaque frappe sans
+    recharger la page : le script `admin_filter.js` demande alors uniquement
+    les lignes et le pied de liste, rendus par les mêmes includes que la page
+    complète (aucune duplication du balisage).
+    """
+    if request.headers.get("X-Foyz-Partiel") == "1":
+        return jsonify(
+            rows_html=render_template(rows_template, **context),
+            footer_html=render_template(footer_template, **context),
+        )
+    return render_template(template, **context)
+
+
 @bp.route("/campus/<campus>")
 @login_required
 def changer_campus(campus):
@@ -283,8 +300,10 @@ def comptes():
         .distinct()
         .order_by(User.promotion.desc())
     ).all()
-    return render_template(
+    return _render_list_page(
         "admin/comptes.html",
+        "admin/_comptes_rows.html",
+        "admin/_comptes_footer.html",
         users=users,
         q=q,
         equipe=equipe,
@@ -869,8 +888,10 @@ def articles():
         .distinct()
         .order_by(Article.volume_cl)
     ).all()
-    return render_template(
+    return _render_list_page(
         "admin/articles.html",
+        "admin/_articles_rows.html",
+        "admin/_articles_footer.html",
         articles=items,
         campus=campus,
         writable=campus == own_campus(),

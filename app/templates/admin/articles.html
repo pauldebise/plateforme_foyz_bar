@@ -11,12 +11,13 @@
   </div>
 </div>
 
-<form class="card mb-3" method="get" action="{{ url_for('admin.articles') }}">
+<form class="card mb-3" method="get" action="{{ url_for('admin.articles') }}" data-live-filter
+      data-live-rows="#articles-rows" data-live-footer="#articles-footer">
   <input type="hidden" name="campus" value="{{ campus }}">
   <div class="card-body row g-2 align-items-end">
     <div class="col-lg-4">
       <label class="form-label small" for="f-q">Recherche (nom)</label>
-      <input class="form-control" id="f-q" name="q" value="{{ q }}" placeholder="Ex : Pinte, Coca…">
+      <input class="form-control" id="f-q" name="q" type="search" value="{{ q }}" placeholder="Ex : Pinte, Coca…" autocomplete="off">
     </div>
     <div class="col-6 col-lg-3">
       <label class="form-label small" for="f-type">Type</label>
@@ -48,8 +49,12 @@
       </select>
       <div class="form-text">Tendances : quantités vendues sur les {{ sales_days }} derniers jours ({{ CAMPUSSES[campus] }}), comme dans la caisse.</div>
     </div>
-    <div class="col-6 col-lg-3 d-grid"><button class="btn btn-primary"><i class="bi bi-funnel"></i> Appliquer</button></div>
-    <div class="col-6 col-lg-4 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.articles', campus=campus) }}">Réinitialiser</a></div>
+    <div class="col-6 col-lg-3 d-grid">
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.articles', campus=campus) }}" data-live-reset>Réinitialiser</a>
+    </div>
+    <div class="col-12 col-lg-4 align-self-center small text-muted">
+      La liste se met à jour pendant la saisie.
+    </div>
   </div>
 </form>
 
@@ -73,31 +78,16 @@
           <th></th>
         </tr>
       </thead>
-      <tbody>
-        {% for a in articles %}
-        <tr data-href="{{ url_for('admin.article', article_id=a.id) }}">
-          <td>{{ a.name }}{% if a.is_private %} <span class="badge bg-secondary">privé</span>{% endif %}</td>
-          <td>{{ ARTICLE_TYPES.get(a.article_type, a.article_type) }}</td>
-          <td>{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
-          <td class="text-end">{{ a.price_std|eur }}</td>
-          <td class="text-end text-muted">{{ a.price_team|eur }}</td>
-          <td class="text-end">{% if sales.get(a.id) %}<strong>{{ sales[a.id] }}</strong>{% else %}<span class="text-muted">0</span>{% endif %}</td>
-          <td class="text-end text-nowrap">
-            {% if writable %}
-              <form class="d-inline" method="post" action="{{ url_for('admin.article_supprimer', article_id=a.id) }}"
-                    data-confirm="Supprimer cet article ? L'historique des ventes est conservé.">
-                <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-                <button class="btn btn-sm btn-outline-danger" title="Supprimer"><i class="bi bi-trash"></i></button>
-              </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">{% if q %}Aucun article ne correspond à « {{ q }} »{{ ' avec ces filtres' if filtres_actifs and (article_type or volume or prix_min or prix_max) }}.{% elif filtres_actifs %}Aucun article ne correspond à ces critères.{% else %}Aucun article sur ce campus.{% endif %}</td></tr>
-        {% endfor %}
+      <tbody id="articles-rows">
+        {% include "admin/_articles_rows.html" %}
       </tbody>
     </table>
   </div>
-  <div class="card-footer small text-muted">{{ articles|length }} article{{ 's' if articles|length > 1 }}{{ ' (filtrés)' if filtres_actifs }}</div>
+  <div id="articles-footer" class="card-footer small text-muted">
+    {% include "admin/_articles_footer.html" %}
+  </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static_url('js/admin_filter.js') }}"></script>
 {% endblock %}

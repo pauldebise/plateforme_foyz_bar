@@ -1,0 +1,3 @@
+{% import "_pagination.html" as pg %}
+<span class="small text-muted">{{ total }} compte{{ 's' if total > 1 }}{{ ' (filtrés)' if filtres_actifs }}{% if pages > 1 %} · page {{ page }} / {{ pages }}{% endif %}</span>
+{{ pg.pagination(page, pages, 'admin.comptes', link_args) }}

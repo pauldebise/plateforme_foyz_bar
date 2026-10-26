@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% import "_pagination.html" as pg %}
 {% block title %}Gestion des comptes{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
@@ -7,11 +6,12 @@
   <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#new-account-modal"><i class="bi bi-person-plus"></i> Nouveau compte</button>
 </div>
 
-<form class="card mb-3" method="get">
+<form class="card mb-3" method="get" action="{{ url_for('admin.comptes') }}" data-live-filter
+      data-live-rows="#comptes-rows" data-live-footer="#comptes-footer">
   <div class="card-body row g-2 align-items-end">
     <div class="col-lg-4">
       <label class="form-label small" for="f-q">Recherche (nom, surnom, identifiant)</label>
-      <input class="form-control" id="f-q" name="q" value="{{ q }}" placeholder="Ex : Dupont, Flavie…">
+      <input class="form-control" id="f-q" name="q" type="search" value="{{ q }}" placeholder="Ex : Dupont, Flavie…" autocomplete="off">
     </div>
     <div class="col-6 col-lg-2">
       <label class="form-label small" for="f-promo">Promotion</label>
@@ -39,8 +39,12 @@
         {% for key, label in options_tri.items() %}<option value="{{ key }}" {{ 'selected' if tri == key }}>{{ label }}</option>{% endfor %}
       </select>
     </div>
-    <div class="col-6 col-lg-4 d-grid"><button class="btn btn-primary"><i class="bi bi-funnel"></i> Appliquer</button></div>
-    <div class="col-12 col-lg-4 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.comptes') }}">Réinitialiser</a></div>
+    <div class="col-6 col-lg-4 d-grid">
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.comptes') }}" data-live-reset>Réinitialiser</a>
+    </div>
+    <div class="col-12 col-lg-4 align-self-center small text-muted">
+      La liste se met à jour pendant la saisie.
+    </div>
   </div>
 </form>
 
@@ -50,33 +54,13 @@
       <thead class="table-light">
         <tr><th>Étudiant</th><th>Promo</th><th>Solde Brest</th><th>Solde Paris</th><th>Restrictions</th><th>Équipe</th></tr>
       </thead>
-      <tbody>
-        {% for u in users %}
-        <tr data-href="{{ url_for('admin.compte', user_id=u.id) }}">
-          <td><strong>{{ u.display_name }}</strong><br><span class="text-muted small">{{ u.username }}</span></td>
-          <td>{{ u.promotion if u.promotion else '—' }}</td>
-          <td>{{ u.wallet('brest').balance|eur }}</td>
-          <td>{{ u.wallet('paris').balance|eur }}</td>
-          <td>
-            {% if u.blacklist %}<span class="badge badge-blacklist" title="posée par l'équipe de {{ CAMPUSSES[u.blacklist_by or 'brest'] }}">blacklist</span>{% endif %}
-            {% if u.blacklist_alcohol %}<span class="badge badge-alcool" title="posée par l'équipe de {{ CAMPUSSES[u.blacklist_alcohol_by or 'brest'] }}">blacklist alcool</span>{% endif %}
-            {% if not u.blacklist and not u.blacklist_alcohol %}<span class="text-muted">—</span>{% endif %}
-          </td>
-          <td>
-            {% if u.team_status == 'mandat' %}<span class="badge bg-success">mandat ({{ u.team_campus }})</span>
-            {% elif u.team_status == 'ancien' %}<span class="badge bg-secondary">ancien</span>
-            {% else %}<span class="text-muted">—</span>{% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-4">Aucun compte trouvé.</td></tr>
-        {% endfor %}
+      <tbody id="comptes-rows">
+        {% include "admin/_comptes_rows.html" %}
       </tbody>
     </table>
   </div>
-  <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="small text-muted">{{ total }} compte{{ 's' if total > 1 }}{{ ' (filtrés)' if filtres_actifs }}{% if pages > 1 %} · page {{ page }} / {{ pages }}{% endif %}</span>
-    {{ pg.pagination(page, pages, 'admin.comptes', link_args) }}
+  <div id="comptes-footer" class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+    {% include "admin/_comptes_footer.html" %}
   </div>
 </div>
 
@@ -106,4 +90,7 @@
     </form>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static_url('js/admin_filter.js') }}"></script>
 {% endblock %}

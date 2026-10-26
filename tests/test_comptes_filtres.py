@@ -159,6 +159,39 @@ def test_pagination_conserve_filtres_et_tri():
     _expect(names2 == [f"Zpag {i:02d}" for i in range(4, -1, -1)], f"page 2 ({names2})")
 
 
+def test_filtrage_instantane_et_fragments_json():
+    """La liste se met à jour par fragments, sans bouton « Appliquer »."""
+    client = _setup()
+    page = client.get("/admin/comptes").get_data(as_text=True)
+    _expect("data-live-filter" in page, "formulaire relié au filtrage instantané")
+    _expect('id="comptes-rows"' in page, "lignes remplaçables")
+    _expect('id="comptes-footer"' in page, "pied de liste remplaçable")
+    _expect("js/admin_filter.js" in page, "script de filtrage chargé")
+    _expect('<i class="bi bi-funnel"></i> Appliquer' not in page, "bouton Appliquer retiré")
+
+    res = client.get(
+        "/admin/comptes?q=Zfiltre+B&tri=brest_desc",
+        headers={"X-Foyz-Partiel": "1"},
+    )
+    _expect(res.is_json, f"réponse partielle JSON ({res.status_code})")
+    data = res.get_json()
+    _expect("<html" not in data["rows_html"], "fragment de lignes seulement")
+    _expect(
+        "Zfiltre B" in data["rows_html"] and "Zfiltre A" not in data["rows_html"],
+        "fragment filtré et trié",
+    )
+    _expect("1 compte" in data["footer_html"], "total du fragment à jour")
+
+    res = client.get(
+        "/admin/comptes?q=Zpag&tri=brest_desc&page=2",
+        headers={"X-Foyz-Partiel": "1"},
+    )
+    data = res.get_json()
+    names = re.findall(r"<strong>(Zpag \d+)</strong>", data["rows_html"])
+    _expect(names == [f"Zpag {i:02d}" for i in range(4, -1, -1)], f"page 2 en fragment ({names})")
+    _expect("page=2" in data["footer_html"], "pagination du fragment conservée")
+
+
 def test_filtres_conserves_apres_suppression_et_retour():
     """Retour à la liste et suppression d'un compte conservent filtres, tri et page."""
     client = _setup()
