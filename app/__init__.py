@@ -379,17 +379,6 @@ def create_app():
 
     db.init_app(app)
 
-    # Internationalisation : le français est l'unique langue (msgid) ; les
-    # traductions publiées restent dans translations/ mais ne sont plus
-    # sélectionnables depuis l'interface.
-    from flask_babel import Babel
-
-    def _locale_selector():
-        return "fr"
-
-    babel = Babel()
-    babel.init_app(app, locale_selector=_locale_selector)
-
     # Compression des réponses (Brotli puis gzip) : allège CSS/JS/HTML/JSON,
     # y compris en déploiement Docker sans Nginx devant l'application.
     from flask_compress import Compress
@@ -635,8 +624,6 @@ def create_app():
 
     @app.context_processor
     def inject_globals():
-        from flask_babel import get_locale
-
         from app.services.settings import get_setting, int_setting, bool_setting
 
         campus = session.get("campus") or ""
@@ -653,7 +640,6 @@ def create_app():
         )
         return {
             "csrf_token": lambda: ensure_csrf(),
-            "get_locale": get_locale,
             "site_name": get_setting("site_name") or "Foy'z & Bar",
             "theme_color": safe_color(
                 get_setting(f"theme_color_{campus}")

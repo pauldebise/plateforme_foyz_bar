@@ -244,6 +244,7 @@ def test_barre_de_recherche():
 def test_page_publique_sans_connexion():
     res = _setup()["client"].get("/catalogue?campus=brest")
     _expect(res.status_code == 200, f"page publique : {res.status_code}")
+    _expect('<html lang="fr">' in res.get_data(as_text=True), "page publique en français")
 
 
 def test_campus_independants():

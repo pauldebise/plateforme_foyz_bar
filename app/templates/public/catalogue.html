@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}{{ _("Prix") }} — {{ site_name }}{% endblock %}
+{% block title %}Prix — {{ site_name }}{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-  <h1 class="h3 mb-0"><i class="bi bi-tags"></i> {{ _("Prix") }}</h1>
+  <h1 class="h3 mb-0"><i class="bi bi-tags"></i> Prix</h1>
   <div class="btn-group" role="group">
     {% for key, label in CAMPUSSES.items() %}
     <a class="btn {% if campus == key %}btn-primary{% else %}btn-outline-primary{% endif %}"
@@ -15,14 +15,14 @@
 <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
   <div class="input-group input-group-sm ms-auto" id="catalogue-search-box" style="max-width: 260px;" hidden>
     <span class="input-group-text"><i class="bi bi-search"></i></span>
-    <input id="catalogue-search" type="search" class="form-control" placeholder="{{ _('Rechercher un article…') }}" aria-label="{{ _('Rechercher un article') }}" autocomplete="off" maxlength="100">
+    <input id="catalogue-search" type="search" class="form-control" placeholder="Rechercher un article…" aria-label="Rechercher un article" autocomplete="off" maxlength="100">
   </div>
 </div>
 {% endif %}
 
 {% if top %}
   <div class="card mb-4 border-primary catalogue-card" id="catalogue-top">
-    <div class="card-header"><i class="bi bi-fire"></i> {{ _("Les %(n)s plus vendus", n=top|length) }}</div>
+    <div class="card-header"><i class="bi bi-fire"></i> Les {{ top|length }} plus vendus</div>
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 catalogue-top-table">
@@ -52,7 +52,7 @@
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 catalogue-table">
           <thead class="table-light">
-            <tr><th>{{ _("Article") }}</th><th>{{ _("Volume") }}</th>{% if type in degree_types %}<th>{{ _("Degré") }}</th>{% endif %}<th class="text-end">{{ _("Prix") }} — {{ CAMPUSSES[campus] }}</th></tr>
+            <tr><th>Article</th><th>Volume</th>{% if type in degree_types %}<th>Degré</th>{% endif %}<th class="text-end">Prix — {{ CAMPUSSES[campus] }}</th></tr>
           </thead>
           <tbody>
             {% for a, price in items %}
@@ -71,10 +71,10 @@
     </div>
   </div>
 {% else %}
-  <p class="text-muted">{{ _("Le catalogue est vide pour le moment.") }}</p>
+  <p class="text-muted">Le catalogue est vide pour le moment.</p>
 {% endfor %}
 
-<p id="catalogue-none" class="text-muted text-center py-4" hidden>{{ _("Aucun article ne correspond à cette recherche.") }}</p>
+<p id="catalogue-none" class="text-muted text-center py-4" hidden>Aucun article ne correspond à cette recherche.</p>
 {% endblock %}
 
 {% block scripts %}

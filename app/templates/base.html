@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="{{ get_locale() }}">
+<html lang="fr">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -82,14 +82,14 @@
         <a class="brand-name fw-bold text-white text-decoration-none" href="{{ url_for('public.home') }}">{{ site_name }}</a>
       </div>
       <nav id="sideNav" class="collapse d-lg-block mt-2">
-        <a class="side-link {{ 'active' if request.endpoint == 'public.home' }}" href="{{ url_for('public.home') }}"><i class="bi bi-house-door"></i> {{ _("Accueil") }}</a>
-        <a class="side-link {{ 'active' if request.endpoint == 'public.catalogue' }}" href="{{ url_for('public.catalogue') }}"><i class="bi bi-tags"></i> {{ _("Prix") }}</a>
-        <a class="side-link {{ 'active' if request.endpoint == 'public.reglement' }}" href="{{ url_for('public.reglement') }}"><i class="bi bi-journal-text"></i> {{ _("Règlement intérieur") }}</a>
-        <a class="side-link {{ 'active' if request.endpoint == 'public.liens' }}" href="{{ url_for('public.liens') }}"><i class="bi bi-link-45deg"></i> {{ _("Liens utiles") }}</a>
+        <a class="side-link {{ 'active' if request.endpoint == 'public.home' }}" href="{{ url_for('public.home') }}"><i class="bi bi-house-door"></i> Accueil</a>
+        <a class="side-link {{ 'active' if request.endpoint == 'public.catalogue' }}" href="{{ url_for('public.catalogue') }}"><i class="bi bi-tags"></i> Prix</a>
+        <a class="side-link {{ 'active' if request.endpoint == 'public.reglement' }}" href="{{ url_for('public.reglement') }}"><i class="bi bi-journal-text"></i> Règlement intérieur</a>
+        <a class="side-link {{ 'active' if request.endpoint == 'public.liens' }}" href="{{ url_for('public.liens') }}"><i class="bi bi-link-45deg"></i> Liens utiles</a>
       </nav>
       <div class="sidebar-footer mt-auto">
         <button class="btn btn-outline-light btn-sm d-lg-none sidebar-menu-btn" data-bs-toggle="collapse" data-bs-target="#sideNav"><i class="bi bi-list"></i> Menu</button>
-        <a class="btn btn-outline-light btn-sm w-100 sidebar-login" href="{{ url_for('auth.login') }}"><i class="bi bi-person-lock"></i> {{ _("Connexion") }}</a>
+        <a class="btn btn-outline-light btn-sm w-100 sidebar-login" href="{{ url_for('auth.login') }}"><i class="bi bi-person-lock"></i> Connexion</a>
       </div>
     {% endif %}
   </aside>
