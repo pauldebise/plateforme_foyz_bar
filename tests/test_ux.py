@@ -628,6 +628,39 @@ def test_j_recherche_articles_videe_a_l_ajout():
     _expect("addToCart(a);" in js, "même ajout pour la souris et le clavier")
 
 
+def test_k_recherche_equipe_reactive():
+    """Onglet Équipe : la recherche filtre la liste sans rechargement."""
+    app = create_app()
+    with app.app_context():
+        for name in ("Zequipe Alpha", "Zequipe Beta"):
+            db.session.add(
+                User(
+                    name=name,
+                    username=name.lower().replace(" ", "."),
+                    team_status="mandat",
+                    team_campus="brest",
+                )
+            )
+        db.session.commit()
+
+    client = app.test_client()
+    _login(client)
+    page = client.get("/admin/equipe").get_data(as_text=True)
+    _expect("data-live-filter" in page, "formulaire relié au filtrage instantané")
+    _expect('id="equipe-rows"' in page and 'id="equipe-footer"' in page, "liste remplaçable")
+    _expect("js/admin_filter.js" in page, "script de filtrage chargé")
+    _expect('<i class="bi bi-search"></i> Rechercher' not in page, "bouton Rechercher retiré")
+
+    res = client.get("/admin/equipe?q=Zequipe+Alpha", headers={"X-Foyz-Partiel": "1"})
+    _expect(res.is_json, f"réponse partielle JSON ({res.status_code})")
+    data = res.get_json()
+    _expect(
+        "Zequipe Alpha" in data["rows_html"] and "Zequipe Beta" not in data["rows_html"],
+        "fragment filtré",
+    )
+    _expect("1 membre (filtrés)" in data["footer_html"], "compteur du fragment à jour")
+
+
 def main():
     tests = [
         (name, fn)

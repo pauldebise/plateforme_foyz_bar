@@ -717,7 +717,15 @@ def equipe():
             )
         )
     members = db.session.scalars(stmt.order_by(User.name)).unique().all()
-    return render_template("admin/equipe.html", members=members, own_campus=own_campus(), q=q)
+    return _render_list_page(
+        "admin/equipe.html",
+        "admin/_equipe_rows.html",
+        "admin/_equipe_footer.html",
+        members=members,
+        own_campus=own_campus(),
+        q=q,
+        filtres_actifs=bool(q),
+    )
 
 
 @bp.route("/equipe/<int(max=2147483647):user_id>", methods=["GET", "POST"])

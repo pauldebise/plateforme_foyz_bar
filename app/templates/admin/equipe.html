@@ -6,14 +6,16 @@
   <a class="btn btn-primary" href="{{ url_for('admin.comptes') }}"><i class="bi bi-person-plus"></i> Attribuer depuis les comptes</a>
 </div>
 
-<form class="card mb-3">
+<form class="card mb-3" method="get" action="{{ url_for('admin.equipe') }}" data-live-filter
+      data-live-rows="#equipe-rows" data-live-footer="#equipe-footer">
   <div class="card-body row g-2 align-items-end">
-    <div class="col-md-8">
-      <label class="form-label small">Recherche</label>
-      <input class="form-control" name="q" value="{{ q }}" placeholder="Ex : Dupont, Flavie…">
+    <div class="col-md-10">
+      <label class="form-label small" for="f-q">Recherche</label>
+      <input class="form-control" id="f-q" name="q" type="search" value="{{ q }}" placeholder="Ex : Dupont, Flavie…" autocomplete="off">
     </div>
-    <div class="col-md-2 d-grid"><button class="btn btn-primary"><i class="bi bi-search"></i> Rechercher</button></div>
-    <div class="col-md-2 d-grid"><a class="btn btn-outline-secondary" href="{{ url_for('admin.equipe') }}">Réinitialiser</a></div>
+    <div class="col-md-2 d-grid">
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.equipe') }}" data-live-reset>Réinitialiser</a>
+    </div>
   </div>
 </form>
 
@@ -23,18 +25,16 @@
       <thead class="table-light">
         <tr><th>Membre</th><th>Statut</th><th>Campus</th></tr>
       </thead>
-      <tbody>
-        {% for u in members %}
-        <tr data-href="{{ url_for('admin.membre', user_id=u.id) }}">
-          <td><strong>{{ u.display_name }}</strong></td>
-          <td>{% if u.team_status == 'mandat' %}<span class="badge bg-success">mandat</span>{% else %}<span class="badge bg-secondary">ancien</span>{% endif %}</td>
-          <td>{{ CAMPUSSES.get(u.team_campus, '—') }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="3" class="text-center text-muted py-4">Aucun membre d'équipe.</td></tr>
-        {% endfor %}
+      <tbody id="equipe-rows">
+        {% include "admin/_equipe_rows.html" %}
       </tbody>
     </table>
   </div>
+  <div id="equipe-footer" class="card-footer small text-muted">
+    {% include "admin/_equipe_footer.html" %}
+  </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ static_url('js/admin_filter.js') }}"></script>
 {% endblock %}
