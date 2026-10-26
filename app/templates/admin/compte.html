@@ -44,7 +44,6 @@
                      value="{{ u.blacklist_reason if u.blacklist else '' }}"
                      placeholder="Ex : comportement en soirée"
                      {% if u.blacklist and not bl.can_lift %}readonly{% endif %}>
-              <div class="form-text">Visible uniquement sur cette fiche, jamais à l'encaissement.</div>
             </div>
           </div>
           {% set ba = blacklists.blacklist_alcohol %}
@@ -61,11 +60,10 @@
                      value="{{ u.blacklist_alcohol_reason if u.blacklist_alcohol else '' }}"
                      placeholder="Ex : refus de vente d'alcool"
                      {% if u.blacklist_alcohol and not ba.can_lift %}readonly{% endif %}>
-              <div class="form-text">Visible uniquement sur cette fiche, jamais à l'encaissement.</div>
             </div>
           </div>
           <div class="mb-3">
-            <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[current_campus] if current_campus else '' }} <span class="text-muted small">(requis pour retirer un statut blacklist)</span></label>
+            <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[current_campus] if current_campus else '' }}</label>
             <input class="form-control" type="password" name="admin_password">
           </div>
           <button class="btn btn-primary">Enregistrer</button>
