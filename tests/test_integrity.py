@@ -212,7 +212,7 @@ def test_tireuse_accepts_keg_without_stock():
 def test_fut_sans_champ_actif_et_articles_encaissables():
     app = create_app()
     with app.app_context():
-        keg = Keg(name="Fût assignable", volume_l=30.0)
+        keg = Keg(name="Fût assignable", volume_l=30.0, alcohol_degree=6.5)
         tap = Tap(number=503, name="Tireuse assignable", campus="brest")
         db.session.add_all([keg, tap])
         db.session.flush()
@@ -241,6 +241,11 @@ def test_fut_sans_champ_actif_et_articles_encaissables():
         ).all()
         _expect(len(articles) == len(TAP_SIZES), "trois articles pression créés")
         _expect(all(a.active for a in articles), "articles pression encaissables")
+        by_volume = {article.volume_cl: article for article in articles}
+        _expect(
+            by_volume[50].name == "Pinte de Tireuse assignable (Fût assignable - 6.5°)",
+            f"nom avec degré du fût ({by_volume[50].name})",
+        )
 
 
 def test_meme_fut_sur_deux_tireuses():
@@ -346,6 +351,10 @@ def test_modification_fut_regenere_toujours_les_articles():
         _expect(by_volume[25].price_std == 250, "prix demi mis à jour sans case à cocher")
         _expect(by_volume[50].price_std == 500, "prix pinte mis à jour sans case à cocher")
         _expect(by_volume[33].price_std == 400, "prix pot mis à jour sans case à cocher")
+        _expect(
+            by_volume[50].name == "Pinte de Tireuse à modifier (Fût à modifier - 5.0°)",
+            f"nom régénéré avec le nouveau degré ({by_volume[50].name})",
+        )
 
 
 def test_creation_fut_exige_tous_les_prix_et_accepte_zero():

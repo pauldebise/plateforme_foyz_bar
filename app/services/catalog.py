@@ -5,6 +5,17 @@ from app.models import Article, Note, Tap
 from app.utils import TAP_SIZES, clamp_text
 
 
+def _tap_article_name(label, tap, keg):
+    """Nom d'un article de tireuse : taille, tireuse, fût et degré d'alcool.
+
+    Le degré est omis tant qu'il n'est pas renseigné (0 °) : afficher
+    « 0.0° » laisserait croire à une bière sans alcool."""
+    tap_label = tap.name or f"tireuse {tap.number}"
+    degree = keg.alcohol_degree or 0.0
+    keg_label = f"{keg.name} - {degree:.1f}°" if degree > 0 else keg.name
+    return clamp_text(f"{label} de {tap_label} ({keg_label})", 255)
+
+
 def assign_keg(tap, keg):
     """Monte un fût sur une tireuse et régénère ses trois articles.
 
@@ -25,10 +36,9 @@ def assign_keg(tap, keg):
     }
     for key, (label, vol) in TAP_SIZES.items():
         std, team = prices[key]
-        tap_label = tap.name or f"tireuse {tap.number}"
         db.session.add(
             Article(
-                name=clamp_text(f"{label} de {tap_label} ({keg.name})", 255),
+                name=_tap_article_name(label, tap, keg),
                 article_type="biere",
                 volume_cl=vol,
                 campus=tap.campus,
