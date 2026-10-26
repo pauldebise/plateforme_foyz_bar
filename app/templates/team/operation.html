@@ -47,6 +47,9 @@
       <div class="mb-3">
         <label class="form-label">Montant (€)</label>
         <input class="form-control" type="number" step="0.01" min="0.01" name="amount" required>
+        {% if op == 'transfert' %}
+        <div class="form-text">Un compte peut être à la fois donneur et receveur : sa part de donneur est alors déduite de ce qu'il reçoit.</div>
+        {% endif %}
       </div>
 
       {% if op == 'rechargement' %}

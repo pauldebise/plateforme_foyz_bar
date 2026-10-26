@@ -399,15 +399,16 @@ def test_mouvements_rechargement_retrait_transfert():
             amount_cents=400,
         )
         _expect(_balance(user.id) == 600 and _balance(autre.id) == 400, "transfert équilibré")
-        _refus(
-            "invalid",
-            T.create_transfer,
+        self_transfer = T.create_transfer(
             operator_label="test",
             campus="brest",
             from_users=[user],
             to_users=[user],
             amount_cents=100,
         )
+        _expect(_balance(user.id) == 600, "virement à soi-même sans effet sur le solde")
+        T.cancel_transaction(self_transfer, ADMIN_PASSWORD)
+        _expect(_balance(user.id) == 600, "virement à soi-même annulé sans effet")
         _refus(
             "overdraft_limit",
             T.create_transfer,
@@ -440,15 +441,33 @@ def test_transfert_multi_repartition_exacte():
         _expect(max(debits) - min(debits) <= 1, f"écart d'un centime au plus ({debits})")
         _expect(max(credits) - min(credits) <= 1, f"écart d'un centime au plus ({credits})")
 
-        # Un compte ne peut pas être simultanément donneur et receveur.
-        _refus(
-            "invalid",
-            T.create_transfer,
+        # Un compte peut être donneur et receveur : sa part de donneur est
+        # déduite de ce qu'il reçoit. Un compte sans solde peut ainsi se faire
+        # rembourser d'un achat groupé, le crédit couvrant sa propre part même
+        # au-delà du découvert autorisé.
+        self_payer = _user(balance=0)
+        reimburser = _user(balance=1000)
+        overlap = T.create_transfer(
             operator_label="test",
             campus="brest",
-            from_users=[donors[0], recipients[0]],
-            to_users=[recipients[0]],
-            amount_cents=50,
+            from_users=[self_payer, reimburser],
+            to_users=[self_payer],
+            amount_cents=2000,
+        )
+        _expect(
+            _balance(self_payer.id) == 1000,
+            f"donneur-receveur crédité du net (obtenu {_balance(self_payer.id)})",
+        )
+        _expect(
+            _balance(reimburser.id) == 0,
+            f"autre donneur débité de sa part (obtenu {_balance(reimburser.id)})",
+        )
+        parts = [c.amount for c in overlap.contributions if c.user_id == self_payer.id]
+        _expect(sorted(parts) == [-1000, 2000], f"parts brutes conservées ({parts})")
+        T.cancel_transaction(overlap, ADMIN_PASSWORD)
+        _expect(
+            _balance(self_payer.id) == 0 and _balance(reimburser.id) == 1000,
+            "transfert avec donneur-receveur annulé",
         )
         # Montant trop faible : au moins 1 centime par compte.
         _refus(

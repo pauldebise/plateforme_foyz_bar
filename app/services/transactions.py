@@ -734,14 +734,15 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     chaque donneur paie ``part`` et chaque receveur reçoit ``part``, les
     centimes restants étant attribués aux premiers de chaque liste. La somme
     débitée et la somme créditée valent donc exactement ``amount``.
+
+    Un même compte peut figurer dans les deux listes : c'est le cas d'une
+    personne qui a avancé un achat groupé et se rembourse, sa propre part de
+    donneur venant alors en déduction de ce qu'elle reçoit.
     """
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
     _check_operation_amount(amount)
     donors = _unique_users(from_users, "Sélectionnez au moins un donneur.")
     recipients = _unique_users(to_users, "Sélectionnez au moins un receveur.")
-    donor_ids = {u.id for u in donors}
-    if donor_ids & {u.id for u in recipients}:
-        raise OperationError("invalid", "Un compte ne peut pas être à la fois donneur et receveur.")
     if amount < len(donors) or amount < len(recipients):
         # Sinon une part nulle apparaîtrait : au moins 1 centime par compte.
         raise OperationError(
@@ -751,10 +752,21 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     donor_shares = _split_shares(amount, len(donors))
     recipient_shares = _split_shares(amount, len(recipients))
 
+    # Variation nette par portefeuille : un compte présent des deux côtés paie
+    # sa part et reçoit la sienne. Une seule affectation est faite par compte,
+    # sinon la seconde écraserait la première (solde relatif à la base).
+    deltas = defaultdict(int)
+    for u, share in zip(donors, donor_shares, strict=True):
+        deltas[u.id] -= share
+    for u, share in zip(recipients, recipient_shares, strict=True):
+        deltas[u.id] += share
+    participants = {u.id: u for u in donors + recipients}
+    net_donors = [u for u in participants.values() if deltas[u.id] < 0]
+
     wallets = _lock_wallets(campus, donors + recipients)
     limit = S.overdraft_limit()
-    for u, share in zip(donors, donor_shares, strict=True):
-        if wallets[u.id].balance - share < -limit:
+    for u in net_donors:
+        if wallets[u.id].balance + deltas[u.id] < -limit:
             raise OperationError(
                 "overdraft_limit",
                 f"Découvert maximum dépassé pour {u.display_name} : transfert refusé.",
@@ -772,15 +784,14 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     db.session.add(t)
     db.session.flush()
 
-    for u, share in zip(donors, donor_shares, strict=True):
-        wallets[u.id].balance = Wallet.balance - share
-    for u, share in zip(recipients, recipient_shares, strict=True):
-        wallets[u.id].balance = Wallet.balance + share
+    for uid, delta in deltas.items():
+        if delta:
+            wallets[uid].balance = Wallet.balance + delta
     db.session.flush()
 
-    # Contrôle post-écriture : le découvert maximum d'un donneur n'est jamais
-    # dépassé (comme pour un achat).
-    for u in donors:
+    # Contrôle post-écriture : le découvert maximum d'un donneur net n'est
+    # jamais dépassé (comme pour un achat).
+    for u in net_donors:
         if wallets[u.id].balance < -limit:
             db.session.rollback()
             raise OperationError(
@@ -899,11 +910,17 @@ def cancel_transaction(transaction, admin_password, *, verified=False):
         if transaction.contributions:
             # Annulation symétrique : on inverse chaque part enregistrée, ce
             # qui couvre aussi bien les transferts à plusieurs donneurs /
-            # receveurs que les transferts migrés.
+            # receveurs que les transferts migrés. Les parts d'un même compte
+            # sont cumulées : un compte peut être à la fois donneur et
+            # receveur, et deux affectations successives du solde ne
+            # conserveraient que la dernière.
+            deltas = defaultdict(int)
             for c in transaction.contributions:
                 if c.user_id is not None:
-                    w = w_of(c.campus, c.user_id)
-                    w.balance = Wallet.balance - c.amount
+                    deltas[(c.campus, c.user_id)] -= c.amount
+            for (campus, user_id), delta in deltas.items():
+                w = w_of(campus, user_id)
+                w.balance = Wallet.balance + delta
         else:
             if transaction.from_user_id:
                 w_of(transaction.campus, transaction.from_user_id).balance = (

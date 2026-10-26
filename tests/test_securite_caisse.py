@@ -637,8 +637,18 @@ def test_b5_formulaires_equipe_sans_500():
 
     res = post("/equipe/transfert", from_id=other_id, to_id=student_id, amount="0,29")
     _expect(balance(student_id) == 435 + 29 and balance(other_id) == 1000 - 29, "transfert 0,29")
+    res = post(
+        "/equipe/transfert",
+        from_id=[other_id, student_id],
+        to_id=student_id,
+        amount="2,00",
+    )
+    _expect(
+        balance(student_id) == 464 + 100 and balance(other_id) == 971 - 100,
+        "transfert avec un compte à la fois donneur et receveur",
+    )
     res = post("/equipe/transfert", from_id=other_id, to_id=student_id, amount="1e999")
-    _expect(res.status_code == 200 and balance(other_id) == 1000 - 29, "transfert 1e999 : refus")
+    _expect(res.status_code == 200 and balance(other_id) == 971 - 100, "transfert 1e999 : refus")
 
 
 def test_b5_api_types_json_valides():
