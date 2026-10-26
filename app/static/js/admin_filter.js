@@ -3,23 +3,13 @@
 // Même principe que la recherche locale des fûts, mais côté serveur pour
 // couvrir toute la liste des comptes, au-delà de la pagination.
 (() => {
-  const DEBOUNCE_MS = 250;
-
   document.querySelectorAll('form[data-live-filter]').forEach((form) => {
     const rows = document.querySelector(form.dataset.liveRows);
     const footer = document.querySelector(form.dataset.liveFooter);
     if (!rows || !footer) return;
 
-    let timer = null;
     let controller = null;
     let sequence = 0;
-
-    function clearPending() {
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
-      }
-    }
 
     // URL correspondant à l'état courant du formulaire. La page est toujours
     // retirée : un changement de filtre ou de tri repart de la première page.
@@ -67,28 +57,22 @@
       }
     }
 
-    function schedule() {
-      clearPending();
-      timer = setTimeout(() => {
-        timer = null;
-        load(buildUrl());
-      }, DEBOUNCE_MS);
-    }
-
+    // Recherche volontairement sans debounce : chaque frappe part tout de
+    // suite (même réactivité que la caisse). La requête en vol est annulée à
+    // la frappe suivante pour que seule la réponse au dernier état du champ
+    // puisse s'afficher (pas de résultats périmés ni désordonnés).
     form.addEventListener('input', (event) => {
       if (event.target.matches('select')) return;
-      schedule();
+      load(buildUrl());
     });
 
     form.addEventListener('change', (event) => {
       if (!event.target.matches('select')) return;
-      clearPending();
       load(buildUrl());
     });
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      clearPending();
       load(buildUrl());
     });
 
@@ -97,7 +81,6 @@
       const field = event.target;
       if (!field.matches('input[type="search"]') || !field.value) return;
       field.value = '';
-      clearPending();
       load(buildUrl());
     });
 
@@ -105,7 +88,6 @@
       const reset = event.target.closest('[data-live-reset]');
       if (!reset || !form.contains(reset)) return;
       event.preventDefault();
-      clearPending();
       form.querySelectorAll('input:not([type="hidden"]), select').forEach((field) => {
         if (field.tagName === 'SELECT') field.selectedIndex = 0;
         else field.value = '';
@@ -119,12 +101,6 @@
       const link = event.target.closest('a.page-link');
       if (!link || link.closest('.disabled')) return;
       event.preventDefault();
-      if (timer !== null) {
-        // Une saisie est en attente : on l'applique d'abord (page 1).
-        clearPending();
-        load(buildUrl());
-        return;
-      }
       load(new URL(link.href, window.location.origin));
     });
   });
