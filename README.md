@@ -667,3 +667,11 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
 - La case **Masquer les blagues** retire les articles de type « Blague » des
   recettes, volumes, catégories, graphiques, tableaux et exports. Elle est
   décochée par défaut ; une puce « Sans blagues » rappelle le filtre actif.
+- Les anciens articles à 0 € qui faussent le classement par volume se
+  reclassent un par un depuis **Administrateur → Articles historiques**
+  (`/admin/articles-a-reclasser`). La page montre les types actuels, volumes,
+  recettes et dates ; l'équipe choisit le nouveau type de chaque article, puis
+  l'historique des ventes est mis à jour sans suppression. Les fiches du
+  catalogue ne sont pas modifiées. Après traitement, un article quitte la liste
+  par défaut ; cocher « Afficher tous les articles à 0 € » permet de le revoir
+  ou de corriger son type.

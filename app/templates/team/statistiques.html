@@ -319,6 +319,13 @@
       <button class="btn btn-sm btn-outline-primary" aria-label="Rechercher"><i class="bi bi-search"></i></button>
     </form>
   </div>
+  {% if current_user.team_status == 'mandat' or current_user.is_super_admin %}
+  <div class="px-3 pt-2 small">
+    <a href="{{ url_for('admin.reclasser_articles', campus=filters.campus or current_campus) }}">
+      <i class="bi bi-tags"></i> Reclasser les anciens articles à 0 €
+    </a>
+  </div>
+  {% endif %}
   {% if article_search %}
   <div class="px-3 pt-2 small text-muted">
     Recherche : « {{ article_search }} » · <a href="{{ article_search_clear_url }}">effacer</a>

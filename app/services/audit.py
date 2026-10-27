@@ -28,6 +28,7 @@ ACTION_LABELS = {
     "article.creation": "Création d'article",
     "article.modification": "Modification d'article",
     "article.desactivation": "Désactivation d'article",
+    "stats.reclassement_article": "Reclassement d'un article historique",
     "fut.creation": "Enregistrement d'un fût",
     "fut.modification": "Modification d'un fût",
     "fut.suppression": "Suppression d'un fût",
