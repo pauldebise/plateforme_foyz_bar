@@ -99,6 +99,13 @@
             {% endfor %}
           </select>
         </div>
+        <div class="col-12 col-md-3 col-xl-2 d-flex align-items-end">
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="checkbox" id="stats-sans-blagues" name="sans_blagues" value="1"
+                   {% if filters.sans_blagues %}checked{% endif %} data-auto-submit>
+            <label class="form-check-label small" for="stats-sans-blagues">Masquer les blagues</label>
+          </div>
+        </div>
         <div class="col-12 {{ '' if preset == 'custom' else 'd-none' }}" id="stats-custom-dates">
           <div class="row g-2">
             <div class="col-6 col-md-3 col-xl-2">

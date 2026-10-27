@@ -456,6 +456,7 @@ def _stats_request():
     events = request.args.get("events", "")
     if events not in STATS_EVENT_FILTERS:
         events = ""
+    sans_blagues = "1" if request.args.get("sans_blagues") == "1" else ""
 
     filters = {
         "date_from": period["start"].isoformat(),
@@ -465,6 +466,7 @@ def _stats_request():
         "campus": campus if campus in CAMPUSSES else "",
         "team_only": team_only,
         "events": events,
+        "sans_blagues": sans_blagues,
         "all_time": "1" if period["preset"] == "tout" else "",
     }
     base_args = {"preset": period["preset"], "campus": campus}
@@ -476,6 +478,7 @@ def _stats_request():
         ("promotion", promotion),
         ("team_only", team_only),
         ("events", events),
+        ("sans_blagues", sans_blagues),
     ):
         if value:
             base_args[key] = value
@@ -577,6 +580,7 @@ def statistiques():
             filters["promotion"],
             filters["team_only"],
             filters["events"],
+            filters["sans_blagues"],
         )
         if value
     )
@@ -591,6 +595,7 @@ def statistiques():
             promotion=None,
             team_only=None,
             events=None,
+            sans_blagues=None,
         ),
     )
     chips = []
@@ -620,6 +625,13 @@ def statistiques():
             {
                 "label": STATS_EVENT_FILTERS[filters["events"]],
                 "url": url_for("team.statistiques", **stats_args(events=None)),
+            }
+        )
+    if filters["sans_blagues"]:
+        chips.append(
+            {
+                "label": "Sans blagues",
+                "url": url_for("team.statistiques", **stats_args(sans_blagues=None)),
             }
         )
     if campus == "tous":

@@ -21,6 +21,7 @@ from app.utils import (
 # journalière est découpée en Python pour suivre le fuseau de Paris). Trois ans
 # couvrent largement l'historique conservé.
 MAX_STATS_DAYS = 1100
+BLAGUE_TYPE = "blague"
 
 PERIOD_PRESETS = {
     "7j": "7 derniers jours",
@@ -124,6 +125,37 @@ def _stats_cutoff(filters):
     return history_cutoff()
 
 
+def _hide_blagues(filters):
+    return bool(filters.get("sans_blagues"))
+
+
+def _not_blague_line():
+    """Ligne dont le type n'est pas « blague » (y compris type hérité nul)."""
+    return db.or_(
+        TransactionLine.article_type.is_(None),
+        TransactionLine.article_type != BLAGUE_TYPE,
+    )
+
+
+def _blague_conflict(filters):
+    """Catégorie « Blague » sélectionnée alors que les blagues sont masquées."""
+    return _hide_blagues(filters) and filters.get("category") == BLAGUE_TYPE
+
+
+def _exclude_blague_transactions(stmt, filters):
+    """Ne garde que les transactions contenant au moins une ligne non-blague."""
+    if not _hide_blagues(filters):
+        return stmt
+    return stmt.where(
+        exists(
+            select(TransactionLine.id).where(
+                TransactionLine.transaction_id == Transaction.id,
+                _not_blague_line(),
+            )
+        )
+    )
+
+
 def _month_start(day):
     return day.replace(day=1)
 
@@ -223,6 +255,8 @@ def category_totals(filters=None):
     agg = _apply_transaction_filters(agg, filters, cutoff, ("achat", "direct"))
     if category:
         agg = agg.where(TransactionLine.article_type == category)
+    if _hide_blagues(filters):
+        agg = agg.where(_not_blague_line())
     agg = agg.group_by(TransactionLine.article_type)
 
     totals = defaultdict(lambda: {"qty": 0, "revenue": 0})
@@ -261,6 +295,8 @@ def _series_raw(filters, with_counts=False):
     series_stmt = _apply_transaction_filters(series_stmt, filters, cutoff, ("achat", "direct"))
     if category:
         series_stmt = series_stmt.where(TransactionLine.article_type == category)
+    if _hide_blagues(filters):
+        series_stmt = series_stmt.where(_not_blague_line())
 
     revenue = defaultdict(int)
     quantities = defaultdict(int)
@@ -282,6 +318,9 @@ def _series_raw(filters, with_counts=False):
         tx_stmt = select(Transaction.created_at).select_from(Transaction)
         tx_stmt = _apply_transaction_filters(tx_stmt, filters, cutoff, ("achat", "direct"))
         tx_stmt = _restrict_to_category(tx_stmt, category)
+        tx_stmt = _exclude_blague_transactions(tx_stmt, filters)
+        if _blague_conflict(filters):
+            tx_stmt = tx_stmt.where(db.false())
         for (created_at,) in db.session.execute(tx_stmt):
             transactions[to_paris(created_at).date().isoformat()] += 1
 
@@ -435,15 +474,20 @@ def bucket_series(series, start, end, kind="jour"):
 
 
 def _count_transactions(filters):
+    if _blague_conflict(filters):
+        return 0
     cutoff = _stats_cutoff(filters)
     stmt = select(func.count(func.distinct(Transaction.id))).select_from(Transaction)
     stmt = _apply_transaction_filters(stmt, filters, cutoff, ("achat", "direct"))
     stmt = _restrict_to_category(stmt, filters.get("category"))
+    stmt = _exclude_blague_transactions(stmt, filters)
     return _int(db.session.execute(stmt).scalar_one())
 
 
 def _count_students(filters):
     """Acheteurs uniques (participants à un achat réglé sur compte)."""
+    if _blague_conflict(filters):
+        return 0
     cutoff = _stats_cutoff(filters)
     stmt = (
         select(func.count(func.distinct(User.id)))
@@ -453,6 +497,7 @@ def _count_students(filters):
     )
     stmt = _apply_transaction_filters(stmt, filters, cutoff, ("achat", "direct"))
     stmt = _restrict_to_category(stmt, filters.get("category"))
+    stmt = _exclude_blague_transactions(stmt, filters)
     promotion = filters.get("promotion")
     if promotion:
         promotion_value = promotion_int(promotion)
@@ -726,6 +771,8 @@ def articles_stats(filters=None, search="", sort="volume", page=1, per_page=0):
     stmt = _apply_transaction_filters(stmt, filters, cutoff, ("achat", "direct"))
     if category:
         stmt = stmt.where(TransactionLine.article_type == category)
+    if _hide_blagues(filters):
+        stmt = stmt.where(_not_blague_line())
     stmt = stmt.group_by(key)
 
     articles = []
@@ -810,6 +857,8 @@ def students_stats(filters=None, search="", sort="depense", page=1, per_page=0):
     )
     if category:
         lines = lines.where(TransactionLine.article_type == category)
+    if _hide_blagues(filters):
+        lines = lines.where(_not_blague_line())
     lines = lines.group_by(TransactionLine.transaction_id).subquery()
 
     conditions = [Transaction.type == "achat", Transaction.cancelled.is_(False)]

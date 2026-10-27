@@ -664,3 +664,6 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
   vue s'exporte en CSV (UTF-8 avec BOM, séparateur `;`), filtres et recherche
   courants compris ; la vue d'ensemble propose en plus l'export de la série
   temporelle agrégée (jour, semaine ou mois). Aucun schéma de base n'est nécessaire.
+- La case **Masquer les blagues** retire les articles de type « Blague » des
+  recettes, volumes, catégories, graphiques, tableaux et exports. Elle est
+  décochée par défaut ; une puce « Sans blagues » rappelle le filtre actif.

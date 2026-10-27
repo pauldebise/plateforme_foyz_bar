@@ -106,6 +106,7 @@ def _setup():
         "d4": today - timedelta(days=12),
         "d5": today - timedelta(days=10),
         "previous": today - timedelta(days=25),
+        "blague": today - timedelta(days=100),
         "old": today - timedelta(days=500),
     }
     with app.app_context():
@@ -195,6 +196,14 @@ def _setup():
             days["old"],
             [("Pinte", "biere", 1, 300)],
             [(alice, 300)],
+        )
+        # Article « Blague », masquable depuis les filtres.
+        _add_transaction(
+            "brest",
+            "achat",
+            days["blague"],
+            [("Blague", "blague", 1, 100)],
+            [(alice, 100)],
         )
         db.session.commit()
     _state.update(app=app, today=today, **days)
@@ -424,24 +433,105 @@ def test_tout_historique():
             "date_to": state["today"].isoformat(),
         }
         limited = ST.period_totals(date_range)
-        _expect(limited["revenue"] == 2150, "plafond d'accès appliqué")
+        _expect(limited["revenue"] == 2250, "plafond d'accès appliqué")
         full = ST.period_totals({**date_range, "all_time": "1"})
-        _expect(full["revenue"] == 2450, "historique complet")
-        _expect(full["qty"] == 11 and full["transactions"] == 6, "volumes complets")
+        _expect(full["revenue"] == 2550, "historique complet")
+        _expect(full["qty"] == 12 and full["transactions"] == 7, "volumes complets")
         _expect(full["students"] == 2, "étudiants complets")
 
     client = _client()
     html = _page(client, preset="tout", date_from="", date_to="")
     _expect('value="tout"' in html, "période proposée")
-    _expect("24,50 €" in html, "recettes all-time")
+    _expect("25,50 €" in html, "recettes all-time")
     data = _chart_data(html)
     _expect(data["granularity"] == "mois", "agrégation mensuelle all-time")
     _expect(len(data["labels"]) >= 16, "mois depuis le début")
-    _expect(sum(data["revenue"]) == 2450, "série all-time complète")
+    _expect(sum(data["revenue"]) == 2550, "série all-time complète")
     _expect(len(data["monthly"]["labels"]) >= 16, "répartition mensuelle all-time")
 
     standard = _chart_data(_page(client, preset="30j"))
     _expect(sum(standard["revenue"]) == 2150, "période standard toujours plafonnée")
+
+
+def test_masquer_blagues():
+    state = _setup()
+    client = _client()
+
+    shown = _page(client, preset="tout", date_from="", date_to="")
+    _expect("25,50 €" in shown, "recettes avec blagues")
+    shown_data = _chart_data(shown)
+    _expect(sum(shown_data["revenue"]) == 2550, "série avec blagues")
+    _expect(sum(shown_data["transactions"]) == 7, "transactions avec blagues")
+
+    hidden = _page(client, preset="tout", date_from="", date_to="", sans_blagues="1")
+    _expect("24,50 €" in hidden, "recettes sans blagues")
+    _expect("Sans blagues" in hidden, "chip sans blagues")
+    _expect(
+        re.search(r'id="stats-sans-blagues"[^>]*checked', hidden) is not None,
+        "case cochée",
+    )
+    hidden_data = _chart_data(hidden)
+    _expect(sum(hidden_data["revenue"]) == 2450, "série sans blagues")
+    _expect(sum(hidden_data["transactions"]) == 6, "transactions sans blagues")
+
+    start = state["today"] - timedelta(days=110)
+    period = {
+        "date_from": start.isoformat(),
+        "date_to": state["today"].isoformat(),
+    }
+    include = _chart_data(_page(client, preset="custom", **period))
+    exclude = _chart_data(_page(client, preset="custom", sans_blagues="1", **period))
+    _expect(sum(include["revenue"]) == 2250, "période avec blague")
+    _expect(sum(exclude["revenue"]) == 2150, "période sans blague")
+
+    with state["app"].app_context():
+        filters = {
+            "campus": "brest",
+            "date_from": state["old"].isoformat(),
+            "date_to": state["today"].isoformat(),
+            "all_time": "1",
+        }
+        full_categories = ST.category_totals(filters)
+        _expect(
+            full_categories["by_category"].get("blague", {}).get("revenue") == 100,
+            "catégorie blague incluse",
+        )
+        hidden_categories = ST.category_totals({**filters, "sans_blagues": "1"})
+        _expect("blague" not in hidden_categories["by_category"], "catégorie blague masquée")
+        conflict = ST.period_totals({**filters, "category": "blague", "sans_blagues": "1"})
+        _expect(
+            conflict["revenue"] == 0
+            and conflict["transactions"] == 0
+            and conflict["students"] == 0,
+            "catégorie blague masquée sans incohérence",
+        )
+        full_articles = ST.articles_stats(filters, per_page=0)
+        _expect(
+            any(article["type"] == "blague" for article in full_articles["rows"]), "article inclus"
+        )
+        hidden_articles = ST.articles_stats({**filters, "sans_blagues": "1"}, per_page=0)
+        _expect(
+            not any(article["type"] == "blague" for article in hidden_articles["rows"]),
+            "article masqué",
+        )
+
+    export_args = {"preset": "tout", "campus": "brest", "vue": "categories"}
+    full_csv = client.get("/equipe/statistiques/export.csv", query_string=export_args)
+    _expect("Blague" in full_csv.get_data(as_text=True), "export avec blague")
+    hidden_csv = client.get(
+        "/equipe/statistiques/export.csv",
+        query_string={**export_args, "sans_blagues": "1"},
+    )
+    _expect("Blague" not in hidden_csv.get_data(as_text=True), "export sans blague")
+
+    article_export = {
+        "preset": "tout",
+        "campus": "brest",
+        "vue": "articles",
+        "sans_blagues": "1",
+    }
+    article_csv = client.get("/equipe/statistiques/export.csv", query_string=article_export)
+    _expect("Blague" not in article_csv.get_data(as_text=True), "export articles sans blague")
 
 
 def test_page_kpis_et_graphiques():
