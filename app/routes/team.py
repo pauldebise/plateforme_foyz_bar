@@ -456,7 +456,11 @@ def _stats_request():
     events = request.args.get("events", "")
     if events not in STATS_EVENT_FILTERS:
         events = ""
-    sans_blagues = "1" if request.args.get("sans_blagues") == "1" else ""
+    # Masquer les blagues est le comportement par défaut. Le formulaire envoie
+    # une valeur 0 cachée, puis 1 si la case est cochée : l'absence de valeur
+    # signifie donc « valeur par défaut » et non « filtre désactivé ».
+    blague_values = request.args.getlist("sans_blagues")
+    sans_blagues = "" if blague_values and "1" not in blague_values else "1"
 
     filters = {
         "date_from": period["start"].isoformat(),
@@ -478,10 +482,13 @@ def _stats_request():
         ("promotion", promotion),
         ("team_only", team_only),
         ("events", events),
-        ("sans_blagues", sans_blagues),
     ):
         if value:
             base_args[key] = value
+    # Le filtre est actif par défaut : seule sa désactivation explicite doit
+    # être conservée dans les liens, onglets et exports.
+    if not sans_blagues:
+        base_args["sans_blagues"] = "0"
 
     previous_start, previous_end = ST.previous_period(period["start"], period["end"])
     return {
@@ -580,7 +587,6 @@ def statistiques():
             filters["promotion"],
             filters["team_only"],
             filters["events"],
-            filters["sans_blagues"],
         )
         if value
     )
@@ -631,7 +637,7 @@ def statistiques():
         chips.append(
             {
                 "label": "Sans blagues",
-                "url": url_for("team.statistiques", **stats_args(sans_blagues=None)),
+                "url": url_for("team.statistiques", **stats_args(sans_blagues="0")),
             }
         )
     if campus == "tous":

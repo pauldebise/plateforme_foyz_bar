@@ -440,7 +440,7 @@ def test_tout_historique():
         _expect(full["students"] == 2, "étudiants complets")
 
     client = _client()
-    html = _page(client, preset="tout", date_from="", date_to="")
+    html = _page(client, preset="tout", date_from="", date_to="", sans_blagues="0")
     _expect('value="tout"' in html, "période proposée")
     _expect("25,50 €" in html, "recettes all-time")
     data = _chart_data(html)
@@ -457,32 +457,47 @@ def test_masquer_blagues():
     state = _setup()
     client = _client()
 
-    shown = _page(client, preset="tout", date_from="", date_to="")
+    shown = _page(client, preset="tout", date_from="", date_to="", sans_blagues="0")
     _expect("25,50 €" in shown, "recettes avec blagues")
+    _expect("Sans blagues" not in shown, "puce absente quand les blagues sont visibles")
+    _expect(
+        re.search(r'id="stats-sans-blagues"[^>]*checked', shown) is None,
+        "case décochée",
+    )
+    _expect("sans_blagues=0" in shown, "désactivation conservée dans les liens")
     shown_data = _chart_data(shown)
     _expect(sum(shown_data["revenue"]) == 2550, "série avec blagues")
     _expect(sum(shown_data["transactions"]) == 7, "transactions avec blagues")
 
-    hidden = _page(client, preset="tout", date_from="", date_to="", sans_blagues="1")
-    _expect("24,50 €" in hidden, "recettes sans blagues")
+    # Sans paramètre, le filtre est actif par défaut.
+    hidden = _page(client, preset="tout", date_from="", date_to="")
+    _expect("24,50 €" in hidden, "recettes sans blagues par défaut")
     _expect("Sans blagues" in hidden, "chip sans blagues")
     _expect(
         re.search(r'id="stats-sans-blagues"[^>]*checked', hidden) is not None,
-        "case cochée",
+        "case cochée par défaut",
     )
     hidden_data = _chart_data(hidden)
     _expect(sum(hidden_data["revenue"]) == 2450, "série sans blagues")
     _expect(sum(hidden_data["transactions"]) == 6, "transactions sans blagues")
+
+    # Le formulaire envoie 0 (valeur cachée) puis 1 (case cochée) : la case
+    # doit rester prioritaire.
+    both = client.get(
+        "/equipe/statistiques",
+        query_string="preset=tout&campus=brest&sans_blagues=0&sans_blagues=1",
+    ).get_data(as_text=True)
+    _expect("24,50 €" in both, "case cochée prioritaire sur la valeur cachée")
 
     start = state["today"] - timedelta(days=110)
     period = {
         "date_from": start.isoformat(),
         "date_to": state["today"].isoformat(),
     }
-    include = _chart_data(_page(client, preset="custom", **period))
-    exclude = _chart_data(_page(client, preset="custom", sans_blagues="1", **period))
+    include = _chart_data(_page(client, preset="custom", sans_blagues="0", **period))
+    exclude = _chart_data(_page(client, preset="custom", **period))
     _expect(sum(include["revenue"]) == 2250, "période avec blague")
-    _expect(sum(exclude["revenue"]) == 2150, "période sans blague")
+    _expect(sum(exclude["revenue"]) == 2150, "période sans blague par défaut")
 
     with state["app"].app_context():
         filters = {
@@ -516,8 +531,13 @@ def test_masquer_blagues():
         )
 
     export_args = {"preset": "tout", "campus": "brest", "vue": "categories"}
-    full_csv = client.get("/equipe/statistiques/export.csv", query_string=export_args)
+    full_csv = client.get(
+        "/equipe/statistiques/export.csv",
+        query_string={**export_args, "sans_blagues": "0"},
+    )
     _expect("Blague" in full_csv.get_data(as_text=True), "export avec blague")
+    default_csv = client.get("/equipe/statistiques/export.csv", query_string=export_args)
+    _expect("Blague" not in default_csv.get_data(as_text=True), "export sans blague par défaut")
     hidden_csv = client.get(
         "/equipe/statistiques/export.csv",
         query_string={**export_args, "sans_blagues": "1"},
@@ -545,6 +565,10 @@ def test_page_kpis_et_graphiques():
     _expect('id="stats-data"' in html, "données JSON")
     _expect("data-stats-filter" in html, "formulaire de filtres")
     _expect("data-auto-submit" in html, "application automatique des filtres")
+    _expect(
+        re.search(r'id="stats-sans-blagues"[^>]*checked', html) is not None,
+        "blagues masquées par défaut",
+    )
     _expect("chart-trend" in html, "graphique de tendance")
     _expect('aria-label="Vues des statistiques"' in html, "onglets accessibles")
     _expect(html.count("js/statistiques.js") == 1, "script des statistiques")

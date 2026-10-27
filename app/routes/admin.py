@@ -46,7 +46,6 @@ from app.services import audit as A
 from app.services import catalog as C
 from app.services import christmas
 from app.services import settings as S
-from app.services import stats_cleanup as SC
 from app.services.event_recap import build_recap, export_rows as event_recap_export_rows
 from app.services.names import plain_details, plain_names
 from app.services.stats import TOP_ARTICLES_DAYS, top_article_sales
@@ -809,13 +808,6 @@ ARTICLES_TRI = {
     "tendance_asc": "Tendances : les moins vendus d'abord",
 }
 
-RECLASSEMENT_SORTS = {
-    "qty": "Quantité max à 0 €",
-    "volume": "Volume total",
-    "revenu": "Recettes",
-    "nom": "Nom (A → Z)",
-}
-
 
 def _filter_cents(value):
     """Prix saisi dans un filtre : vide, invalide ou négatif -> None (ignoré)."""
@@ -1015,96 +1007,6 @@ def article_supprimer(article_id):
         db.session.commit()
         flash("Article supprimé. L'historique des ventes est conservé.", "success")
     return redirect(list_url("articles"))
-
-
-@bp.route("/articles-a-reclasser", methods=["GET", "POST"])
-@login_required
-def reclasser_articles():
-    """Reclassement manuel des anciens articles à 0 € (blagues, compteurs)."""
-    campus = view_campus()
-    writable = campus == own_campus()
-    q = request.args.get("q", "").strip()[:100]
-    show_all = request.args.get("tous") == "1"
-    sort = request.args.get("tri", "qty")
-    if sort not in RECLASSEMENT_SORTS:
-        sort = "qty"
-
-    if request.method == "POST":
-        if not writable:
-            abort(403)
-        # Le formulaire ne transmet que les lignes où un type a été choisi.
-        # On recalcule le groupe côté serveur : jamais de nom arbitraire venu
-        # du client, et les variantes de casse restent groupées.
-        by_token = {
-            candidate["token"]: candidate for candidate in SC.candidates(campus, show_all=True)
-        }
-        changes = []
-        for field, value in request.form.items():
-            if not field.startswith("type__"):
-                continue
-            new_type = (value or "").strip()
-            if new_type not in ARTICLE_TYPES:
-                continue
-            candidate = by_token.get(field[len("type__") :])
-            if candidate is not None:
-                changes.append((candidate, new_type))
-
-        changed_articles = 0
-        updated_lines = 0
-        if changes:
-            try:
-                for candidate, new_type in changes:
-                    lines = SC.reclassify_article(campus, candidate, new_type)
-                    if not lines:
-                        continue
-                    changed_articles += 1
-                    updated_lines += lines
-                    A.record(
-                        "stats.reclassement_article",
-                        target=candidate["name"],
-                        details=(
-                            f"Type {', '.join(candidate['type_labels'])} → "
-                            f"{ARTICLE_TYPES[new_type]} ; {lines} ligne(s) ; "
-                            f"campus {CAMPUSSES[campus]}"
-                        ),
-                        campus=campus,
-                    )
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-                raise
-
-        if changed_articles:
-            flash(
-                f"{changed_articles} article(s) reclassé(s) : "
-                f"{updated_lines} ligne(s) mise(s) à jour.",
-                "success",
-            )
-        elif changes:
-            flash("Les types choisis étaient déjà en place : aucune ligne modifiée.", "info")
-        else:
-            flash("Aucun type sélectionné : rien n'a été modifié.", "info")
-        return redirect(
-            url_for(
-                "admin.reclasser_articles",
-                campus=campus,
-                tous="1" if show_all else None,
-                q=q or None,
-                tri=sort,
-            )
-        )
-
-    return render_template(
-        "admin/articles_reclasser.html",
-        campus=campus,
-        writable=writable,
-        candidates=SC.candidates(campus, search=q, show_all=show_all, sort=sort),
-        q=q,
-        show_all=show_all,
-        sort=sort,
-        sorts=RECLASSEMENT_SORTS,
-        threshold=SC.SUSPECT_MIN_QTY,
-    )
 
 
 def _optional_int(value, maximum=1_000_000):
