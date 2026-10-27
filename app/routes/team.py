@@ -465,6 +465,7 @@ def _stats_request():
         "campus": campus if campus in CAMPUSSES else "",
         "team_only": team_only,
         "events": events,
+        "all_time": "1" if period["preset"] == "tout" else "",
     }
     base_args = {"preset": period["preset"], "campus": campus}
     if period["preset"] == "custom":

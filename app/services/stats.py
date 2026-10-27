@@ -30,6 +30,7 @@ PERIOD_PRESETS = {
     "6mois": "6 derniers mois",
     "12mois": "12 derniers mois",
     "annee": "Cette année",
+    "tout": "Tout l'historique",
     "evenement": "Dernier événement",
     "custom": "Personnalisé",
 }
@@ -66,13 +67,23 @@ WEEKDAYS_FR = ("lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim.")
 
 
 def _parse_date(value, end_of_day=False):
-    if not value:
+    """Date ISO -> borne UTC correspondant au jour de Paris.
+
+    Les périodes de la page sont exprimées en jours de Paris ; convertir les
+    bornes évite de perdre les ventes de fin de soirée après minuit.
+    """
+    day = _parse_day(value)
+    if day is None:
         return None
     try:
-        d = datetime.strptime(value, "%Y-%m-%d")
-        return d + timedelta(days=1, microseconds=-1) if end_of_day else d
-    except ValueError:
-        return None
+        start = datetime.combine(day, dt_time.min)
+        if not end_of_day:
+            return paris_to_utc(start)
+        return paris_to_utc(start + timedelta(days=1)) - timedelta(microseconds=1)
+    except (OverflowError, ValueError):
+        # Bornes extrêmes (an 1 ou 9999) : conserver le sens du filtre plutôt
+        # que de laisser une erreur serveur.
+        return datetime.max if end_of_day else datetime.min
 
 
 def _parse_day(value):
@@ -100,6 +111,17 @@ def promotion_int(value):
         return int(text)
     except ValueError:
         return None
+
+
+def _stats_cutoff(filters):
+    """Borne basse des transactions, sauf pour « Tout l'historique ».
+
+    Le réglage `max_history_days` limite l'accès courant aux transactions ;
+    la vue all-time est l'exception explicite prévue par la page statistiques.
+    """
+    if filters.get("all_time"):
+        return None
+    return history_cutoff()
 
 
 def _month_start(day):
@@ -148,8 +170,9 @@ def _apply_transaction_filters(stmt, filters, cutoff, types):
     stmt = stmt.where(
         Transaction.type.in_(types),
         Transaction.cancelled.is_(False),
-        Transaction.created_at >= cutoff,
     )
+    if cutoff is not None:
+        stmt = stmt.where(Transaction.created_at >= cutoff)
     campus = filters.get("campus")
     if campus in CAMPUSSES:
         stmt = stmt.where(Transaction.campus == campus)
@@ -185,7 +208,7 @@ def _restrict_to_category(stmt, category):
 def category_totals(filters=None):
     """Totaux par catégorie et total général, calculés par la base."""
     filters = filters or {}
-    cutoff = history_cutoff()
+    cutoff = _stats_cutoff(filters)
     category = filters.get("category")
 
     agg = (
@@ -224,7 +247,7 @@ def _series_raw(filters, with_counts=False):
     lignes/participants, en flux pour borner la mémoire.
     """
     filters = filters or {}
-    cutoff = history_cutoff()
+    cutoff = _stats_cutoff(filters)
     category = filters.get("category")
 
     columns = [Transaction.created_at, TransactionLine.line_total]
@@ -412,7 +435,7 @@ def bucket_series(series, start, end, kind="jour"):
 
 
 def _count_transactions(filters):
-    cutoff = history_cutoff()
+    cutoff = _stats_cutoff(filters)
     stmt = select(func.count(func.distinct(Transaction.id))).select_from(Transaction)
     stmt = _apply_transaction_filters(stmt, filters, cutoff, ("achat", "direct"))
     stmt = _restrict_to_category(stmt, filters.get("category"))
@@ -421,7 +444,7 @@ def _count_transactions(filters):
 
 def _count_students(filters):
     """Acheteurs uniques (participants à un achat réglé sur compte)."""
-    cutoff = history_cutoff()
+    cutoff = _stats_cutoff(filters)
     stmt = (
         select(func.count(func.distinct(User.id)))
         .select_from(Transaction)
@@ -475,8 +498,12 @@ def percent_delta(current, previous):
 def previous_period(start, end):
     """Période précédente de même durée, juste avant `start`."""
     days = (end - start).days + 1
-    previous_end = start - timedelta(days=1)
-    return previous_end - timedelta(days=days - 1), previous_end
+    try:
+        previous_end = start - timedelta(days=1)
+        return previous_end - timedelta(days=days - 1), previous_end
+    except OverflowError:
+        # Date minimale (saisie extrême) : la période précédente est vide.
+        return date.min, date.min
 
 
 def _event_label(event, start=None, end=None):
@@ -501,6 +528,15 @@ def _event_label(event, start=None, end=None):
     return f"{event.name} ({when})"
 
 
+def earliest_transaction_date(campus=""):
+    """Date de Paris de la première transaction conservée en base."""
+    stmt = select(func.min(Transaction.created_at))
+    if campus in CAMPUSSES:
+        stmt = stmt.where(Transaction.campus == campus)
+    value = db.session.execute(stmt).scalar_one()
+    return to_paris(value).date() if value is not None else None
+
+
 def latest_event(campus=""):
     stmt = select(Event).where(Event.starts_at <= utcnow())
     if campus in CAMPUSSES:
@@ -510,8 +546,12 @@ def latest_event(campus=""):
 
 def events_in_period(start, end, campus=""):
     """Soirées qui chevauchent la période, avec leurs dates de Paris."""
-    start_utc = paris_to_utc(datetime.combine(start, dt_time.min))
-    end_utc = paris_to_utc(datetime.combine(end + timedelta(days=1), dt_time.min))
+    try:
+        start_utc = paris_to_utc(datetime.combine(start, dt_time.min))
+        end_utc = paris_to_utc(datetime.combine(end + timedelta(days=1), dt_time.min))
+    except (OverflowError, ValueError):
+        # Bornes extrêmes : aucune soirée ne peut être placée sur ce siècle.
+        return []
     stmt = select(Event).where(Event.starts_at < end_utc, Event.ends_at >= start_utc)
     if campus in CAMPUSSES:
         stmt = stmt.where(Event.campus == campus)
@@ -589,6 +629,13 @@ def resolve_period(preset="30j", date_from="", date_to="", campus="", today=None
         start, end = _shift_month(today, -11), today
     elif preset == "annee":
         start, end = date(today.year, 1, 1), today
+    elif preset == "tout":
+        earliest = earliest_transaction_date(campus)
+        if earliest is None:
+            start = end = today
+            note = "Aucune transaction enregistrée dans la base."
+        else:
+            start, end = min(earliest, today), today
     elif preset == "evenement":
         event = latest_event(campus)
         if event is None:
@@ -601,7 +648,7 @@ def resolve_period(preset="30j", date_from="", date_to="", campus="", today=None
             if start > end:
                 start = end
 
-    if (end - start).days + 1 > MAX_STATS_DAYS:
+    if preset != "tout" and (end - start).days + 1 > MAX_STATS_DAYS:
         start = end - timedelta(days=MAX_STATS_DAYS - 1)
         note = "Période limitée aux trois dernières années."
 
@@ -655,7 +702,7 @@ def _normalize_page(page):
 def articles_stats(filters=None, search="", sort="volume", page=1, per_page=0):
     """Classement paginé des articles vendus sur la période filtrée."""
     filters = filters or {}
-    cutoff = history_cutoff()
+    cutoff = _stats_cutoff(filters)
     category = filters.get("category")
 
     key = case(
@@ -743,7 +790,7 @@ def top_articles_stats(filters=None, search=""):
 
 def students_stats(filters=None, search="", sort="depense", page=1, per_page=0):
     filters = filters or {}
-    cutoff = history_cutoff()
+    cutoff = _stats_cutoff(filters)
     category = filters.get("category")
     promotion = filters.get("promotion")
     team_only = filters.get("team_only", "")
@@ -765,6 +812,9 @@ def students_stats(filters=None, search="", sort="depense", page=1, per_page=0):
         lines = lines.where(TransactionLine.article_type == category)
     lines = lines.group_by(TransactionLine.transaction_id).subquery()
 
+    conditions = [Transaction.type == "achat", Transaction.cancelled.is_(False)]
+    if cutoff is not None:
+        conditions.append(Transaction.created_at >= cutoff)
     stmt = (
         select(
             User,
@@ -777,11 +827,7 @@ def students_stats(filters=None, search="", sort="depense", page=1, per_page=0):
         .join(User, Contribution.user_id == User.id)
         .join(lines, lines.c.tid == Transaction.id)
         .join(participants, participants.c.transaction_id == Transaction.id)
-        .where(
-            Transaction.type == "achat",
-            Transaction.cancelled.is_(False),
-            Transaction.created_at >= cutoff,
-        )
+        .where(*conditions)
         .group_by(User.id)
     )
     campus = filters.get("campus")

@@ -647,8 +647,11 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
   *Articles* et *Étudiants*. Les filtres (période, campus, catégorie, promotion,
   équipe, soirées) restent communs aux trois vues et sont conservés dans l'URL.
 - Périodes rapides : 7 jours, 30 jours, mois courant, mois dernier, 6 mois,
-  12 mois, année civile, dernier événement, personnalisé. Le campus de session est
-  sélectionné par défaut ; « Les deux campus » est explicite.
+  12 mois, année civile, **tout l'historique**, dernier événement, personnalisé.
+  Le campus de session est sélectionné par défaut ; « Les deux campus » est explicite.
+  *Tout l'historique* démarre à la première transaction conservée en base et ignore
+  le plafond d'accès `max_history_days` : c'est la vue de bilan complet, à réserver
+  aux usages qui en ont besoin.
 - Quatre indicateurs (recettes, articles, panier moyen, étudiants uniques) sont
   comparés à la période précédente de même durée. La courbe des ventes agrège
   automatiquement par jour (jusqu'à 62 jours), semaine (jusqu'à 240 jours) ou mois

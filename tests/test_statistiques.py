@@ -106,6 +106,7 @@ def _setup():
         "d4": today - timedelta(days=12),
         "d5": today - timedelta(days=10),
         "previous": today - timedelta(days=25),
+        "old": today - timedelta(days=500),
     }
     with app.app_context():
         mandat = User(
@@ -186,6 +187,14 @@ def _setup():
             days["previous"],
             [("Pinte", "biere", 1, 250)],
             [(alice, 250)],
+        )
+        # Vente très ancienne, hors du plafond d'accès, pour « Tout l'historique ».
+        _add_transaction(
+            "brest",
+            "achat",
+            days["old"],
+            [("Pinte", "biere", 1, 300)],
+            [(alice, 300)],
         )
         db.session.commit()
     _state.update(app=app, today=today, **days)
@@ -300,6 +309,15 @@ def test_dates_et_periodes():
         ST.format_period(date(2026, 12, 28), date(2027, 1, 5)) == "28 déc. 2026 – 5 janv. 2027",
         "libellé à cheval sur deux années",
     )
+    _expect(
+        ST._parse_date("2026-10-01") == paris_to_utc(datetime(2026, 10, 1)),
+        "borne de début en heure de Paris",
+    )
+    _expect(
+        ST._parse_date("2026-10-01", end_of_day=True)
+        == paris_to_utc(datetime(2026, 10, 2)) - timedelta(microseconds=1),
+        "borne de fin en heure de Paris",
+    )
 
 
 def test_series_totaux_et_filtres():
@@ -385,6 +403,45 @@ def test_series_totaux_et_filtres():
         _expect(ST.percent_delta(100, 50)["tone"] == "up", "delta positif")
         _expect(ST.percent_delta(50, 100)["tone"] == "down", "delta négatif")
         _expect(ST.percent_delta(0, 0)["tone"] == "none", "delta sans comparaison")
+
+
+def test_tout_historique():
+    state = _setup()
+    app = state["app"]
+    with app.app_context():
+        period = ST.resolve_period("tout", campus="brest", today=state["today"])
+        _expect(period["start"] == state["old"], "début = première transaction")
+        _expect(period["end"] == state["today"], "fin = aujourd'hui")
+        _expect(period["preset"] == "tout", "preset conservé")
+        paris = ST.resolve_period("tout", campus="paris", today=state["today"])
+        _expect(paris["start"] == state["d3"], "première transaction du campus")
+        all_campuses = ST.resolve_period("tout", today=state["today"])
+        _expect(all_campuses["start"] == state["old"], "première transaction globale")
+
+        date_range = {
+            "campus": "brest",
+            "date_from": state["old"].isoformat(),
+            "date_to": state["today"].isoformat(),
+        }
+        limited = ST.period_totals(date_range)
+        _expect(limited["revenue"] == 2150, "plafond d'accès appliqué")
+        full = ST.period_totals({**date_range, "all_time": "1"})
+        _expect(full["revenue"] == 2450, "historique complet")
+        _expect(full["qty"] == 11 and full["transactions"] == 6, "volumes complets")
+        _expect(full["students"] == 2, "étudiants complets")
+
+    client = _client()
+    html = _page(client, preset="tout", date_from="", date_to="")
+    _expect('value="tout"' in html, "période proposée")
+    _expect("24,50 €" in html, "recettes all-time")
+    data = _chart_data(html)
+    _expect(data["granularity"] == "mois", "agrégation mensuelle all-time")
+    _expect(len(data["labels"]) >= 16, "mois depuis le début")
+    _expect(sum(data["revenue"]) == 2450, "série all-time complète")
+    _expect(len(data["monthly"]["labels"]) >= 16, "répartition mensuelle all-time")
+
+    standard = _chart_data(_page(client, preset="30j"))
+    _expect(sum(standard["revenue"]) == 2150, "période standard toujours plafonnée")
 
 
 def test_page_kpis_et_graphiques():
@@ -550,6 +607,8 @@ def test_acces_et_erreurs():
         {"promotion": "9" * 5000},
         {"category": "x" * 5000},
         {"q": "x" * 5000, "aq": "x" * 5000},
+        {"preset": "custom", "date_from": "0001-01-01", "date_to": "0001-01-01"},
+        {"preset": "custom", "date_from": "9999-12-31", "date_to": "9999-12-31"},
     ):
         res = client.get("/equipe/statistiques", query_string=query)
         _expect(res.status_code == 200, f"paramètres invalides ({res.status_code})")
