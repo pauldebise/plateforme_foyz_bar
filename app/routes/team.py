@@ -25,11 +25,12 @@ from app.services import adminpw as AP
 from app.services.events import running_events
 from app.services.settings import int_setting
 from app.services.names import plain_names, public_note_authors
-from app.services.stats import sales_stats, students_stats, top_article_ids, top_articles_stats
+from app.services import stats as ST
 from app.services.treasury import treasury
 from app.utils import (
     ARTICLE_TYPES,
     CAMPUSSES,
+    PARIS_TZ,
     PAYMENT_METHODS,
     TRANSACTION_TYPES,
     clamp_text,
@@ -49,6 +50,24 @@ HISTORY_TYPE_FILTERS = {
     **TRANSACTION_TYPES,
     EVENT_SALES_FILTER: "Ventes d'évènement",
 }
+
+STATS_VIEWS = {
+    "vue": ("Vue d'ensemble", "bi-speedometer2"),
+    "articles": ("Articles", "bi-trophy"),
+    "etudiants": ("Étudiants", "bi-people"),
+}
+STATS_TEAM_FILTERS = {
+    "": "Tous",
+    "team": "Équipe Foy'z/Bar",
+    "non_team": "Non-équipe",
+}
+STATS_EVENT_FILTERS = {
+    "": "Toutes",
+    "hors_events": "Hors soirée",
+    "events": "Soirées uniquement",
+}
+STATS_ARTICLE_SORTS = ("volume", "revenu", "nom")
+STATS_STUDENT_SORTS = ("depense", "achats", "articles", "nom")
 
 
 @bp.before_request
@@ -125,7 +144,7 @@ def _payment_catalog(campus_name):
         if a.is_tap or a.price_for(campus_name) or a.price_for(campus_name, team=True)
     ]
     data = []
-    rank_of = {aid: i for i, aid in enumerate(top_article_ids(campus_name))}
+    rank_of = {aid: i for i, aid in enumerate(ST.top_article_ids(campus_name))}
     for a in articles:
         item = {
             "id": a.id,
@@ -394,56 +413,627 @@ def annuler():
     return redirect(url_for("team.historique"))
 
 
+def _stats_int(value, default, minimum=None, maximum=None):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    if minimum is not None:
+        number = max(minimum, number)
+    if maximum is not None:
+        number = min(maximum, number)
+    return number
+
+
+def _stats_request():
+    """Filtres communs à la page et à l'export CSV des statistiques."""
+    session_campus = session.get("campus")
+    if session_campus not in CAMPUSSES:
+        session_campus = "brest"
+    campus = request.args.get("campus", session_campus)
+    if campus not in ("brest", "paris", "tous"):
+        campus = session_campus
+
+    preset = request.args.get("preset", "")
+    if preset not in ST.PERIOD_PRESETS:
+        preset = (
+            "custom" if (request.args.get("date_from") or request.args.get("date_to")) else "30j"
+        )
+    period = ST.resolve_period(
+        preset,
+        request.args.get("date_from", ""),
+        request.args.get("date_to", ""),
+        campus if campus in CAMPUSSES else "",
+    )
+
+    category = request.args.get("category", "").strip()[:50]
+    promotion = request.args.get("promotion", "").strip()
+    promotion_value = ST.promotion_int(promotion)
+    promotion = str(promotion_value) if promotion_value is not None else ""
+    team_only = request.args.get("team_only", "")
+    if team_only not in STATS_TEAM_FILTERS:
+        team_only = ""
+    events = request.args.get("events", "")
+    if events not in STATS_EVENT_FILTERS:
+        events = ""
+
+    filters = {
+        "date_from": period["start"].isoformat(),
+        "date_to": period["end"].isoformat(),
+        "category": category,
+        "promotion": promotion,
+        "campus": campus if campus in CAMPUSSES else "",
+        "team_only": team_only,
+        "events": events,
+    }
+    base_args = {"preset": period["preset"], "campus": campus}
+    if period["preset"] == "custom":
+        base_args["date_from"] = period["start"].isoformat()
+        base_args["date_to"] = period["end"].isoformat()
+    for key, value in (
+        ("category", category),
+        ("promotion", promotion),
+        ("team_only", team_only),
+        ("events", events),
+    ):
+        if value:
+            base_args[key] = value
+
+    previous_start, previous_end = ST.previous_period(period["start"], period["end"])
+    return {
+        "session_campus": session_campus,
+        "campus": campus,
+        "filters": filters,
+        "previous_filters": {
+            **filters,
+            "date_from": previous_start.isoformat(),
+            "date_to": previous_end.isoformat(),
+        },
+        "period": period,
+        "base_args": base_args,
+        "previous_start": previous_start,
+        "previous_end": previous_end,
+        "previous_period_label": ST.format_period(previous_start, previous_end),
+    }
+
+
 @bp.route("/statistiques")
 @login_required
 def statistiques():
-    # Par défaut : dernier mois seulement, pour charger la page plus vite.
-    today = utcnow().date()
-    filters = {
-        "date_from": request.args.get("date_from") or (today - timedelta(days=30)).isoformat(),
-        "date_to": request.args.get("date_to") or today.isoformat(),
-        "category": request.args.get("category", ""),
-        "promotion": request.args.get("promotion", ""),
-        "campus": request.args.get("campus", ""),
-        "team_only": request.args.get("team_only", ""),
+    context = _stats_request()
+    session_campus = context["session_campus"]
+    campus = context["campus"]
+    filters = context["filters"]
+    period = context["period"]
+    base_args = context["base_args"]
+    previous_start = context["previous_start"]
+    previous_end = context["previous_end"]
+
+    vue = request.args.get("vue", "vue")
+    if vue not in STATS_VIEWS:
+        vue = "vue"
+    page = _stats_int(request.args.get("page"), 1, minimum=1)
+
+    totals = ST.period_totals(filters)
+    previous_totals = ST.period_totals(context["previous_filters"])
+    average_basket = (
+        round(totals["revenue"] / totals["transactions"]) if totals["transactions"] else 0
+    )
+    previous_average_basket = (
+        round(previous_totals["revenue"] / previous_totals["transactions"])
+        if previous_totals["transactions"]
+        else 0
+    )
+    kpis = [
+        {
+            "key": "revenue",
+            "label": "Recettes",
+            "value": totals["revenue"],
+            "format": "eur",
+            "hint": "hors consignes",
+            "delta": ST.percent_delta(totals["revenue"], previous_totals["revenue"]),
+        },
+        {
+            "key": "qty",
+            "label": "Articles vendus",
+            "value": totals["qty"],
+            "format": "int",
+            "hint": "sur la période",
+            "delta": ST.percent_delta(totals["qty"], previous_totals["qty"]),
+        },
+        {
+            "key": "basket",
+            "label": "Panier moyen",
+            "value": average_basket,
+            "format": "eur",
+            "hint": f"{totals['transactions']} transaction"
+            f"{'s' if totals['transactions'] > 1 else ''}",
+            "delta": ST.percent_delta(average_basket, previous_average_basket),
+        },
+        {
+            "key": "students",
+            "label": "Étudiants",
+            "value": totals["students"],
+            "format": "int",
+            "hint": "acheteurs uniques",
+            "delta": ST.percent_delta(totals["students"], previous_totals["students"]),
+        },
+    ]
+
+    def stats_args(**overrides):
+        args = dict(base_args, vue=vue)
+        for key, value in overrides.items():
+            if value in (None, ""):
+                args.pop(key, None)
+            else:
+                args[key] = value
+        return args
+
+    filters_count = sum(
+        1
+        for value in (
+            filters["category"],
+            filters["promotion"],
+            filters["team_only"],
+            filters["events"],
+        )
+        if value
+    )
+    reset_url = url_for(
+        "team.statistiques",
+        **stats_args(
+            preset="30j",
+            campus=session_campus,
+            date_from=None,
+            date_to=None,
+            category=None,
+            promotion=None,
+            team_only=None,
+            events=None,
+        ),
+    )
+    chips = []
+    if filters["category"]:
+        chips.append(
+            {
+                "label": ARTICLE_TYPES.get(filters["category"], filters["category"]),
+                "url": url_for("team.statistiques", **stats_args(category=None)),
+            }
+        )
+    if filters["promotion"]:
+        chips.append(
+            {
+                "label": f"Promo {filters['promotion']}",
+                "url": url_for("team.statistiques", **stats_args(promotion=None)),
+            }
+        )
+    if filters["team_only"]:
+        chips.append(
+            {
+                "label": STATS_TEAM_FILTERS[filters["team_only"]],
+                "url": url_for("team.statistiques", **stats_args(team_only=None)),
+            }
+        )
+    if filters["events"]:
+        chips.append(
+            {
+                "label": STATS_EVENT_FILTERS[filters["events"]],
+                "url": url_for("team.statistiques", **stats_args(events=None)),
+            }
+        )
+    if campus == "tous":
+        chips.append(
+            {
+                "label": "Les deux campus",
+                "url": url_for("team.statistiques", **stats_args(campus=session_campus)),
+            }
+        )
+    elif campus != session_campus:
+        chips.append(
+            {
+                "label": CAMPUSSES[campus],
+                "url": url_for("team.statistiques", **stats_args(campus=session_campus)),
+            }
+        )
+
+    max_category_revenue = max(
+        (data["revenue"] for data in totals["by_category"].values()), default=0
+    )
+    categories = []
+    for key, data in totals["by_category"].items():
+        categories.append(
+            {
+                "key": key,
+                "label": ARTICLE_TYPES.get(key, key),
+                "qty": data["qty"],
+                "revenue": data["revenue"],
+                "share": round(data["revenue"] * 100 / totals["revenue"])
+                if totals["revenue"]
+                else 0,
+                "average": round(data["revenue"] / data["qty"]) if data["qty"] else 0,
+                "bar": round(data["revenue"] * 100 / max_category_revenue)
+                if max_category_revenue
+                else 0,
+                "url": url_for("team.statistiques", **stats_args(vue="articles", category=key)),
+            }
+        )
+
+    tab_urls = {key: url_for("team.statistiques", vue=key, **base_args) for key in STATS_VIEWS}
+
+    chart_data = None
+    trend = None
+    events = []
+    comparing = False
+    compare_url = url_for("team.statistiques", vue="vue", **base_args)
+    compare_note = ""
+    if vue == "vue":
+        series = ST.daily_series(filters, period["start"], period["end"])
+        granularity = ST.granularity_for(period["start"], period["end"])
+        bucketed = ST.bucket_series(series, period["start"], period["end"], granularity)
+        comparing = request.args.get("comparer") == "1" and granularity == "jour"
+        compare_args = dict(base_args, vue="vue")
+        if not comparing:
+            compare_args["comparer"] = "1"
+        compare_url = url_for("team.statistiques", **compare_args)
+        previous_series = None
+        if comparing:
+            previous_series = ST.daily_series(
+                context["previous_filters"], previous_start, previous_end
+            )
+            if not any(previous_series["revenue"]):
+                compare_note = "Aucune vente sur la période précédente."
+        events = ST.events_in_period(period["start"], period["end"], filters["campus"])
+        best_revenue = max(bucketed["revenue"], default=0)
+        best_day = None
+        if best_revenue:
+            best_index = bucketed["revenue"].index(best_revenue)
+            best_day = {
+                "label": bucketed["best_labels"][best_index],
+                "revenue": best_revenue,
+            }
+        days = (period["end"] - period["start"]).days + 1
+        buckets = len(bucketed["labels"]) or 1
+        trend = {
+            "average": round(totals["revenue"] / buckets),
+            "average_unit": {
+                "jour": "jour",
+                "semaine": "semaine",
+                "mois": "mois",
+            }[granularity],
+            "best": best_day,
+            "days": days,
+            "granularity": granularity,
+            "granularity_label": {
+                "jour": "Jour par jour, jours sans vente inclus",
+                "semaine": "Semaine par semaine, jours sans vente inclus",
+                "mois": "Mois par mois, jours sans vente inclus",
+            }[granularity],
+            "best_label": {
+                "jour": "meilleur jour",
+                "semaine": "meilleure semaine",
+                "mois": "meilleur mois",
+            }[granularity],
+        }
+        chart_data = {
+            "dates": bucketed["dates"],
+            "labels": bucketed["labels"],
+            "tooltips": bucketed["tooltips"],
+            "granularity": granularity,
+            "revenue": bucketed["revenue"],
+            "qty": bucketed["qty"],
+            "transactions": bucketed["transactions"],
+            "monthly": series["monthly"],
+            "events": []
+            if granularity != "jour"
+            else [
+                {"date": day, "name": event["name"]} for event in events for day in event["dates"]
+            ],
+            "previous": None
+            if previous_series is None
+            else {
+                "dates": previous_series["dates"],
+                "revenue": previous_series["revenue"],
+                "qty": previous_series["qty"],
+                "transactions": previous_series["transactions"],
+            },
+        }
+
+    article_search = request.args.get("aq", "").strip()[:100]
+    article_sort = request.args.get("tri", "volume")
+    if article_sort not in STATS_ARTICLE_SORTS:
+        article_sort = "volume"
+    article_per_page = _stats_int(request.args.get("aper_page"), 25, 10, 100)
+    article_data = None
+    article_link_args = dict(
+        base_args, vue="articles", tri=article_sort, aper_page=article_per_page
+    )
+    if article_search:
+        article_link_args["aq"] = article_search
+    article_sort_urls = {
+        key: url_for("team.statistiques", **dict(article_link_args, tri=key))
+        for key in STATS_ARTICLE_SORTS
     }
-    search = request.args.get("q", "").strip()
-    try:
-        page = max(1, int(request.args.get("page", 1)))
-    except ValueError:
-        page = 1
-    try:
-        per_page = int(request.args.get("per_page", 25))
-    except ValueError:
-        per_page = 25
-    per_page = min(max(per_page, 10), 100)
-    article_search = request.args.get("aq", "").strip()
-    try:
-        article_limit = int(request.args.get("alimit", 10))
-    except ValueError:
-        article_limit = 10
-    article_limit = min(max(article_limit, 10), 500)
-    stats = sales_stats(filters)
-    articles = top_articles_stats(filters, search=article_search)
-    article_total = len(articles)
-    articles = articles[:article_limit]
-    students = students_stats(filters, search=search, page=page, per_page=per_page)
-    students["search"] = search
-    students["per_page"] = per_page
-    students["link_args"] = {k: v for k, v in filters.items() if v}
-    if search:
-        students["link_args"]["q"] = search
-    if per_page != 25:
-        students["link_args"]["per_page"] = str(per_page)
+    article_search_clear_url = url_for(
+        "team.statistiques",
+        **{key: value for key, value in article_link_args.items() if key != "aq"},
+    )
+    if vue == "articles":
+        article_data = ST.articles_stats(
+            filters,
+            search=article_search,
+            sort=article_sort,
+            page=page,
+            per_page=article_per_page,
+        )
+        offset = (article_data["page"] - 1) * article_per_page
+        for index, article in enumerate(article_data["rows"], start=1):
+            article["rank"] = offset + index
+            article["type_label"] = ARTICLE_TYPES.get(article["type"], article["type"])
+            article["share"] = (
+                round(article["revenue"] * 100 / totals["revenue"]) if totals["revenue"] else 0
+            )
+            article["average"] = round(article["revenue"] / article["qty"]) if article["qty"] else 0
+            article["bar"] = (
+                round(article["revenue"] * 100 / article_data["max_revenue"])
+                if article_data["max_revenue"]
+                else 0
+            )
+        article_data["link_args"] = article_link_args
+
+    student_search = request.args.get("q", "").strip()[:100]
+    student_sort = request.args.get("tri_etudiants", "depense")
+    if student_sort not in STATS_STUDENT_SORTS:
+        student_sort = "depense"
+    student_per_page = _stats_int(request.args.get("per_page"), 25, 10, 100)
+    students = None
+    student_link_args = dict(
+        base_args,
+        vue="etudiants",
+        tri_etudiants=student_sort,
+        per_page=student_per_page,
+    )
+    if student_search:
+        student_link_args["q"] = student_search
+    student_sort_urls = {
+        key: url_for("team.statistiques", **dict(student_link_args, tri_etudiants=key))
+        for key in STATS_STUDENT_SORTS
+    }
+    student_search_clear_url = url_for(
+        "team.statistiques",
+        **{key: value for key, value in student_link_args.items() if key != "q"},
+    )
+    if vue == "etudiants":
+        students = ST.students_stats(
+            filters,
+            search=student_search,
+            sort=student_sort,
+            page=page,
+            per_page=student_per_page,
+        )
+        students["search"] = student_search
+        students["per_page"] = student_per_page
+        students["link_args"] = student_link_args
+
+    export_args = dict(base_args, vue=vue)
+    if vue == "articles":
+        if article_search:
+            export_args["aq"] = article_search
+        export_args["tri"] = article_sort
+    elif vue == "etudiants":
+        if student_search:
+            export_args["q"] = student_search
+        export_args["tri_etudiants"] = student_sort
+    export_url = url_for("team.statistiques_export", **export_args)
+    trend_export_url = url_for("team.statistiques_export", vue="serie", **base_args)
+
+    wider_args = {
+        key: value for key, value in base_args.items() if key not in ("date_from", "date_to")
+    }
+    wider_args["preset"] = "12mois"
+    wider_url = url_for("team.statistiques", vue=vue, **wider_args)
+
+    promotions = list(
+        db.session.scalars(
+            select(User.promotion)
+            .where(User.promotion.isnot(None))
+            .distinct()
+            .order_by(User.promotion.desc())
+        ).all()
+    )
+    if filters["promotion"] and int(filters["promotion"]) not in promotions:
+        promotions.insert(0, int(filters["promotion"]))
+
     return render_template(
         "team/statistiques.html",
-        stats=stats,
-        articles=articles,
-        article_search=article_search,
-        article_limit=article_limit,
-        article_total=article_total,
-        students=students,
+        vue=vue,
+        views=STATS_VIEWS,
+        tab_urls=tab_urls,
         filters=filters,
+        base_args=base_args,
+        preset=period["preset"],
+        periods=ST.PERIOD_PRESETS,
+        campus=campus,
+        campus_label="Les deux campus" if campus == "tous" else CAMPUSSES[campus],
+        period_label=ST.format_period(period["start"], period["end"]),
+        period_note=period["note"],
+        period_event=period["event"],
+        updated_at=datetime.now(PARIS_TZ).strftime("%H:%M"),
+        totals=totals,
+        previous_totals=previous_totals,
+        kpis=kpis,
+        categories=categories,
+        chips=chips,
+        filters_count=filters_count,
+        reset_url=reset_url,
+        promotions=promotions,
+        team_filters=STATS_TEAM_FILTERS,
+        event_filters=STATS_EVENT_FILTERS,
+        chart_data=chart_data,
+        trend=trend,
+        events=events,
+        comparing=comparing,
+        compare_url=compare_url,
+        compare_note=compare_note,
+        previous_period_label=context["previous_period_label"],
+        article_data=article_data,
+        article_search=article_search,
+        article_sort=article_sort,
+        article_sort_urls=article_sort_urls,
+        article_link_args=article_link_args,
+        article_search_clear_url=article_search_clear_url,
+        article_per_page=article_per_page,
+        students=students,
+        student_search=student_search,
+        student_sort=student_sort,
+        student_sort_urls=student_sort_urls,
+        student_search_clear_url=student_search_clear_url,
+        export_url=export_url,
+        trend_export_url=trend_export_url,
+        wider_url=wider_url,
+    )
+
+
+@bp.route("/statistiques/export.csv")
+@login_required
+def statistiques_export():
+    context = _stats_request()
+    filters = context["filters"]
+    vue = request.args.get("vue", "vue")
+    if vue not in STATS_VIEWS and vue != "serie":
+        vue = "vue"
+
+    if vue == "serie":
+        period = context["period"]
+        series = ST.daily_series(filters, period["start"], period["end"])
+        granularity = ST.granularity_for(period["start"], period["end"])
+        bucketed = ST.bucket_series(series, period["start"], period["end"], granularity)
+        rows = []
+        for index, start in enumerate(bucketed["starts"]):
+            rows.append(
+                [
+                    start,
+                    bucketed["tooltips"][index],
+                    f"{bucketed['revenue'][index] / 100:.2f}",
+                    bucketed["qty"][index],
+                    bucketed["transactions"][index],
+                ]
+            )
+        return _csv_response(
+            f"statistiques_serie_{filters['campus'] or 'tous'}_"
+            f"{filters['date_from']}_{filters['date_to']}.csv",
+            ["Début", "Période", "Recettes (EUR)", "Articles", "Transactions"],
+            rows,
+        )
+
+    if vue == "articles":
+        article_search = request.args.get("aq", "").strip()[:100]
+        article_sort = request.args.get("tri", "volume")
+        if article_sort not in STATS_ARTICLE_SORTS:
+            article_sort = "volume"
+        total_revenue = ST.category_totals(filters)["grand_total"]["revenue"]
+        data = ST.articles_stats(filters, search=article_search, sort=article_sort, per_page=0)
+        rows = []
+        for rank, article in enumerate(data["rows"], start=1):
+            share = round(article["revenue"] * 100 / total_revenue) if total_revenue else 0
+            average = round(article["revenue"] / article["qty"]) if article["qty"] else 0
+            rows.append(
+                [
+                    rank,
+                    article["name"],
+                    ARTICLE_TYPES.get(article["type"], article["type"]),
+                    article["qty"],
+                    f"{article['revenue'] / 100:.2f}",
+                    share,
+                    f"{average / 100:.2f}",
+                ]
+            )
+        return _csv_response(
+            f"statistiques_articles_{filters['campus'] or 'tous'}_"
+            f"{filters['date_from']}_{filters['date_to']}.csv",
+            [
+                "Rang",
+                "Article",
+                "Catégorie",
+                "Volume",
+                "Recettes (EUR)",
+                "Part des recettes (%)",
+                "Prix moyen (EUR)",
+            ],
+            rows,
+        )
+
+    if vue == "etudiants":
+        student_search = request.args.get("q", "").strip()[:100]
+        student_sort = request.args.get("tri_etudiants", "depense")
+        if student_sort not in STATS_STUDENT_SORTS:
+            student_sort = "depense"
+        data = ST.students_stats(filters, search=student_search, sort=student_sort, per_page=0)
+        rows = [
+            [
+                student["name"],
+                student["promotion"] or "",
+                "équipe" if student["is_team"] else "étudiant",
+                student["nb"],
+                f"{student['articles']:.1f}",
+                f"{student['spent'] / 100:.2f}",
+                f"{student['average'] / 100:.2f}",
+            ]
+            for student in data["rows"]
+        ]
+        return _csv_response(
+            f"statistiques_etudiants_{filters['campus'] or 'tous'}_"
+            f"{filters['date_from']}_{filters['date_to']}.csv",
+            [
+                "Étudiant",
+                "Promotion",
+                "Profil",
+                "Achats",
+                "Articles",
+                "Total dépensé (EUR)",
+                "Panier moyen (EUR)",
+            ],
+            rows,
+        )
+
+    totals = ST.category_totals(filters)
+    grand_total = totals["grand_total"]
+    rows = []
+    for key, category in totals["by_category"].items():
+        share = (
+            round(category["revenue"] * 100 / grand_total["revenue"])
+            if grand_total["revenue"]
+            else 0
+        )
+        average = round(category["revenue"] / category["qty"]) if category["qty"] else 0
+        rows.append(
+            [
+                ARTICLE_TYPES.get(key, key),
+                category["qty"],
+                f"{category['revenue'] / 100:.2f}",
+                share,
+                f"{average / 100:.2f}",
+            ]
+        )
+    rows.append(
+        [
+            "TOTAL",
+            grand_total["qty"],
+            f"{grand_total['revenue'] / 100:.2f}",
+            100 if grand_total["revenue"] else 0,
+            "",
+        ]
+    )
+    return _csv_response(
+        f"statistiques_categories_{filters['campus'] or 'tous'}_"
+        f"{filters['date_from']}_{filters['date_to']}.csv",
+        [
+            "Catégorie",
+            "Volume",
+            "Recettes (EUR)",
+            "Part des recettes (%)",
+            "Prix moyen (EUR)",
+        ],
+        rows,
     )
 
 

@@ -640,3 +640,24 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
 - Les dates sont réglables dans **Module dev → Décor de Noël**, réservé au compte
   `admin` (superadmin). Elles sont annuelles (`MM-JJ`, l'année est ignorée) et
   peuvent chevaucher le Nouvel An ; vider les deux champs désactive le décor.
+
+### 7.8 Statistiques de consommation
+
+- L'onglet **Statistiques** est organisé en trois vues : *Vue d'ensemble*,
+  *Articles* et *Étudiants*. Les filtres (période, campus, catégorie, promotion,
+  équipe, soirées) restent communs aux trois vues et sont conservés dans l'URL.
+- Périodes rapides : 7 jours, 30 jours, mois courant, mois dernier, 6 mois,
+  12 mois, année civile, dernier événement, personnalisé. Le campus de session est
+  sélectionné par défaut ; « Les deux campus » est explicite.
+- Quatre indicateurs (recettes, articles, panier moyen, étudiants uniques) sont
+  comparés à la période précédente de même durée. La courbe des ventes agrège
+  automatiquement par jour (jusqu'à 62 jours), semaine (jusqu'à 240 jours) ou mois
+  au-delà ; les jours sans vente restent à zéro et les soirées sont repérées par
+  une ligne verticale en vue journalière.
+- La répartition par catégorie est un tableau avec barres de proportion, cliquable
+  vers les articles de la catégorie. Sur les périodes de trois mois ou plus, un
+  graphique empilé montre l'évolution du volume par catégorie mois par mois.
+- Les tableaux Articles et Étudiants sont triables, paginés et cherchables. Chaque
+  vue s'exporte en CSV (UTF-8 avec BOM, séparateur `;`), filtres et recherche
+  courants compris ; la vue d'ensemble propose en plus l'export de la série
+  temporelle agrégée (jour, semaine ou mois). Aucun schéma de base n'est nécessaire.

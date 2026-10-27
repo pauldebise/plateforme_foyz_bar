@@ -599,6 +599,15 @@ def create_app():
     def eur_filter(value):
         return euros(value)
 
+    @app.template_filter("num")
+    def num_filter(value):
+        """Entier ou décimal à la française, avec espace fine insécable."""
+        if value is None:
+            return "0"
+        if isinstance(value, float) and not value.is_integer():
+            return f"{value:.1f}".replace(".", ",")
+        return f"{int(value):,}".replace(",", "\u202f")
+
     @app.template_global()
     def static_url(filename):
         """URL d'asset versionnée par la date de modification du fichier.

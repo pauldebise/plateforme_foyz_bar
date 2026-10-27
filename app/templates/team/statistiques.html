@@ -1,207 +1,497 @@
 {% extends "base.html" %}
 {% import "_pagination.html" as pg %}
-{% block title %}Statistiques de consommation{% endblock %}
+{% block title %}Statistiques{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4"><i class="bi bi-bar-chart"></i> Statistiques de consommation</h1>
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-1"><i class="bi bi-bar-chart"></i> Statistiques</h1>
+    <div class="text-muted small">
+      {{ period_label }} · {{ campus_label }} · {{ totals.transactions|num }} transaction{{ 's' if totals.transactions > 1 }}
+      {% if period_event %} · {{ period_event }}{% endif %}
+      <span class="d-none d-sm-inline">· actualisé à {{ updated_at }}</span>
+    </div>
+  </div>
+  <a class="btn btn-outline-primary btn-sm" href="{{ export_url }}">
+    <i class="bi bi-download"></i> Exporter (CSV)
+  </a>
+</div>
 
-<form class="card mb-4">
-  <div class="card-body row g-2 align-items-end">
-    <div class="col-md-2">
-      <label class="form-label small">Du</label>
-      <input class="form-control form-control-sm" type="date" name="date_from" value="{{ filters.date_from }}">
+{% if period_note %}
+<div class="alert alert-light border py-2 small mb-3"><i class="bi bi-info-circle"></i> {{ period_note }}</div>
+{% endif %}
+
+<form class="card stats-filter-card mb-4" method="get" action="{{ url_for('team.statistiques') }}" data-stats-filter>
+  <input type="hidden" name="vue" value="{{ vue }}">
+  {% if vue == 'articles' %}
+  <input type="hidden" name="tri" value="{{ article_sort }}">
+  <input type="hidden" name="aper_page" value="{{ article_per_page }}">
+  {% if article_search %}<input type="hidden" name="aq" value="{{ article_search }}">{% endif %}
+  {% elif vue == 'etudiants' %}
+  <input type="hidden" name="tri_etudiants" value="{{ student_sort }}">
+  <input type="hidden" name="per_page" value="{{ students.per_page }}">
+  {% if student_search %}<input type="hidden" name="q" value="{{ student_search }}">{% endif %}
+  {% endif %}
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-3 col-xl-2">
+        <label class="form-label small" for="stats-preset">Période</label>
+        <select class="form-select form-select-sm" id="stats-preset" name="preset" data-auto-submit>
+          {% for key, label in periods.items() %}
+          <option value="{{ key }}" {% if preset == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 col-xl-2">
+        <label class="form-label small" for="stats-campus">Campus</label>
+        <select class="form-select form-select-sm" id="stats-campus" name="campus" data-auto-submit>
+          {% for key, label in CAMPUSSES.items() %}
+          <option value="{{ key }}" {% if campus == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+          <option value="tous" {% if campus == 'tous' %}selected{% endif %}>Les deux campus</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-auto">
+        <button class="btn btn-outline-secondary btn-sm w-100" type="button" data-bs-toggle="collapse"
+                data-bs-target="#stats-more" aria-expanded="{{ 'true' if filters_count or preset == 'custom' else 'false' }}"
+                aria-controls="stats-more">
+          <i class="bi bi-sliders"></i> Filtres
+          {% if filters_count %}<span class="badge text-bg-primary">{{ filters_count }}</span>{% endif %}
+        </button>
+      </div>
+      <div class="col-6 col-md-auto ms-md-auto">
+        <button class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel"></i> Appliquer</button>
+      </div>
     </div>
-    <div class="col-md-2">
-      <label class="form-label small">Au</label>
-      <input class="form-control form-control-sm" type="date" name="date_to" value="{{ filters.date_to }}">
+
+    <div class="collapse {{ 'show' if filters_count or preset == 'custom' }}" id="stats-more">
+      <div class="row g-2 mt-1">
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label small" for="stats-category">Catégorie</label>
+          <select class="form-select form-select-sm" id="stats-category" name="category" data-auto-submit>
+            <option value="">Toutes</option>
+            {% for key, label in ARTICLE_TYPES.items() %}
+            <option value="{{ key }}" {% if filters.category == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label small" for="stats-promotion">Promotion</label>
+          <select class="form-select form-select-sm" id="stats-promotion" name="promotion" data-auto-submit>
+            <option value="">Toutes</option>
+            {% for promo in promotions %}
+            <option value="{{ promo }}" {% if filters.promotion == promo|string %}selected{% endif %}>{{ promo }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label small" for="stats-team">Acheteur</label>
+          <select class="form-select form-select-sm" id="stats-team" name="team_only" data-auto-submit>
+            {% for key, label in team_filters.items() %}
+            <option value="{{ key }}" {% if filters.team_only == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+          <label class="form-label small" for="stats-events">Soirées</label>
+          <select class="form-select form-select-sm" id="stats-events" name="events" data-auto-submit>
+            {% for key, label in event_filters.items() %}
+            <option value="{{ key }}" {% if filters.events == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 {{ '' if preset == 'custom' else 'd-none' }}" id="stats-custom-dates">
+          <div class="row g-2">
+            <div class="col-6 col-md-3 col-xl-2">
+              <label class="form-label small" for="stats-date-from">Du</label>
+              <input class="form-control form-control-sm" id="stats-date-from" type="date" name="date_from"
+                     value="{{ filters.date_from }}" data-auto-submit>
+            </div>
+            <div class="col-6 col-md-3 col-xl-2">
+              <label class="form-label small" for="stats-date-to">Au</label>
+              <input class="form-control form-control-sm" id="stats-date-to" type="date" name="date_to"
+                     value="{{ filters.date_to }}" data-auto-submit>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="col-md-2">
-      <label class="form-label small">Catégorie</label>
-      <select class="form-select form-select-sm" name="category">
-        <option value="">Toutes</option>
-        {% for key, label in ARTICLE_TYPES.items() %}
-        <option value="{{ key }}" {% if filters.category == key %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
+
+    {% if chips %}
+    <div class="stats-chips mt-3" aria-label="Filtres actifs">
+      {% for chip in chips %}
+      <a class="stats-chip" href="{{ chip.url }}" aria-label="Retirer le filtre {{ chip.label }}">
+        {{ chip.label }} <i class="bi bi-x" aria-hidden="true"></i>
+      </a>
+      {% endfor %}
+      <a class="stats-chip-reset" href="{{ reset_url }}">Réinitialiser</a>
     </div>
-    <div class="col-md-2">
-      <label class="form-label small">Promotion</label>
-      <input class="form-control form-control-sm" name="promotion" value="{{ filters.promotion }}" placeholder="ex : 2027">
-    </div>
-    <div class="col-md-2">
-      <label class="form-label small">Campus</label>
-      <select class="form-select form-select-sm" name="campus">
-        <option value="">Tous</option>
-        {% for key, label in CAMPUSSES.items() %}
-        <option value="{{ key }}" {% if filters.campus == key %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-md-2">
-      <label class="form-label small">Acheteur</label>
-      <select class="form-select form-select-sm" name="team_only">
-        <option value="">Tous</option>
-        <option value="team" {% if filters.team_only == 'team' %}selected{% endif %}>Équipe Foy'z/Bar</option>
-        <option value="non_team" {% if filters.team_only == 'non_team' %}selected{% endif %}>Non-équipe</option>
-      </select>
-    </div>
-    <div class="col-12 d-grid">
-      <button class="btn btn-primary btn-sm"><i class="bi bi-funnel"></i> Appliquer les filtres</button>
-    </div>
+    {% endif %}
   </div>
 </form>
 
-<div class="row g-4 mb-4">
-  <div class="col-md-4">
-    <div class="card stat-card"><div class="card-body">
-      <div class="text-muted small">Volume total vendu</div>
-      <h2>{{ stats.grand_total.qty }}</h2><span class="text-muted small">articles</span>
-    </div></div>
-  </div>
-  <div class="col-md-4">
-    <div class="card stat-card"><div class="card-body">
-      <div class="text-muted small">Chiffre d'affaires (hors consignes)</div>
-      <h2>{{ stats.grand_total.revenue|eur }}</h2>
-    </div></div>
-  </div>
-  <div class="col-md-4">
-    <div class="card stat-card"><div class="card-body">
-      <div class="text-muted small">Catégories actives</div>
-      <h2>{{ stats.by_category|length }}</h2>
-    </div></div>
-  </div>
-</div>
-
-<div class="row g-4">
-  <div class="col-lg-5">
-    <div class="card h-100">
-      <div class="card-header">Ventes par catégorie</div>
+<div class="row g-3 mb-4">
+  {% for kpi in kpis %}
+  <div class="col-6 col-xl-3">
+    <div class="card stats-kpi h-100">
       <div class="card-body">
-        <canvas id="chart-categories" height="260"></canvas>
+        <div class="stats-kpi-label">{{ kpi.label }}</div>
+        <div class="stats-kpi-value">
+          {% if kpi.format == 'eur' %}{{ kpi.value|eur }}{% else %}{{ kpi.value|num }}{% endif %}
+        </div>
+        <div class="stats-kpi-hint">{{ kpi.hint }}</div>
+        <div class="stats-kpi-delta {{ kpi.delta.tone }}">
+          {% if kpi.delta.tone == 'up' %}
+          <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+          {% elif kpi.delta.tone == 'down' %}
+          <i class="bi bi-arrow-down-right" aria-hidden="true"></i>
+          {% endif %}
+          {{ kpi.delta.label }}
+          <span class="stats-kpi-detail">{{ kpi.delta.detail }}</span>
+        </div>
       </div>
     </div>
   </div>
-  <div class="col-lg-7">
-    <div class="card h-100">
-      <div class="card-header">Tendance des ventes</div>
-      <div class="card-body">
-        <canvas id="chart-trend" height="140"></canvas>
+  {% endfor %}
+</div>
+
+<ul class="nav nav-pills stats-tabs mb-3" aria-label="Vues des statistiques">
+  {% for key, info in views.items() %}
+  <li class="nav-item">
+    <a class="nav-link {{ 'active' if vue == key }}" href="{{ tab_urls[key] }}"
+       {% if vue == key %}aria-current="page"{% endif %}>
+      <i class="bi {{ info[1] }}"></i> {{ info[0] }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+{% if vue == 'vue' %}
+  {% if totals.transactions == 0 %}
+  <div class="card">
+    <div class="card-body stats-empty">
+      <i class="bi bi-graph-up"></i>
+      <h2 class="h5 mt-2">Aucune vente sur cette période</h2>
+      <p class="mb-3">Essayez une période plus large ou retirez un filtre.</p>
+      <div class="d-flex gap-2 justify-content-center flex-wrap">
+        <a class="btn btn-primary btn-sm" href="{{ wider_url }}">Voir sur 12 mois</a>
+        {% if chips %}<a class="btn btn-outline-secondary btn-sm" href="{{ reset_url }}">Réinitialiser les filtres</a>{% endif %}
       </div>
     </div>
   </div>
-</div>
-
-<div class="card mt-4">
-  <div class="card-header">Détail par catégorie</div>
-  <div class="table-responsive">
-    <table class="table table-sm mb-0 align-middle">
-      <thead class="table-light"><tr><th>Catégorie</th><th class="text-end">Volume</th><th class="text-end">Recettes</th></tr></thead>
-      <tbody>
-        {% for type, data in stats.by_category.items() %}
-        <tr>
-          <td>{{ ARTICLE_TYPES.get(type, type) }}</td>
-          <td class="text-end">{{ data.qty }}</td>
-          <td class="text-end fw-bold">{{ data.revenue|eur }}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="3" class="text-center text-muted py-3">Aucune vente sur la période sélectionnée.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  {% else %}
+  <div class="card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <span><i class="bi bi-graph-up-arrow"></i> Évolution des ventes</span>
+        <div class="small text-muted fw-normal">{{ trend.granularity_label }}</div>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="btn-group btn-group-sm" role="group" aria-label="Métrique du graphique">
+          <button type="button" class="btn btn-outline-secondary active" data-metric="revenue" aria-pressed="true">€</button>
+          <button type="button" class="btn btn-outline-secondary" data-metric="qty" aria-pressed="false">Articles</button>
+          <button type="button" class="btn btn-outline-secondary" data-metric="transactions" aria-pressed="false">Transactions</button>
+        </div>
+        {% if trend.granularity == 'jour' %}
+        <a class="btn btn-sm {{ 'btn-primary' if comparing else 'btn-outline-secondary' }}" href="{{ compare_url }}"
+           aria-label="{{ 'Masquer la comparaison' if comparing else 'Comparer à la période précédente' }}">
+          <i class="bi bi-arrow-left-right"></i>
+          <span class="d-none d-sm-inline">{{ 'Masquer la comparaison' if comparing else 'Comparer' }}</span>
+        </a>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-secondary" href="{{ trend_export_url }}"
+           title="Exporter la série temporelle (CSV)" aria-label="Exporter la série temporelle (CSV)">
+          <i class="bi bi-download"></i>
+        </a>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="stats-chart">
+        <canvas id="chart-trend" role="img"
+                aria-label="Évolution des ventes entre le {{ period_label }}. Les totaux sont rappelés sous le graphique."></canvas>
+      </div>
+      <div class="stats-trend-summary mt-3">
+        <span><strong>{{ totals.revenue|eur }}</strong> de recettes</span>
+        <span><strong>{{ totals.qty|num }}</strong> articles</span>
+        <span><strong>{{ totals.transactions|num }}</strong> transactions</span>
+        <span>moyenne <strong>{{ trend.average|eur }}</strong>/{{ trend.average_unit }}</span>
+        {% if trend.best %}
+        <span>{{ trend.best_label }} : <strong>{{ trend.best.label }}</strong> ({{ trend.best.revenue|eur }})</span>
+        {% endif %}
+      </div>
+      {% if comparing %}
+      <div class="small text-muted mt-1">
+        Période de comparaison : {{ previous_period_label }}.
+        {% if compare_note %}{{ compare_note }}{% endif %}
+      </div>
+      {% endif %}
+      {% if events %}
+      <div class="small text-muted mt-2">
+        <i class="bi bi-calendar-event"></i> Soirées :
+        {% for event in events[:4] %}{{ event.label }}{% if not loop.last %} · {% endif %}{% endfor %}{% if events|length > 4 %} · +{{ events|length - 4 }}{% endif %}
+      </div>
+      {% endif %}
+    </div>
   </div>
-</div>
 
-<div class="card mt-4">
-  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="bi bi-trophy"></i> Articles les plus vendus</span>
-    <form method="get" action="{{ url_for('team.statistiques') }}" class="d-flex gap-2 align-items-center flex-wrap">
-      {% for k, v in filters.items() if v %}
-      <input type="hidden" name="{{ k }}" value="{{ v }}">
+  <div class="card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <span><i class="bi bi-pie-chart"></i> Répartition par catégorie</span>
+      <span class="small text-muted fw-normal">Cliquez sur une catégorie pour voir ses articles</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0 stats-table">
+        <caption class="visually-hidden">Volume et recettes par catégorie sur la période sélectionnée</caption>
+        <thead class="table-light">
+          <tr>
+            <th scope="col">Catégorie</th>
+            <th scope="col" class="text-end">Volume</th>
+            <th scope="col" class="text-end">Recettes</th>
+            <th scope="col" class="text-end">Part</th>
+            <th scope="col" class="text-end d-none d-md-table-cell">Prix moyen</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for category in categories %}
+          <tr>
+            <td>
+              <a class="fw-semibold text-decoration-none" href="{{ category.url }}">{{ category.label }}</a>
+              <div class="stats-bar" aria-hidden="true"><span style="width: {{ category.bar }}%"></span></div>
+            </td>
+            <td class="text-end">{{ category.qty|num }}</td>
+            <td class="text-end fw-semibold">{{ category.revenue|eur }}</td>
+            <td class="text-end text-muted">{{ category.share }} %</td>
+            <td class="text-end text-muted d-none d-md-table-cell">{{ category.average|eur }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          <tr>
+            <th scope="row">Total</th>
+            <td class="text-end">{{ totals.qty|num }}</td>
+            <td class="text-end fw-semibold">{{ totals.revenue|eur }}</td>
+            <td class="text-end">100 %</td>
+            <td class="text-end d-none d-md-table-cell"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {% if chart_data.monthly and chart_data.monthly.labels|length >= 3 %}
+  <div class="card">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <span><i class="bi bi-layer-group"></i> Modes de consommation par mois</span>
+      <span class="small text-muted fw-normal">Volume vendu par catégorie, mois par mois</span>
+    </div>
+    <div class="card-body">
+      <div class="stats-chart stats-chart-sm">
+        <canvas id="chart-monthly" role="img"
+                aria-label="Volume vendu par catégorie et par mois sur la période sélectionnée."></canvas>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+{% endif %}
+
+{% if vue == 'articles' %}
+<div class="card">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span><i class="bi bi-trophy"></i> Classement des articles</span>
+    <form class="d-flex flex-wrap gap-2 align-items-center" method="get" action="{{ url_for('team.statistiques') }}" data-stats-search>
+      {% for key, value in article_link_args.items() if key not in ('aq', 'page', 'aper_page') %}
+      <input type="hidden" name="{{ key }}" value="{{ value }}">
       {% endfor %}
-      <input class="form-control form-control-sm" type="search" name="aq" value="{{ article_search }}" placeholder="Rechercher un article…" style="max-width: 200px;">
-      <select class="form-select form-select-sm" name="alimit" style="max-width: 120px;">
-        {% for n in (10, 25, 50, 100) %}
-        <option value="{{ n }}" {% if article_limit == n %}selected{% endif %}>Top {{ n }}</option>
+      <input class="form-control form-control-sm stats-search" type="search" name="aq" value="{{ article_search }}"
+             placeholder="Rechercher un article…" aria-label="Rechercher un article">
+      <select class="form-select form-select-sm" name="aper_page" aria-label="Nombre d'articles par page" data-auto-submit style="max-width: 110px;">
+        {% for number in (25, 50, 100) %}
+        <option value="{{ number }}" {% if article_per_page == number %}selected{% endif %}>{{ number }} / page</option>
         {% endfor %}
       </select>
-      <button class="btn btn-sm btn-outline-primary"><i class="bi bi-funnel"></i> Filtrer</button>
+      <button class="btn btn-sm btn-outline-primary" aria-label="Rechercher"><i class="bi bi-search"></i></button>
     </form>
   </div>
+  {% if article_search %}
+  <div class="px-3 pt-2 small text-muted">
+    Recherche : « {{ article_search }} » · <a href="{{ article_search_clear_url }}">effacer</a>
+  </div>
+  {% endif %}
   <div class="table-responsive">
-    <table class="table table-sm mb-0 align-middle">
+    <table class="table table-sm align-middle mb-0 stats-table">
+      <caption class="visually-hidden">Classement des articles vendus sur la période sélectionnée</caption>
       <thead class="table-light">
-        <tr><th>#</th><th>Article</th><th>Catégorie</th><th class="text-end">Volume</th><th class="text-end">Recettes</th></tr>
+        <tr>
+          <th scope="col" class="stats-rank-col">#</th>
+          <th scope="col" aria-sort="{{ 'ascending' if article_sort == 'nom' else 'none' }}">
+            <a class="stats-sort" href="{{ article_sort_urls['nom'] }}">
+              Article
+              {% if article_sort == 'nom' %}<i class="bi bi-sort-alpha-down" aria-hidden="true"></i>{% else %}<i class="bi bi-arrow-down-up" aria-hidden="true"></i>{% endif %}
+            </a>
+          </th>
+          <th scope="col" class="d-none d-md-table-cell">Catégorie</th>
+          <th scope="col" class="text-end" aria-sort="{{ 'descending' if article_sort == 'volume' else 'none' }}">
+            <a class="stats-sort" href="{{ article_sort_urls['volume'] }}">
+              Volume
+              {% if article_sort == 'volume' %}<i class="bi bi-sort-numeric-down" aria-hidden="true"></i>{% else %}<i class="bi bi-arrow-down-up" aria-hidden="true"></i>{% endif %}
+            </a>
+          </th>
+          <th scope="col" class="text-end" aria-sort="{{ 'descending' if article_sort == 'revenu' else 'none' }}">
+            <a class="stats-sort" href="{{ article_sort_urls['revenu'] }}">
+              Recettes
+              {% if article_sort == 'revenu' %}<i class="bi bi-sort-numeric-down" aria-hidden="true"></i>{% else %}<i class="bi bi-arrow-down-up" aria-hidden="true"></i>{% endif %}
+            </a>
+          </th>
+          <th scope="col" class="text-end d-none d-sm-table-cell">Part</th>
+        </tr>
       </thead>
       <tbody>
-        {% for a in articles %}
+        {% for article in article_data.rows %}
         <tr>
-          <td class="text-muted">{{ loop.index }}</td>
-          <td class="fw-semibold">{{ a.name }}</td>
-          <td>{{ ARTICLE_TYPES.get(a.type, a.type) }}</td>
-          <td class="text-end">{{ a.qty }}</td>
-          <td class="text-end fw-bold">{{ a.revenue|eur }}</td>
+          <td><span class="stats-rank {{ 'top-1' if article.rank == 1 }}{{ 'top-2' if article.rank == 2 }}{{ 'top-3' if article.rank == 3 }}">{{ article.rank }}</span></td>
+          <td>
+            <div class="fw-semibold">{{ article.name }}</div>
+            <div class="small text-muted">{{ article.average|eur }} / article</div>
+          </td>
+          <td class="d-none d-md-table-cell">{{ article.type_label }}</td>
+          <td class="text-end">{{ article.qty|num }}</td>
+          <td class="text-end fw-semibold">{{ article.revenue|eur }}</td>
+          <td class="text-end d-none d-sm-table-cell">
+            {{ article.share }} %
+            <div class="stats-bar stats-bar-inline" aria-hidden="true"><span style="width: {{ article.bar }}%"></span></div>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="text-center text-muted py-3">Aucun article vendu sur la période sélectionnée.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <div class="card-footer"><span class="small text-muted">{{ articles|length }} / {{ article_total }} article{{ 's' if article_total > 1 }} affiché{{ 's' if articles|length > 1 }}</span></div>
-</div>
-
-<div class="card mt-4">
-  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="bi bi-person"></i> Consommation par étudiant</span>
-    <form method="get" action="{{ url_for('team.statistiques') }}" class="d-flex gap-2 align-items-center flex-wrap">
-      {% for k, v in students.link_args.items() if k not in ('q', 'per_page') %}
-      <input type="hidden" name="{{ k }}" value="{{ v }}">
-      {% endfor %}
-      <input class="form-control form-control-sm" type="search" name="q" value="{{ students.search }}" placeholder="Rechercher un étudiant…" style="max-width: 200px;">
-      <select class="form-select form-select-sm" name="per_page" style="max-width: 110px;">
-        {% for n in (25, 50, 100) %}
-        <option value="{{ n }}" {% if students.per_page == n %}selected{% endif %}>{{ n }} / page</option>
-        {% endfor %}
-      </select>
-      <button class="btn btn-sm btn-outline-primary"><i class="bi bi-funnel"></i> Filtrer</button>
-    </form>
-  </div>
-  <div class="card-body pb-0">
-    <p class="text-muted small mb-2">Les commandes partagées sont réparties entre les participants · hors consignes</p>
-    {% if students.top %}
-    <canvas id="chart-students" height="{{ 40 + students.top|length * 22 }}"></canvas>
-    {% else %}
-    <p class="text-muted">Aucune consommation sur la période sélectionnée.</p>
-    {% endif %}
-  </div>
-  <div class="table-responsive">
-    <table class="table table-sm mb-0 align-middle">
-      <thead class="table-light">
-        <tr><th>Étudiant</th><th>Promo</th><th>Profil</th><th class="text-end">Achats</th><th class="text-end">Articles</th><th class="text-end">Total dépensé</th></tr>
-      </thead>
-      <tbody>
-        {% for s in students.rows %}
         <tr>
-          <td class="fw-semibold">{{ s.name }}</td>
-          <td>{{ s.promotion if s.promotion else '—' }}</td>
-          <td>{% if s.is_team %}<span class="badge bg-secondary">équipe</span>{% else %}<span class="text-muted">étudiant</span>{% endif %}</td>
-          <td class="text-end">{{ s.nb }}</td>
-          <td class="text-end">{{ s.articles }}</td>
-          <td class="text-end fw-bold">{{ s.spent|eur }}</td>
+          <td colspan="6" class="text-center py-4">
+            <div class="text-muted mb-2">
+              {% if article_search %}Aucun article ne correspond à « {{ article_search }} ».
+              {% else %}Aucun article vendu sur cette période.{% endif %}
+            </div>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ wider_url }}">Voir sur 12 mois</a>
+            {% if chips %}<a class="btn btn-sm btn-outline-secondary" href="{{ reset_url }}">Réinitialiser les filtres</a>{% endif %}
+          </td>
         </tr>
-        {% else %}
-        <tr><td colspan="6" class="text-center text-muted py-3">Aucun consommateur sur la période sélectionnée.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="small text-muted">{{ students.total }} étudiant{{ 's' if students.total > 1 }} · page {{ students.page }} / {{ students.pages }}</span>
+    <span class="small text-muted">{{ article_data.total|num }} article{{ 's' if article_data.total > 1 }} · page {{ article_data.page }} / {{ article_data.pages }}</span>
+    {{ pg.pagination(article_data.page, article_data.pages, 'team.statistiques', article_data.link_args) }}
+  </div>
+</div>
+{% endif %}
+
+{% if vue == 'etudiants' %}
+<div class="card">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span><i class="bi bi-people"></i> Consommation par étudiant</span>
+    <form class="d-flex flex-wrap gap-2 align-items-center" method="get" action="{{ url_for('team.statistiques') }}" data-stats-search>
+      {% for key, value in students.link_args.items() if key not in ('q', 'page', 'per_page') %}
+      <input type="hidden" name="{{ key }}" value="{{ value }}">
+      {% endfor %}
+      <input class="form-control form-control-sm stats-search" type="search" name="q" value="{{ student_search }}"
+             placeholder="Rechercher un étudiant…" aria-label="Rechercher un étudiant">
+      <select class="form-select form-select-sm" name="per_page" aria-label="Nombre d'étudiants par page" data-auto-submit style="max-width: 110px;">
+        {% for number in (25, 50, 100) %}
+        <option value="{{ number }}" {% if students.per_page == number %}selected{% endif %}>{{ number }} / page</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-primary" aria-label="Rechercher"><i class="bi bi-search"></i></button>
+    </form>
+  </div>
+  <div class="card-body pb-0">
+    <p class="text-muted small mb-2">Les commandes partagées sont réparties entre les participants · hors consignes</p>
+    {% if student_search %}
+    <p class="small text-muted mb-2">Recherche : « {{ student_search }} » · <a href="{{ student_search_clear_url }}">effacer</a></p>
+    {% endif %}
+    <div class="stats-trend-summary mb-2">
+      <span><strong>{{ students.total|num }}</strong> étudiant{{ 's' if students.total > 1 }}</span>
+      <span>moyenne <strong>{{ students.average_spent|eur }}</strong></span>
+      <span><strong>{{ students.team_total|num }}</strong> membre{{ 's' if students.team_total > 1 }} d'équipe</span>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0 stats-table">
+      <caption class="visually-hidden">Consommation par étudiant sur la période sélectionnée</caption>
+      <thead class="table-light">
+        <tr>
+          <th scope="col" aria-sort="{{ 'ascending' if student_sort == 'nom' else 'none' }}">
+            <a class="stats-sort" href="{{ student_sort_urls['nom'] }}">
+              Étudiant
+              {% if student_sort == 'nom' %}<i class="bi bi-sort-alpha-down" aria-hidden="true"></i>{% else %}<i class="bi bi-arrow-down-up" aria-hidden="true"></i>{% endif %}
+            </a>
+          </th>
+          <th scope="col" class="d-none d-md-table-cell">Promo</th>
+          <th scope="col" class="d-none d-md-table-cell">Profil</th>
+          <th scope="col" class="text-end d-none d-lg-table-cell" aria-sort="{{ 'descending' if student_sort == 'achats' else 'none' }}">
+            <a class="stats-sort" href="{{ student_sort_urls['achats'] }}">
+              Achats
+              {% if student_sort == 'achats' %}<i class="bi bi-sort-numeric-down" aria-hidden="true"></i>{% else %}<i class="bi bi-arrow-down-up" aria-hidden="true"></i>{% endif %}
+            </a>
+          </th>
+          <th scope="col" class="text-end d-none d-md-table-cell" aria-sort="{{ 'descending' if student_sort == 'articles' else 'none' }}">
+            <a class="stats-sort" href="{{ student_sort_urls['articles'] }}">
+              Articles
+              {% if student_sort == 'articles' %}<i class="bi bi-sort-numeric-down" aria-hidden="true"></i>{% else %}<i class="bi bi-arrow-down-up" aria-hidden="true"></i>{% endif %}
+            </a>
+          </th>
+          <th scope="col" class="text-end" aria-sort="{{ 'descending' if student_sort == 'depense' else 'none' }}">
+            <a class="stats-sort" href="{{ student_sort_urls['depense'] }}">
+              Dépensé
+              {% if student_sort == 'depense' %}<i class="bi bi-sort-numeric-down" aria-hidden="true"></i>{% else %}<i class="bi bi-arrow-down-up" aria-hidden="true"></i>{% endif %}
+            </a>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for student in students.rows %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <span class="stats-initials" aria-hidden="true">{{ student.initials }}</span>
+              <span class="fw-semibold">{{ student.name }}</span>
+            </div>
+          </td>
+          <td class="d-none d-md-table-cell">{{ student.promotion or '—' }}</td>
+          <td class="d-none d-md-table-cell">
+            {% if student.is_team %}<span class="badge bg-secondary">équipe</span>{% else %}<span class="small text-muted">étudiant</span>{% endif %}
+          </td>
+          <td class="text-end d-none d-lg-table-cell">{{ student.nb|num }}</td>
+          <td class="text-end d-none d-md-table-cell">{{ student.articles|num }}</td>
+          <td class="text-end">
+            <div class="fw-semibold">{{ student.spent|eur }}</div>
+            <div class="small text-muted">{{ student.average|eur }} / achat</div>
+            <div class="stats-bar stats-bar-inline" aria-hidden="true"><span style="width: {{ student.bar }}%"></span></div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-4">
+            <div class="text-muted mb-2">
+              {% if student_search %}Aucun étudiant ne correspond à « {{ student_search }} ».
+              {% else %}Aucun consommateur sur cette période.{% endif %}
+            </div>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ wider_url }}">Voir sur 12 mois</a>
+            {% if chips %}<a class="btn btn-sm btn-outline-secondary" href="{{ reset_url }}">Réinitialiser les filtres</a>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="small text-muted">{{ students.total|num }} étudiant{{ 's' if students.total > 1 }} · page {{ students.page }} / {{ students.pages }}</span>
     {{ pg.pagination(students.page, students.pages, 'team.statistiques', students.link_args) }}
   </div>
 </div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
-<script type="application/json" id="stats-data">{{ {'stats': stats, 'labels': ARTICLE_TYPES, 'students': students.top}|tojson }}</script>
+{% if vue == 'vue' %}
+<script type="application/json" id="stats-data">{{ chart_data|tojson }}</script>
 <script src="{{ static_url('vendor/chart/chart.umd.min.js') }}"></script>
+{% endif %}
 <script src="{{ static_url('js/statistiques.js') }}"></script>
 {% endblock %}
