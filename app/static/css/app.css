@@ -5,6 +5,27 @@
 
 body { background: #f4f6f8; }
 
+@media (min-width: 992px) {
+  .payment-layout {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    grid-template-rows: max-content 1fr;
+  }
+  .payment-layout > * { width: auto; }
+  .payment-contributors { grid-area: 1 / 1; }
+  .payment-main {
+    grid-area: 1 / 2 / 3 / 3;
+    display: flex;
+    flex-direction: column-reverse;
+    align-self: start;
+  }
+  .payment-options {
+    grid-area: 2 / 1;
+    align-self: start;
+    margin-top: 0;
+  }
+}
+
 .settings-section + .settings-section { margin-top: 1.75rem; }
 
 .settings-title {

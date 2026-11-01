@@ -93,6 +93,23 @@ def test_a_ux_garde_fous():
     _expect("pointer: coarse" in css and "min-height: 44px" in css, "cibles tactiles de 44 px")
 
 
+def test_payment_mobile_card_order():
+    app = create_app()
+    client = app.test_client()
+    _login(client)
+    payment = client.get("/equipe/paiement").get_data(as_text=True)
+
+    contributors = payment.index('id="contributors-card"')
+    catalog = payment.index('id="catalog-card"')
+    cart = payment.index('id="cart-card"')
+    deposit = payment.index('id="deposit-card"')
+    assert contributors < catalog < cart < deposit
+
+    css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
+    assert "grid-template-columns: 1fr 2fr" in css
+    assert "flex-direction: column-reverse" in css
+
+
 def test_b_notes_conservees():
     app = create_app()
     with app.app_context():

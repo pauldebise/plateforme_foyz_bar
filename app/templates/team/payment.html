@@ -4,9 +4,9 @@
 <div id="payment-config" data-campus="{{ current_campus }}" data-deposit-value="{{ deposit_value }}" data-deposit-enabled="{{ '1' if deposit_enabled else '0' }}" data-overdraft-limit="{{ overdraft_limit }}"></div>
 <script type="application/json" id="catalog-data">{{ catalog|tojson }}</script>
 
-<div class="row g-4">
-  <div class="col-lg-4">
-    <div class="card mb-4" id="contributors-card">
+<div class="row g-4 payment-layout">
+  <div class="col-lg-4 payment-contributors">
+    <div class="card mb-0 mb-lg-4" id="contributors-card">
       <div class="card-header"><i class="bi bi-people"></i> Étudiants (contributeurs)</div>
       <div class="card-body">
         <input id="student-search" class="form-control mb-2" placeholder="Rechercher un étudiant…" autocomplete="off" autofocus>
@@ -15,7 +15,32 @@
         <div class="form-text">La commande est divisée équitablement entre tous les contributeurs.</div>
       </div>
     </div>
+  </div>
 
+  <div class="col-lg-8 payment-main">
+    <div class="card mb-4 mb-lg-0" id="catalog-card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-shop"></i> Catalogue</span>
+        <input id="catalog-search" class="form-control form-control-sm" style="max-width: 240px;" placeholder="Filtrer les articles…">
+      </div>
+      <div class="card-body" id="catalog"></div>
+    </div>
+
+    <div class="card mb-0 mb-lg-4" id="cart-card">
+      <div class="card-header"><i class="bi bi-receipt"></i> Commande en cours</div>
+      <div class="card-body p-0">
+        <p class="text-muted text-center py-3 mb-0" id="cart-empty">Aucun article sélectionné.</p>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>Article</th><th class="text-end">P.U.</th><th class="text-center">Quantité</th><th class="text-end">Total</th><th></th></tr></thead>
+            <tbody id="cart-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4 payment-options">
     {% if not read_only %}
     <div class="card mb-4" id="deposit-card">
       <div class="card-header"><i class="bi bi-cup"></i> Consigne</div>
@@ -95,28 +120,6 @@
     {% endif %}
   </div>
 
-  <div class="col-lg-8">
-    <div class="card mb-4">
-      <div class="card-header"><i class="bi bi-receipt"></i> Commande en cours</div>
-      <div class="card-body p-0">
-        <p class="text-muted text-center py-3 mb-0" id="cart-empty">Aucun article sélectionné.</p>
-        <div class="table-responsive">
-          <table class="table table-sm align-middle mb-0">
-            <thead class="table-light"><tr><th>Article</th><th class="text-end">P.U.</th><th class="text-center">Quantité</th><th class="text-end">Total</th><th></th></tr></thead>
-            <tbody id="cart-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-shop"></i> Catalogue</span>
-        <input id="catalog-search" class="form-control form-control-sm" style="max-width: 240px;" placeholder="Filtrer les articles…">
-      </div>
-      <div class="card-body" id="catalog"></div>
-    </div>
-  </div>
 </div>
 
 {% if not read_only %}
