@@ -103,11 +103,12 @@ def test_payment_mobile_card_order():
     catalog = payment.index('id="catalog-card"')
     cart = payment.index('id="cart-card"')
     deposit = payment.index('id="deposit-card"')
-    assert contributors < catalog < cart < deposit
+    assert contributors < cart < catalog < deposit
 
     css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
     assert "grid-template-columns: 1fr 2fr" in css
-    assert "flex-direction: column-reverse" in css
+    payment_main_css = css.split(".payment-main {", 1)[1].split("}", 1)[0]
+    assert "flex-direction: column;" in payment_main_css
 
 
 def test_b_notes_conservees():
