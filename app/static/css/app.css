@@ -26,10 +26,10 @@ body { background: #f4f6f8; }
     align-self: start;
     margin-top: 0;
   }
-  .payment-options #deposit-card { order: 1; }
+  .payment-options #payment-summary-card { order: 1; }
   .payment-options #direct-card { order: 2; }
-  .payment-options #payment-summary-card { order: 3; }
-  .payment-options #deco-card { order: 4; }
+  .payment-options #deco-card { order: 3; }
+  .payment-options #deposit-card { order: 4; }
   .payment-options #glasses-return-card { order: 5; }
 }
 

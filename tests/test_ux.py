@@ -124,7 +124,7 @@ def test_payment_mobile_card_order():
     payment_main_css = css.split(".payment-main {", 1)[1].split("}", 1)[0]
     assert "flex-direction: column;" in payment_main_css
     for index, card in enumerate(
-        ("deposit-card", "direct-card", "payment-summary-card", "deco-card", "glasses-return-card"),
+        ("payment-summary-card", "direct-card", "deco-card", "deposit-card", "glasses-return-card"),
         1,
     ):
         assert f".payment-options #{card} {{ order: {index}; }}" in css
