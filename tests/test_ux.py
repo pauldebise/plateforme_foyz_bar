@@ -32,7 +32,7 @@ from app.extensions import db  # noqa: E402
 from app.models import Article, AuditLog, Note, Transaction, User  # noqa: E402
 from app.routes import auth as auth_module  # noqa: E402
 from app.services import transactions as T  # noqa: E402
-from app.services.settings import set_setting  # noqa: E402
+from app.services.settings import get_setting, set_setting  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
 STATIC = ROOT / "app" / "static"
@@ -97,18 +97,37 @@ def test_payment_mobile_card_order():
     app = create_app()
     client = app.test_client()
     _login(client)
-    payment = client.get("/equipe/paiement").get_data(as_text=True)
+    with app.app_context():
+        original_photo = get_setting("payment_photo_brest")
+        set_setting("payment_photo_brest", "test-photo.jpg")
+        db.session.commit()
+    try:
+        payment = client.get("/equipe/paiement").get_data(as_text=True)
+    finally:
+        with app.app_context():
+            set_setting("payment_photo_brest", original_photo)
+            db.session.commit()
 
     contributors = payment.index('id="contributors-card"')
     catalog = payment.index('id="catalog-card"')
     cart = payment.index('id="cart-card"')
+    summary = payment.index('id="payment-summary-card"')
+    direct = payment.index('id="direct-card"')
     deposit = payment.index('id="deposit-card"')
-    assert contributors < cart < catalog < deposit
+    glasses_return = payment.index('id="glasses-return-card"')
+    photo = payment.index('id="deco-card"')
+    assert contributors < cart < catalog < summary < direct < deposit < glasses_return < photo
+    assert 'id="direct-switch"' in payment[summary:direct]
 
     css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
     assert "grid-template-columns: 1fr 2fr" in css
     payment_main_css = css.split(".payment-main {", 1)[1].split("}", 1)[0]
     assert "flex-direction: column;" in payment_main_css
+    for index, card in enumerate(
+        ("deposit-card", "direct-card", "payment-summary-card", "deco-card", "glasses-return-card"),
+        1,
+    ):
+        assert f".payment-options #{card} {{ order: {index}; }}" in css
 
 
 def test_b_notes_conservees():

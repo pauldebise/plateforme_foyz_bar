@@ -41,37 +41,7 @@
   </div>
 
   <div class="col-lg-4 payment-options">
-    {% if not read_only %}
-    <div class="card mb-4" id="deposit-card">
-      <div class="card-header"><i class="bi bi-cup"></i> Consigne</div>
-      <div class="card-body">
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="deposit-switch" {% if not deposit_enabled %}disabled{% endif %}>
-          <label class="form-check-label" for="deposit-switch">Activer la consigne ({{ (deposit_value / 100)|round(2) }} € / verre)</label>
-        </div>
-        <div class="input-group input-group-sm mt-2" style="max-width: 180px;">
-          <button class="btn btn-outline-secondary" data-deposit-step="-1">−</button>
-          <input type="number" min="1" value="1" class="form-control text-center" id="deposit-glasses">
-          <button class="btn btn-outline-secondary" data-deposit-step="1">+</button>
-        </div>
-        {% if not deposit_enabled %}<div class="form-text text-danger">La consigne est désactivée dans les paramètres.</div>{% endif %}
-      </div>
-    </div>
-
-    <div class="card mb-4 d-none" id="direct-card">
-      <div class="card-header"><i class="bi bi-coin"></i> Paiement direct (sans compte)</div>
-      <div class="card-body">
-        <label class="form-label small">Moyen de paiement</label>
-        <select id="direct-methods" class="form-select form-select-sm">
-          {% for key, label in PAYMENT_METHODS.items() %}
-          <option value="{{ key }}">{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-    {% endif %}
-
-    <div class="card mb-4">
+    <div class="card mb-4" id="payment-summary-card">
       <div class="card-body">
         {% if not read_only %}
         <div class="form-check form-switch mb-2">
@@ -94,16 +64,36 @@
       </div>
     </div>
 
-    {% if payment_photo %}
-    <div class="card mb-4" id="deco-card">
-      <div class="card-body p-2">
-        <img src="/uploads/{{ payment_photo }}" alt="Photo déco" class="img-fluid rounded">
+    {% if not read_only %}
+    <div class="card mb-4 d-none" id="direct-card">
+      <div class="card-header"><i class="bi bi-coin"></i> Paiement direct (sans compte)</div>
+      <div class="card-body">
+        <label class="form-label small">Moyen de paiement</label>
+        <select id="direct-methods" class="form-select form-select-sm">
+          {% for key, label in PAYMENT_METHODS.items() %}
+          <option value="{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </select>
       </div>
     </div>
-    {% endif %}
 
-    {% if not read_only %}
-    <div class="card mb-4">
+    <div class="card mb-4" id="deposit-card">
+      <div class="card-header"><i class="bi bi-cup"></i> Consigne</div>
+      <div class="card-body">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="deposit-switch" {% if not deposit_enabled %}disabled{% endif %}>
+          <label class="form-check-label" for="deposit-switch">Activer la consigne ({{ (deposit_value / 100)|round(2) }} € / verre)</label>
+        </div>
+        <div class="input-group input-group-sm mt-2" style="max-width: 180px;">
+          <button class="btn btn-outline-secondary" data-deposit-step="-1">−</button>
+          <input type="number" min="1" value="1" class="form-control text-center" id="deposit-glasses">
+          <button class="btn btn-outline-secondary" data-deposit-step="1">+</button>
+        </div>
+        {% if not deposit_enabled %}<div class="form-text text-danger">La consigne est désactivée dans les paramètres.</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="card mb-4" id="glasses-return-card">
       <div class="card-header"><i class="bi bi-arrow-return-left"></i> Retour de consignes</div>
       <div class="card-body">
         <input id="glasses-search" class="form-control mb-2" placeholder="Rechercher l'étudiant…" autocomplete="off">
@@ -115,6 +105,14 @@
             <button class="btn btn-sm btn-primary" id="glasses-return-all">Tout rendre</button>
           </div>
         </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if payment_photo %}
+    <div class="card mb-4" id="deco-card">
+      <div class="card-body p-2">
+        <img src="/uploads/{{ payment_photo }}" alt="Photo déco" class="img-fluid rounded">
       </div>
     </div>
     {% endif %}
