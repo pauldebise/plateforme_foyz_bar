@@ -5,7 +5,7 @@ from datetime import date, datetime, time as dt_time, timedelta
 from sqlalchemy import Float, case, cast, exists, func, literal, select
 
 from app.extensions import db
-from app.models import Contribution, Event, Transaction, TransactionLine, User
+from app.models import Article, Contribution, Event, Transaction, TransactionLine, User
 from app.services.transactions import history_cutoff, ranking_generation
 from app.utils import (
     ARTICLE_TYPES,
@@ -1015,9 +1015,9 @@ def top_article_sales(campus=None, limit=None, days=TOP_ARTICLES_DAYS):
     """Classement des articles par popularité récente, comme le tri des
     étudiants : liste de (article_id, quantité vendue) sur les `days` derniers
     jours, quantité décroissante puis date de la dernière vente décroissante.
-    Les articles sans vente récente n'apparaissent pas. Résultat mis en cache
-    (génération d'encaissement + TTL) : partagé par la caisse, la passerelle et
-    l'onglet Articles de l'administration."""
+    Les articles sans vente récente et les blagues n'apparaissent pas. Résultat
+    mis en cache (génération d'encaissement + TTL) : partagé par la caisse, la
+    passerelle et l'onglet Articles de l'administration."""
     generation = ranking_generation()
     key = (campus, limit, days)
     now = time.monotonic()
@@ -1040,9 +1040,13 @@ def top_article_sales(campus=None, limit=None, days=TOP_ARTICLES_DAYS):
     stmt = (
         select(TransactionLine.article_id, func.sum(TransactionLine.quantity).label("qty"))
         .join(Transaction, TransactionLine.transaction_id == Transaction.id)
+        .join(Article, Article.id == TransactionLine.article_id)
         .where(
             TransactionLine.article_id.isnot(None),
             TransactionLine.transaction_id.in_(recent),
+            # Les blagues ne sont pas des articles tendances, même quand leurs
+            # ventes récentes sont nombreuses (compteurs, articles à 0 €).
+            Article.article_type != BLAGUE_TYPE,
         )
         .group_by(TransactionLine.article_id)
         .order_by(

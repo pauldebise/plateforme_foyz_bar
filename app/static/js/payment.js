@@ -296,8 +296,10 @@ function renderCatalog() {
   if (eventItems.length) els.catalog.appendChild(eventCard(eventItems));
   const taps = tapGroups();
   if (taps.length) els.catalog.appendChild(tapCard(taps));
+  // Les blagues restent dans le catalogue mais ne sont jamais mises en avant,
+  // même si leurs ventes récentes (compteurs, articles à 0 €) les classent.
   const trending = CATALOG
-    .filter((a) => a.rank != null && !a.tap && !a.event)
+    .filter((a) => a.rank != null && a.type !== 'blague' && !a.tap && !a.event)
     .sort(popularitySort)
     .slice(0, 9);
   if (trending.length) {

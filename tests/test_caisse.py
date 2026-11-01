@@ -13,6 +13,7 @@ suite s'exécute sur cette base (le schéma doit être migré au préalable).
 """
 
 import itertools
+import json
 import os
 import re
 import sys
@@ -1120,6 +1121,45 @@ def test_top_article_ids_cache_par_generation():
             after.index(second.id) < after.index(first.id),
             "plus vendu devant (cache invalidé)",
         )
+
+
+def test_tendances_excluent_les_blagues():
+    """Une blague très vendue ne doit pas apparaître dans les articles tendances."""
+    app = create_app()
+    with app.app_context():
+        from app.services import stats as S
+
+        blague = _article(name="Tendance blague test", kind="blague", std=0)
+        normal = _article(name="Tendance normale test", std=100)
+        buyer = _user(balance=100_000)
+        T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": blague.id, "quantity": 50}],
+            contributor_ids=[buyer.id],
+        )
+        T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": normal.id, "quantity": 1}],
+            contributor_ids=[buyer.id],
+        )
+        ranking = S.top_article_ids(campus="brest")
+        _expect(blague.id not in ranking, "blague exclue du classement des tendances")
+        _expect(normal.id in ranking, "article normal toujours classé")
+
+        team = _user(team=True)
+        login_name = team.username
+    client = app.test_client()
+    _login(client, login_name, "secret123")
+    page = client.get("/equipe/paiement").get_data(as_text=True)
+    match = re.search(
+        r'<script type="application/json" id="catalog-data">(.*?)</script>', page, re.S
+    )
+    _expect(match is not None, "catalogue de la caisse présent")
+    catalog = {article["name"]: article for article in json.loads(match.group(1))}
+    _expect("rank" not in catalog["Tendance blague test"], "blague sans rang de tendance")
+    _expect("rank" in catalog["Tendance normale test"], "article normal avec rang de tendance")
 
 
 def main():
