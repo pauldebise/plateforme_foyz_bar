@@ -114,7 +114,9 @@ def _add_transaction(
 def test_a_sql_aggregates_match_reference():
     app = create_app()
     now = to_paris(utcnow()).replace(tzinfo=None)
-    day = now - timedelta(days=2)
+    # Les ventes de référence doivent rester dans le mois courant pour les
+    # assertions de trésorerie, même quand la suite tourne le 1er du mois.
+    day = now.replace(day=1)
 
     with app.app_context():
         art_b = Article(

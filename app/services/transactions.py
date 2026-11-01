@@ -315,15 +315,9 @@ def _resolve_items(
         if team_sale:
             # Caisse équipe : le catalogue standard reste toujours vendable ;
             # les articles d'événement ne le sont que pendant un événement en
-            # cours du campus (même fenêtre que la passerelle) et s'ils ont un
-            # prix affichable.
+            # cours du campus (même fenêtre que la passerelle). Les articles à
+            # 0 € sont acceptés comme les autres.
             if a.event_id is not None and a.event_id not in allowed_event_ids:
-                raise OperationError("invalid", "Article indisponible.")
-            if (
-                a.event_id is not None
-                and a.price_for(campus) <= 0
-                and a.price_for(campus, team=True) <= 0
-            ):
                 raise OperationError("invalid", "Article indisponible.")
         elif a.event_id != event_id:
             # hors d'un événement, seuls les articles standard sont vendables ;

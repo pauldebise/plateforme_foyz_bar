@@ -255,6 +255,47 @@ def test_team_payment_event_articles():
         )
 
 
+def test_team_payment_event_article_gratuit():
+    """Un article d'événement à 0 € est proposé et encaissable en caisse."""
+    mandate_id = _user("Mandat caisse gratuit", team=True)
+    mandate = _login(app.test_client(), _username(mandate_id))
+    student_id = _user("Caisse étudiant gratuit", balance=1000)
+    event = _event("Caisse événement gratuit", starts=-1, ends=4)
+    free_id = _article("Caisse article gratuit", kind="evenement", std=0, event_id=event)
+
+    page = mandate.get("/equipe/paiement").get_data(as_text=True)
+    _expect("Caisse article gratuit" in page, "article d'événement à 0 € affiché")
+    live = mandate.get("/equipe/paiement/catalogue").get_json()
+    listed = {article["id"]: article for article in live["catalog"]}
+    _expect(
+        free_id in listed and listed[free_id]["std"] == 0,
+        "article d'événement à 0 € listé dans le catalogue live",
+    )
+
+    csrf = _csrf(page, "csrf-token")
+    res = mandate.post(
+        "/api/purchase",
+        json={
+            "items": [{"article_id": free_id, "quantity": 1}],
+            "contributors": [student_id],
+        },
+        headers={"X-CSRFToken": csrf},
+    )
+    _expect(
+        res.status_code == 200,
+        f"vente d'un article d'événement à 0 € ({res.status_code}, {res.get_json()})",
+    )
+    payload = res.get_json()
+    _expect(payload["total"] == 0, "total nul accepté")
+    with app.app_context():
+        transaction = db.session.get(Transaction, payload["transaction_id"])
+        _expect(transaction.event_id == event, "transaction rattachée à l'événement")
+        _expect(
+            db.session.get(User, student_id).wallet("brest").balance == 1000,
+            "solde inchangé pour un achat gratuit",
+        )
+
+
 def test_historique_filtre_ventes_evenement():
     mandate_id = _user("Mandat filtre historique", team=True)
     client = _login(app.test_client(), _username(mandate_id))

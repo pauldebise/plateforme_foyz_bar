@@ -735,6 +735,39 @@ def test_achat_total_zero_accepte():
         _expect(direct.total == 0, "vente directe à 0 € acceptée")
 
 
+def test_catalogue_caisse_articles_gratuits():
+    """Les articles actifs à 0 € sont proposés et encaissables depuis la caisse."""
+    app = create_app()
+    with app.app_context():
+        gratuit = _article(name="Article gratuit caisse", std=0)
+        _article(name="Article gratuit inactif", std=0, active=False)
+        _article(name="Article gratuit Paris", std=0, campus="paris")
+        user = _user(team=True, balance=0)
+        login_name, user_id, article_id = user.username, user.id, gratuit.id
+    client = app.test_client()
+    _login(client, login_name, "secret123")
+    page = client.get("/equipe/paiement").get_data(as_text=True)
+    _expect("Article gratuit caisse" in page, "article à 0 € proposé en caisse")
+    _expect("Article gratuit inactif" not in page, "article inactif toujours exclu")
+    _expect("Article gratuit Paris" not in page, "article d'un autre campus toujours exclu")
+
+    csrf = _csrf(page, "csrf-token")
+    res = client.post(
+        "/api/purchase",
+        json={
+            "items": [{"article_id": article_id, "quantity": 1}],
+            "contributors": [user_id],
+        },
+        headers={"X-CSRFToken": csrf},
+    )
+    _expect(
+        res.status_code == 200 and res.get_json()["total"] == 0,
+        f"vente à 0 € depuis la caisse ({res.status_code}, {res.get_json()})",
+    )
+    with app.app_context():
+        _expect(_balance(user_id) == 0, "solde inchangé pour un achat gratuit")
+
+
 def test_encaissement_limite_au_campus_de_l_article():
     """Chaque campus n'encaisse que ses propres articles (catalogues distincts)."""
     app = create_app()

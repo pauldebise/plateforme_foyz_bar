@@ -136,13 +136,8 @@ def _payment_catalog(campus_name):
     articles = db.session.scalars(
         select(Article).where(*conditions).order_by(Article.is_tap.desc(), Article.name)
     ).all()
-    # un article sans prix sur ce campus (ni standard ni équipe) est exclu de
-    # l'encaissement ; il reste listé dans l'onglet admin Articles
-    articles = [
-        a
-        for a in articles
-        if a.is_tap or a.price_for(campus_name) or a.price_for(campus_name, team=True)
-    ]
+    # Les articles à 0 € restent proposés : le moteur accepte une vente à
+    # total nul (article offert, compteur, etc.).
     data = []
     rank_of = {aid: i for i, aid in enumerate(ST.top_article_ids(campus_name))}
     for a in articles:
