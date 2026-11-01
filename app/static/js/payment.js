@@ -4,6 +4,8 @@ let lastArticleId = null;
 let successTimer = null;
 let CATALOG = JSON.parse(document.getElementById('catalog-data').textContent);
 const CONFIG = document.getElementById('payment-config');
+const TEAM_PAYMENT_LAYOUT = document.querySelector('.payment-layout');
+const MOBILE_PAYMENT = window.matchMedia('(max-width: 991.98px)');
 const DEPOSIT_VALUE = parseInt(CONFIG.dataset.depositValue, 10);
 const DEPOSIT_ENABLED = CONFIG.dataset.depositEnabled === '1';
 const CAMPUS = CONFIG.dataset.campus || '';
@@ -145,12 +147,16 @@ function catalogItems() {
   return els.catalog ? Array.from(els.catalog.querySelectorAll('.cat-item')) : [];
 }
 
-function setCatalogActive(i) {
+function isMobileTeamPayment() {
+  return !!TEAM_PAYMENT_LAYOUT && MOBILE_PAYMENT.matches;
+}
+
+function setCatalogActive(i, scroll = true) {
   const items = catalogItems();
   if (!items.length) { catalogActive = -1; return; }
   catalogActive = Math.max(0, Math.min(i, items.length - 1));
   items.forEach((el, idx) => el.classList.toggle('active', idx === catalogActive));
-  items[catalogActive].scrollIntoView({ block: 'nearest' });
+  if (scroll) items[catalogActive].scrollIntoView({ block: 'nearest' });
 }
 
 function clearCatalogActive() {
@@ -222,7 +228,7 @@ function tapRow(group) {
   row.appendChild(sizes);
   row.addEventListener('mouseenter', () => {
     const idx = catalogItems().indexOf(row);
-    if (idx >= 0) setCatalogActive(idx);
+    if (idx >= 0) setCatalogActive(idx, !isMobileTeamPayment());
   });
   return row;
 }
@@ -411,7 +417,7 @@ function catalogRow(a) {
   });
   row.addEventListener('mouseenter', () => {
     const idx = catalogItems().indexOf(row);
-    if (idx >= 0) setCatalogActive(idx);
+    if (idx >= 0) setCatalogActive(idx, !isMobileTeamPayment());
   });
   return row;
 }
@@ -420,13 +426,17 @@ function addToCart(article) {
   cart.set(article.id, (cart.get(article.id) || 0) + 1);
   lastArticleId = article.id;
   renderCart();
-  // Clic souris comme touche Entrée : la recherche est vidée après l'ajout,
-  // pour pouvoir taper directement l'article suivant.
+  // Clear the search after adding an article, without reopening the mobile keyboard.
   if (els.catalogSearch && els.catalogSearch.value) {
     els.catalogSearch.value = '';
     renderCatalog();
   }
-  if (els.catalogSearch) els.catalogSearch.focus({ preventScroll: true });
+  if (els.catalogSearch) {
+    if (isMobileTeamPayment()) {
+      els.catalogSearch.blur();
+      if (!window.visualViewport && els.mobileBar) els.mobileBar.classList.remove('keyboard-hidden');
+    } else els.catalogSearch.focus({ preventScroll: true });
+  }
 }
 
 function renderCart() {
@@ -647,9 +657,6 @@ function showSuccess(total, balances) {
   successTimer = setTimeout(() => els.successModal.hide(), balances && balances.length ? 3000 : 2000);
 }
 
-// Modale découvert : le champ mot de passe prend le focus à l'ouverture et la
-// touche Entrée — clavier physique ou bouton « Go » du clavier mobile —
-// valide la commande via la soumission du formulaire.
 if ($('success-modal')) {
   // Filet : si le focus s'est perdu (fermeture d'une autre fenêtre), il revient
   // dans la recherche d'étudiant.
@@ -661,6 +668,9 @@ if ($('success-modal')) {
 if (els.adminModal) {
   $('admin-modal').addEventListener('shown.bs.modal', () => {
     $('admin-password-input').focus();
+  });
+  $('admin-password-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.preventDefault();
   });
 }
 
@@ -700,7 +710,7 @@ document.querySelectorAll('[data-deposit-step]').forEach((button) => {
 if (els.catalogSearch) {
   els.catalogSearch.addEventListener('input', () => {
     renderCatalog();
-    if (els.catalogSearch.value.trim()) setCatalogActive(0);
+    if (els.catalogSearch.value.trim()) setCatalogActive(0, !isMobileTeamPayment());
   });
 
   els.catalogSearch.addEventListener('keydown', (e) => {
@@ -712,13 +722,10 @@ if (els.catalogSearch) {
       setCatalogActive(catalogActive - 1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const row = catalogItems()[catalogActive];
+      const row = els.catalogSearch.value.trim() ? catalogItems()[catalogActive] : null;
       const a = row ? CATALOG.find((x) => String(x.id) === String(row.dataset.id)) : null;
-      if (a) {
-        addToCart(a);
-      } else if (!els.catalogSearch.value.trim() && payButtons().some((b) => !b.disabled)) {
-        pay();
-      }
+      if (a) addToCart(a);
+      else if (isMobileTeamPayment()) els.catalogSearch.blur();
     } else if (e.key === 'Escape') {
       els.catalogSearch.value = '';
       renderCatalog();
@@ -750,6 +757,82 @@ document.addEventListener('keydown', (e) => {
 });
 
 if (els.mobileBar) document.body.classList.add('has-mobile-pay-bar');
+
+if (TEAM_PAYMENT_LAYOUT && els.mobileBar) {
+  const viewport = window.visualViewport;
+  let fullHeight = Math.max(window.innerHeight, viewport ? viewport.height : 0);
+  let viewportWidth = window.innerWidth;
+  let keyboardSeen = false;
+  let searchPositioned = false;
+
+  function keyboardInput(el) {
+    if (!el || el.disabled || el.readOnly) return false;
+    if (el.tagName === 'TEXTAREA' || el.isContentEditable) return true;
+    return el.tagName === 'INPUT' && !['button', 'checkbox', 'radio', 'submit', 'hidden', 'file'].includes(el.type);
+  }
+
+  function keyboardVisible() {
+    return !!viewport && fullHeight - viewport.height > 120;
+  }
+
+  function positionCatalogSearch() {
+    const offset = viewport ? viewport.offsetTop : 0;
+    const top = els.catalogSearch.getBoundingClientRect().top - offset - 12;
+    window.scrollBy({ top, behavior: 'instant' });
+  }
+
+  function syncKeyboardViewport() {
+    if (!isMobileTeamPayment() || !keyboardInput(document.activeElement)) {
+      if (isMobileTeamPayment() && keyboardSeen && keyboardVisible()) return;
+      els.mobileBar.classList.remove('keyboard-hidden');
+      fullHeight = Math.max(fullHeight, window.innerHeight, viewport ? viewport.height : 0);
+      keyboardSeen = false;
+      searchPositioned = false;
+      return;
+    }
+    if (keyboardVisible()) {
+      keyboardSeen = true;
+      els.mobileBar.classList.add('keyboard-hidden');
+      if (document.activeElement === els.catalogSearch && !searchPositioned) {
+        positionCatalogSearch();
+        searchPositioned = true;
+      }
+    } else if (keyboardSeen) {
+      els.mobileBar.classList.remove('keyboard-hidden');
+    }
+  }
+
+  document.addEventListener('focusin', (e) => {
+    if (!isMobileTeamPayment() || !keyboardInput(e.target)) return;
+    keyboardSeen = keyboardVisible();
+    searchPositioned = false;
+    els.mobileBar.classList.toggle('keyboard-hidden', !viewport || keyboardSeen);
+    if (e.target === els.catalogSearch) {
+      positionCatalogSearch();
+      searchPositioned = keyboardSeen;
+    }
+  });
+  document.addEventListener('focusout', (e) => {
+    if (!keyboardInput(e.target)) return;
+    if (isMobileTeamPayment() && keyboardVisible()) {
+      keyboardSeen = true;
+      return;
+    }
+    els.mobileBar.classList.remove('keyboard-hidden');
+    keyboardSeen = false;
+    searchPositioned = false;
+  });
+  if (viewport) viewport.addEventListener('resize', syncKeyboardViewport);
+  window.addEventListener('resize', () => {
+    if (window.innerWidth !== viewportWidth) {
+      viewportWidth = window.innerWidth;
+      fullHeight = Math.max(window.innerHeight, viewport ? viewport.height : 0);
+      keyboardSeen = false;
+      searchPositioned = false;
+    }
+    syncKeyboardViewport();
+  });
+}
 
 initStudentSearch(els.search, els.results, (r) => {
   if (contributors.find((c) => c.id === r.id)) return;

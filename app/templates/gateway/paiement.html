@@ -100,7 +100,8 @@
       <div class="modal-body">
         <p>Les étudiants suivants sont déjà dans le négatif :</p>
         <p class="fw-bold" id="admin-negative-users"></p>
-        <input type="password" class="form-control" id="admin-password-input" placeholder="Mot de passe administrateur">
+        <input type="password" class="form-control" id="admin-password-input" placeholder="Mot de passe administrateur" aria-describedby="admin-confirm-hint">
+        <div class="form-text" id="admin-confirm-hint">Après la saisie, appuyez sur « Valider la commande ».</div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>

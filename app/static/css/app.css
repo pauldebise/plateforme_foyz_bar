@@ -198,7 +198,12 @@ a, .btn-link { color: var(--primary); }
   border-top: 1px solid #eef0f2;
   box-shadow: 0 -2px 8px rgba(0,0,0,.08);
 }
+.mobile-pay-bar.keyboard-hidden { display: none; }
 body.has-mobile-pay-bar .main-area { padding-bottom: 7.5rem; }
+
+@media (max-width: 991.98px) {
+  .payment-layout #catalog-search { font-size: 1rem; }
+}
 
 .table-sm td, .table-sm th { padding: .35rem .5rem; }
 

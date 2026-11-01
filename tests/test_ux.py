@@ -605,14 +605,15 @@ def test_enchainement_apres_encaissement():
 
 
 def test_i_modale_decouvert():
-    """Modale découvert : mot de passe focalisé à l'ouverture, Entrée valide."""
+    """Modale découvert : focus sur le mot de passe et validation explicite."""
     app = create_app()
     client = app.test_client()
     _login(client)
     page = client.get("/equipe/paiement").get_data(as_text=True)
     _expect('id="admin-form"' in page, "modale découvert dans un formulaire")
     _expect('id="admin-password-input"' in page, "champ mot de passe présent")
-    _expect('type="submit"' in page, "validation par soumission (Entrée, clavier mobile)")
+    _expect('type="submit"' in page, "validation par soumission du formulaire")
+    _expect('id="admin-confirm-hint"' in page, "instruction de validation explicite")
 
     gateway_tpl = (ROOT / "app" / "templates" / "gateway" / "paiement.html").read_text(
         encoding="utf-8"
@@ -623,7 +624,45 @@ def test_i_modale_decouvert():
     payment_js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
     _expect("'shown.bs.modal'" in payment_js, "focus à l'ouverture de la modale")
     _expect("$('admin-password-input').focus()" in payment_js, "autofocus du mot de passe")
-    _expect("$('admin-form').addEventListener('submit'" in payment_js, "Entrée valide la saisie")
+    _expect("$('admin-form').addEventListener('submit'" in payment_js, "validation du formulaire")
+    password_keydown = payment_js[
+        payment_js.index("$('admin-password-input').addEventListener('keydown'") : payment_js.index(
+            "if ($('admin-form'))"
+        )
+    ]
+    _expect("e.key === 'Enter'" in password_keydown, "Entrée détectée sur le mot de passe")
+    _expect("e.preventDefault()" in password_keydown, "Entrée ne soumet pas la commande")
+
+
+def test_mobile_keyboard_payment():
+    """Mobile search remains visible and text-field Enter cannot trigger payment."""
+    js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
+    add = js[js.index("function addToCart(") : js.index("function renderCart()")]
+    _expect("isMobileTeamPayment()" in add and "els.catalogSearch.blur()" in add, "mobile blur")
+    _expect("els.catalogSearch.focus({ preventScroll: true })" in add, "desktop focus preserved")
+    search = js[
+        js.index(
+            "if (els.catalogSearch) {\n  els.catalogSearch.addEventListener('input'"
+        ) : js.index("payButtons().forEach((button)")
+    ]
+    _expect("pay(" not in search, "search Enter never sends a purchase")
+    _expect(
+        "els.catalogSearch.value.trim() ? catalogItems()[catalogActive] : null" in search,
+        "no duplicate on empty Enter",
+    )
+    _expect("window.visualViewport" in js and "keyboard-hidden" in js, "keyboard viewport handling")
+    focusout = js[
+        js.index("document.addEventListener('focusout'") : js.index(
+            "if (viewport) viewport.addEventListener('resize'"
+        )
+    ]
+    _expect(
+        focusout.index("keyboardVisible()") < focusout.index("classList.remove('keyboard-hidden')"),
+        "keep the bar hidden while a touch closes the keyboard",
+    )
+    _expect(".mobile-pay-bar.keyboard-hidden" in css, "keyboard hides the pay bar")
+    _expect(".payment-layout #catalog-search { font-size: 1rem; }" in css, "prevent iOS zoom")
 
 
 def test_j_recherche_articles_videe_a_l_ajout():
