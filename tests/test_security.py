@@ -10,9 +10,12 @@ Couvre (phase 1 du plan d'action) :
   supprimés.
 """
 
+import json
 import os
 import re
+import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -199,6 +202,96 @@ def test_sqlite_foreign_keys_and_history_after_deletion():
             "Compte supprimé" in describe_transaction(orphaned),
             "orphelin hérité affiché sans erreur",
         )
+
+
+def test_run_py_charge_le_dotenv_avant_la_configuration():
+    """`python run.py` doit lire `.env` avant l'évaluation de `app.config`.
+
+    Le lanceur est copié avec le paquet `app` dans un dossier temporaire : le
+    `.env` voisin ne peut donc pas être confondu avec celui du dépôt, et la
+    base SQLite créée reste jetable.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="foyz_run_env_"))
+    shutil.copytree(ROOT / "app", tmp / "app", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy(ROOT / "run.py", tmp / "run.py")
+
+    secret = "e" * 64
+    (tmp / ".env").write_text(
+        f"SECRET_KEY={secret}\n"
+        f"DATABASE_URL=sqlite:///{tmp / 'env.db'}\n"
+        "ADMIN_PASSWORD=mot-de-passe-env\n"
+        f"UPLOAD_DIR={tmp / 'uploads-env'}\n"
+        "HTTPS_ONLY=1\n"
+        "TRUSTED_PROXY=cloudflare\n"
+        "PROXY_FIX_X_FOR=2\n",
+        encoding="utf-8",
+    )
+    (tmp / "check_run.py").write_text(
+        "import json, runpy\n"
+        "module = runpy.run_path('run.py', run_name='check_run')\n"
+        "app = module['app']\n"
+        "values = {\n"
+        "    'SECRET_KEY': app.config['SECRET_KEY'],\n"
+        "    'DATABASE_URL': app.config['SQLALCHEMY_DATABASE_URI'],\n"
+        "    'ADMIN_PASSWORD': app.config['DEFAULT_ADMIN_PASSWORD'],\n"
+        "    'UPLOAD_DIR': str(app.config['UPLOAD_FOLDER']),\n"
+        "    'HTTPS_ONLY': app.config['SESSION_COOKIE_SECURE'],\n"
+        "    'TRUSTED_PROXY': app.config['TRUSTED_PROXY'],\n"
+        "    'PROXY_FIX_X_FOR': app.config['PROXY_FIX_X_FOR'],\n"
+        "}\n"
+        "json.dump(values, open('config.json', 'w'))\n",
+        encoding="utf-8",
+    )
+
+    # Environnement neutre : seules les valeurs du `.env` doivent alimenter la
+    # configuration. La version fautive retomberait sur les valeurs par défaut
+    # (dans le dossier temporaire, jamais dans la base de développement).
+    cleared = {
+        "FLASK_ENV",
+        "SECRET_KEY",
+        "DATABASE_URL",
+        "ADMIN_PASSWORD",
+        "UPLOAD_DIR",
+        "HTTPS_ONLY",
+        "TRUSTED_PROXY",
+        "PROXY_FIX_X_FOR",
+        "APP_VERSION",
+        "BACKUP_DIR",
+        "LOG_LEVEL",
+        "LOG_FORMAT",
+        "LOG_FILE",
+        "PYTHON_DOTENV_DISABLED",
+    }
+    env = {k: v for k, v in os.environ.items() if k not in cleared}
+    env["PYTHONPATH"] = str(tmp)
+    res = subprocess.run(
+        [sys.executable, "check_run.py"],
+        cwd=tmp,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    _expect(res.returncode == 0, f"lanceur exécuté ({res.stderr[-400:]})")
+    values = json.loads((tmp / "config.json").read_text(encoding="utf-8"))
+    _expect(values["SECRET_KEY"] == secret, "SECRET_KEY lue depuis .env")
+    _expect(
+        values["DATABASE_URL"] == f"sqlite:///{tmp / 'env.db'}",
+        f"DATABASE_URL lue depuis .env ({values['DATABASE_URL']})",
+    )
+    _expect(
+        values["ADMIN_PASSWORD"] == "mot-de-passe-env",
+        "ADMIN_PASSWORD lue depuis .env",
+    )
+    _expect(
+        values["UPLOAD_DIR"] == str(tmp / "uploads-env"),
+        f"UPLOAD_DIR lue depuis .env ({values['UPLOAD_DIR']})",
+    )
+    _expect(values["HTTPS_ONLY"] is True, "HTTPS_ONLY lue depuis .env")
+    _expect(values["TRUSTED_PROXY"] == "cloudflare", "TRUSTED_PROXY lue depuis .env")
+    _expect(values["PROXY_FIX_X_FOR"] == 2, "PROXY_FIX_X_FOR lue depuis .env")
+    _expect((tmp / "env.db").exists(), "base du .env utilisée")
+    _expect(not (tmp / "instance" / "foyz.db").exists(), "base par défaut non créée")
 
 
 def test_login_limiter_survives_forged_xff():
