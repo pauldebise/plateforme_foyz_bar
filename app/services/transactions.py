@@ -651,7 +651,7 @@ def return_glasses(*, operator_label, campus, user, count):
         raise OperationError(
             "invalid", f"{user.display_name} n'a que {w.glasses_outstanding} verre(s) consigné(s)."
         )
-    credit = count * S.deposit_value()
+    credit = _returned_deposit_credit(campus, user, count)
     t = Transaction(
         type="consigne",
         campus=campus,
@@ -843,22 +843,43 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     return t
 
 
-def _returned_deposit_count(transaction):
-    """Nombre de verres de cet achat déjà rendus.
+def _deposit_total(transaction):
+    """Montant de consigne effectivement payé lors d'un achat.
 
-    Les retours d'un portefeuille sont affectés aux achats dans l'ordre
-    chronologique (FIFO), sans stockage dédié : la chronologie des transactions
-    suffit. Un achat annulé reste pris en compte pour les retours antérieurs à
-    son annulation, mais n'en reçoit plus ensuite.
+    Les lignes de détail permettent de retrouver la part consigne du total.
+    Les ventes migrées sans détail n'ont pas cette information : on l'estime
+    au tarif courant, sans jamais dépasser le montant payé.
     """
-    if not transaction.deposit_glasses or not transaction.deposit_user_id:
+    if not transaction.deposit_glasses:
         return 0
+    if transaction.lines:
+        article_total = sum(line.line_total for line in transaction.lines)
+        return max(0, transaction.total - article_total)
+    return min(transaction.total, transaction.deposit_glasses * S.deposit_value())
+
+
+def _deposit_refund_share(transaction, returned):
+    """Part de consigne due pour ``returned`` verres de cet achat."""
+    glasses = transaction.deposit_glasses
+    if glasses <= 0:
+        return 0
+    returned = min(max(0, returned), glasses)
+    return _deposit_total(transaction) * returned // glasses
+
+
+def _deposit_ledger(campus, user_id):
+    """Rejoue les achats et retours d'un portefeuille, dans l'ordre FIFO.
+
+    Retourne les achats chronologiques et le nombre de verres encore détenus
+    pour chacun après tous les retours non annulés. Aucun stockage dédié : la
+    chronologie des transactions suffit.
+    """
     purchases = db.session.scalars(
         select(Transaction)
         .where(
             Transaction.type == "achat",
-            Transaction.campus == transaction.campus,
-            Transaction.deposit_user_id == transaction.deposit_user_id,
+            Transaction.campus == campus,
+            Transaction.deposit_user_id == user_id,
             Transaction.deposit_glasses > 0,
         )
         .order_by(Transaction.created_at, Transaction.id)
@@ -867,8 +888,8 @@ def _returned_deposit_count(transaction):
         select(Transaction)
         .where(
             Transaction.type == "consigne",
-            Transaction.campus == transaction.campus,
-            Transaction.deposit_user_id == transaction.deposit_user_id,
+            Transaction.campus == campus,
+            Transaction.deposit_user_id == user_id,
             Transaction.deposit_glasses > 0,
             Transaction.cancelled.is_(False),
         )
@@ -880,7 +901,6 @@ def _returned_deposit_count(transaction):
     events.sort(key=lambda event: (event[0], event[1], event[2]))
 
     outstanding = {}
-    returned = 0
     for created_at, kind, _event_id, item in events:
         if kind == 0:
             outstanding[item.id] = item.deposit_glasses
@@ -900,27 +920,55 @@ def _returned_deposit_count(transaction):
             if not taken:
                 continue
             outstanding[purchase_id] = available - taken
-            if purchase_id == transaction.id:
-                returned += taken
             remaining -= taken
-    return min(returned, transaction.deposit_glasses)
+    return purchases, outstanding
+
+
+def _returned_deposit_count(transaction):
+    """Nombre de verres de cet achat déjà rendus.
+
+    Un achat annulé reste pris en compte pour les retours antérieurs à son
+    annulation, mais n'en reçoit plus ensuite.
+    """
+    if not transaction.deposit_glasses or not transaction.deposit_user_id:
+        return 0
+    _purchases, outstanding = _deposit_ledger(transaction.campus, transaction.deposit_user_id)
+    available = outstanding.get(transaction.id, transaction.deposit_glasses)
+    return min(
+        max(0, transaction.deposit_glasses - available),
+        transaction.deposit_glasses,
+    )
+
+
+def _returned_deposit_credit(campus, user, count):
+    """Crédit d'un retour, au tarif d'origine de chaque verre (FIFO).
+
+    Les verres sans achat source retrouvé (données migrées incomplètes) sont
+    remboursés au tarif courant, pour ne pas bloquer un retour légitime.
+    """
+    purchases, outstanding = _deposit_ledger(campus, user.id)
+    remaining = count
+    credit = 0
+    for purchase in purchases:
+        if remaining <= 0:
+            break
+        available = outstanding.get(purchase.id, 0)
+        if purchase.cancelled or available <= 0:
+            continue
+        taken = min(remaining, available)
+        before = purchase.deposit_glasses - available
+        credit += _deposit_refund_share(purchase, before + taken) - _deposit_refund_share(
+            purchase, before
+        )
+        remaining -= taken
+    if remaining:
+        credit += remaining * S.deposit_value()
+    return credit
 
 
 def _purchase_refund_total(transaction, returned):
     """Montant à recréditer pour un achat, hors consignes déjà rendues."""
-    article_total = sum(line.line_total for line in transaction.lines)
-    if transaction.lines:
-        deposit_total = max(0, transaction.total - article_total)
-    else:
-        # Transaction migrée sans détail : estimer la consigne au tarif courant,
-        # sans jamais dépasser le total effectivement payé.
-        deposit_total = min(
-            transaction.total,
-            transaction.deposit_glasses * S.deposit_value(),
-        )
-    returned = min(max(0, returned), transaction.deposit_glasses)
-    already_credited = deposit_total * returned // transaction.deposit_glasses
-    return max(0, transaction.total - already_credited)
+    return max(0, transaction.total - _deposit_refund_share(transaction, returned))
 
 
 def cancel_transaction(transaction, admin_password, *, verified=False):

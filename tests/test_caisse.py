@@ -332,6 +332,97 @@ def test_consigne_aller_retour():
         db.session.commit()
 
 
+def test_consigne_retour_au_tarif_origine():
+    app = create_app()
+    with app.app_context():
+        article = _article(std=300)
+        set_setting("deposit_value_cents", "100")
+        db.session.commit()
+        try:
+            # Deux verres achetés à 1 €, rendus après passage du tarif à 2 €.
+            user = _user(balance=1000)
+            t = T.create_purchase(
+                operator_label="test",
+                campus="brest",
+                items=[{"article_id": article.id, "quantity": 1}],
+                contributor_ids=[user.id],
+                deposit_glasses=2,
+            )
+            _expect(t.total == 500, f"achat avec deux consignes (obtenu {t.total})")
+            set_setting("deposit_value_cents", "200")
+            db.session.commit()
+            retour = T.return_glasses(operator_label="test", campus="brest", user=user, count=2)
+            _expect(
+                retour.total == 200,
+                f"retour au tarif d'origine (obtenu {retour.total})",
+            )
+            _expect(
+                _balance(user.id) == 700 and _glasses(user.id) == 0,
+                "solde crédité au tarif d'origine, verres rendus",
+            )
+
+            # Deux achats à des tarifs différents : les retours suivent le FIFO.
+            set_setting("deposit_value_cents", "100")
+            db.session.commit()
+            fifo = _user(balance=2000)
+            T.create_purchase(
+                operator_label="test",
+                campus="brest",
+                items=[{"article_id": article.id, "quantity": 1}],
+                contributor_ids=[fifo.id],
+                deposit_glasses=1,
+            )
+            set_setting("deposit_value_cents", "200")
+            db.session.commit()
+            T.create_purchase(
+                operator_label="test",
+                campus="brest",
+                items=[{"article_id": article.id, "quantity": 1}],
+                contributor_ids=[fifo.id],
+                deposit_glasses=1,
+            )
+            set_setting("deposit_value_cents", "300")
+            db.session.commit()
+            premier = T.return_glasses(operator_label="test", campus="brest", user=fifo, count=1)
+            second = T.return_glasses(operator_label="test", campus="brest", user=fifo, count=1)
+            _expect(
+                premier.total == 100 and second.total == 200,
+                f"retours FIFO aux tarifs d'origine (obtenu {premier.total}, {second.total})",
+            )
+            _expect(
+                _balance(fifo.id) == 1400 and _glasses(fifo.id) == 0,
+                f"FIFO : solde et verres cohérents (solde {_balance(fifo.id)})",
+            )
+
+            # Annulation après retour : le verre rendu n'est pas recrédité au
+            # nouveau tarif, le verre restant l'est au tarif de l'achat.
+            set_setting("deposit_value_cents", "100")
+            db.session.commit()
+            annule = _user(balance=2000)
+            achat = T.create_purchase(
+                operator_label="test",
+                campus="brest",
+                items=[{"article_id": article.id, "quantity": 1}],
+                contributor_ids=[annule.id],
+                deposit_glasses=2,
+            )
+            set_setting("deposit_value_cents", "200")
+            db.session.commit()
+            T.return_glasses(operator_label="test", campus="brest", user=annule, count=1)
+            _expect(
+                _balance(annule.id) == 1600 and _glasses(annule.id) == 1,
+                "un verre rendu à l'ancien tarif",
+            )
+            T.cancel_transaction(achat, ADMIN_PASSWORD)
+            _expect(
+                _balance(annule.id) == 2000 and _glasses(annule.id) == 0,
+                f"annulation : article et verre restant (solde {_balance(annule.id)})",
+            )
+        finally:
+            set_setting("deposit_value_cents", "100")
+            db.session.commit()
+
+
 def test_mouvements_rechargement_retrait_transfert():
     app = create_app()
     with app.app_context():
