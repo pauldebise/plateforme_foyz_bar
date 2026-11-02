@@ -138,6 +138,32 @@ def _split_shares(total, n):
     return shares
 
 
+def _refund_shares(contributions, amount):
+    """Répartit un remboursement entre les contributions d'un achat.
+
+    La répartition suit les montants effectivement payés, afin de rester juste
+    sur les transactions migrées ou lorsqu'un ancien contributeur a été
+    supprimé. Le total crédité ne dépasse jamais le montant encore porté par des
+    contributions.
+    """
+    entries = [c for c in contributions if c.user is not None and c.amount < 0]
+    paid = [-c.amount for c in entries]
+    total_paid = sum(paid)
+    if amount <= 0 or total_paid <= 0:
+        return []
+    amount = min(amount, total_paid)
+    shares = [amount * value // total_paid for value in paid]
+    remainder = amount - sum(shares)
+    if remainder:
+        order = sorted(
+            range(len(entries)),
+            key=lambda i: (-(amount * paid[i] % total_paid), i),
+        )
+        for i in order[:remainder]:
+            shares[i] += 1
+    return list(zip(entries, shares, strict=True))
+
+
 def _unique_users(users, message):
     """Déduplique une sélection d'utilisateurs en conservant l'ordre choisi."""
     unique = []
@@ -817,8 +843,92 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     return t
 
 
+def _returned_deposit_count(transaction):
+    """Nombre de verres de cet achat déjà rendus.
+
+    Les retours d'un portefeuille sont affectés aux achats dans l'ordre
+    chronologique (FIFO), sans stockage dédié : la chronologie des transactions
+    suffit. Un achat annulé reste pris en compte pour les retours antérieurs à
+    son annulation, mais n'en reçoit plus ensuite.
+    """
+    if not transaction.deposit_glasses or not transaction.deposit_user_id:
+        return 0
+    purchases = db.session.scalars(
+        select(Transaction)
+        .where(
+            Transaction.type == "achat",
+            Transaction.campus == transaction.campus,
+            Transaction.deposit_user_id == transaction.deposit_user_id,
+            Transaction.deposit_glasses > 0,
+        )
+        .order_by(Transaction.created_at, Transaction.id)
+    ).all()
+    returns = db.session.scalars(
+        select(Transaction)
+        .where(
+            Transaction.type == "consigne",
+            Transaction.campus == transaction.campus,
+            Transaction.deposit_user_id == transaction.deposit_user_id,
+            Transaction.deposit_glasses > 0,
+            Transaction.cancelled.is_(False),
+        )
+        .order_by(Transaction.created_at, Transaction.id)
+    ).all()
+    by_id = {p.id: p for p in purchases}
+    events = [(p.created_at, 0, p.id, p) for p in purchases]
+    events += [(r.created_at, 1, r.id, r) for r in returns]
+    events.sort(key=lambda event: (event[0], event[1], event[2]))
+
+    outstanding = {}
+    returned = 0
+    for created_at, kind, _event_id, item in events:
+        if kind == 0:
+            outstanding[item.id] = item.deposit_glasses
+            continue
+        remaining = item.deposit_glasses
+        for purchase_id, available in list(outstanding.items()):
+            if remaining <= 0:
+                break
+            purchase = by_id[purchase_id]
+            if (
+                purchase.cancelled
+                and purchase.cancelled_at is not None
+                and created_at >= purchase.cancelled_at
+            ):
+                continue
+            taken = min(remaining, available)
+            if not taken:
+                continue
+            outstanding[purchase_id] = available - taken
+            if purchase_id == transaction.id:
+                returned += taken
+            remaining -= taken
+    return min(returned, transaction.deposit_glasses)
+
+
+def _purchase_refund_total(transaction, returned):
+    """Montant à recréditer pour un achat, hors consignes déjà rendues."""
+    article_total = sum(line.line_total for line in transaction.lines)
+    if transaction.lines:
+        deposit_total = max(0, transaction.total - article_total)
+    else:
+        # Transaction migrée sans détail : estimer la consigne au tarif courant,
+        # sans jamais dépasser le total effectivement payé.
+        deposit_total = min(
+            transaction.total,
+            transaction.deposit_glasses * S.deposit_value(),
+        )
+    returned = min(max(0, returned), transaction.deposit_glasses)
+    already_credited = deposit_total * returned // transaction.deposit_glasses
+    return max(0, transaction.total - already_credited)
+
+
 def cancel_transaction(transaction, admin_password, *, verified=False):
     """Annule une transaction et rétablit les soldes et les consignes.
+
+    Pour un achat avec consigne, seuls les verres encore détenus sont
+    remboursés et retirés du portefeuille. La part des verres déjà rendus a
+    déjà été créditée par le retour : elle n'est jamais remboursée deux fois.
 
     `verified=True` : l'appelant a déjà vérifié le mot de passe administrateur
     (annulation en lot, une seule vérification journalisée).
@@ -835,15 +945,20 @@ def cancel_transaction(transaction, admin_password, *, verified=False):
     # deux mandats) lisent toutes deux « non annulée » avant les verrous ; la
     # seconde attend ici que la première valide, ne trouve plus aucune ligne et
     # s'arrête avant de toucher un portefeuille (pas de double remboursement).
+    claimed_at = utcnow()
     claimed = db.session.execute(
         update(Transaction)
         .where(Transaction.id == transaction.id, Transaction.cancelled.is_(False))
-        .values(cancelled=True, cancelled_at=utcnow())
+        .values(cancelled=True, cancelled_at=claimed_at)
         .execution_options(synchronize_session=False)
     ).rowcount
     if claimed != 1:
         db.session.rollback()
         raise OperationError("invalid", "Transaction déjà annulée.")
+    # Garder l'objet chargé cohérent : le FIFO des consignes s'appuie sur la
+    # date d'annulation pour ignorer les retours postérieurs.
+    transaction.cancelled = True
+    transaction.cancelled_at = claimed_at
 
     # Portefeuilles concernés : regroupés par campus puis verrouillés par id
     # croissant (même ordre que les autres opérations, pas d'interblocage).
@@ -871,20 +986,31 @@ def cancel_transaction(transaction, admin_password, *, verified=False):
         return w
 
     if transaction.type in ("achat", "consigne"):
-        for c in transaction.contributions:
-            if c.user is not None:
+        if transaction.type == "achat":
+            returned = _returned_deposit_count(transaction)
+            unreturned = max(0, transaction.deposit_glasses - returned)
+            refund_total = (
+                _purchase_refund_total(transaction, returned)
+                if transaction.deposit_glasses
+                else transaction.total
+            )
+            deposit_wallet = None
+            if transaction.deposit_user_id and unreturned:
+                u = db.session.get(User, transaction.deposit_user_id)
+                if u is not None:
+                    deposit_wallet = w_of(transaction.campus, u.id)
+                    if deposit_wallet.glasses_outstanding < unreturned:
+                        db.session.rollback()
+                        raise OperationError(
+                            "invalid",
+                            "Annulation impossible : les consignes de ce compte sont incohérentes.",
+                        )
+            for c, share in _refund_shares(transaction.contributions, refund_total):
                 w = w_of(c.campus, c.user_id)
-                w.balance = Wallet.balance + (-c.amount if c.amount < 0 else 0)
-        if (
-            transaction.type == "achat"
-            and transaction.deposit_user_id
-            and transaction.deposit_glasses
-        ):
-            u = db.session.get(User, transaction.deposit_user_id)
-            if u:
-                w = w_of(transaction.campus, u.id)
-                w.glasses_outstanding = max(0, w.glasses_outstanding - transaction.deposit_glasses)
-        if transaction.type == "consigne":
+                w.balance = Wallet.balance + share
+            if deposit_wallet is not None:
+                deposit_wallet.glasses_outstanding = Wallet.glasses_outstanding - unreturned
+        else:
             for c in transaction.contributions:
                 if c.user is not None:
                     w = w_of(c.campus, c.user_id)

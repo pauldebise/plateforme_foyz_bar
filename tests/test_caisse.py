@@ -510,6 +510,106 @@ def test_transfert_multi_repartition_exacte():
         _expect(all(_balance(u.id) == 0 for u in recipients), "receveurs restaurés")
 
 
+def test_annulation_achat_apres_retour_consigne():
+    app = create_app()
+    with app.app_context():
+        article = _article(std=300)
+
+        # Verre déjà rendu : l'annulation ne rembourse que l'article.
+        user = _user(balance=1000)
+        t = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article.id, "quantity": 1}],
+            contributor_ids=[user.id],
+            deposit_glasses=1,
+        )
+        T.return_glasses(operator_label="test", campus="brest", user=user, count=1)
+        _expect(_balance(user.id) == 700 and _glasses(user.id) == 0, "achat puis retour")
+        T.cancel_transaction(t, ADMIN_PASSWORD)
+        _expect(
+            _balance(user.id) == 1000,
+            f"consigne déjà rendue non remboursée (solde {_balance(user.id)})",
+        )
+        _expect(_glasses(user.id) == 0, "aucun verre retiré une seconde fois")
+
+        # Deux verres, un seul rendu : rembourser l'article et le verre restant.
+        partial = _user(balance=1000)
+        t = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article.id, "quantity": 1}],
+            contributor_ids=[partial.id],
+            deposit_glasses=2,
+        )
+        T.return_glasses(operator_label="test", campus="brest", user=partial, count=1)
+        _expect(
+            _balance(partial.id) == 600 and _glasses(partial.id) == 1,
+            "achat à deux consignes, une seule rendue",
+        )
+        T.cancel_transaction(t, ADMIN_PASSWORD)
+        _expect(
+            _balance(partial.id) == 1000,
+            f"article et consigne restante remboursés (solde {_balance(partial.id)})",
+        )
+        _expect(_glasses(partial.id) == 0, "le verre restant est retiré")
+
+        # FIFO : le retour porte sur le premier achat, pas sur le second.
+        fifo = _user(balance=2000)
+        first = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article.id, "quantity": 1}],
+            contributor_ids=[fifo.id],
+            deposit_glasses=1,
+        )
+        second = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article.id, "quantity": 1}],
+            contributor_ids=[fifo.id],
+            deposit_glasses=1,
+        )
+        T.return_glasses(operator_label="test", campus="brest", user=fifo, count=1)
+        _expect(
+            _balance(fifo.id) == 1300 and _glasses(fifo.id) == 1,
+            "un retour pour deux achats consignés",
+        )
+        T.cancel_transaction(second, ADMIN_PASSWORD)
+        _expect(
+            _balance(fifo.id) == 1700 and _glasses(fifo.id) == 0,
+            "le second achat non rendu est intégralement remboursé",
+        )
+        T.cancel_transaction(first, ADMIN_PASSWORD)
+        _expect(
+            _balance(fifo.id) == 2000 and _glasses(fifo.id) == 0,
+            "le premier achat déjà rendu ne rembourse que l'article",
+        )
+
+        # Un retour annulé ne compte plus : la consigne redevient remboursable.
+        rollback_user = _user(balance=1000)
+        t = T.create_purchase(
+            operator_label="test",
+            campus="brest",
+            items=[{"article_id": article.id, "quantity": 1}],
+            contributor_ids=[rollback_user.id],
+            deposit_glasses=1,
+        )
+        retour = T.return_glasses(
+            operator_label="test", campus="brest", user=rollback_user, count=1
+        )
+        T.cancel_transaction(retour, ADMIN_PASSWORD)
+        _expect(
+            _balance(rollback_user.id) == 600 and _glasses(rollback_user.id) == 1,
+            "retour annulé : la consigne est de nouveau due",
+        )
+        T.cancel_transaction(t, ADMIN_PASSWORD)
+        _expect(
+            _balance(rollback_user.id) == 1000 and _glasses(rollback_user.id) == 0,
+            "achat annulé après annulation du retour : remboursement complet",
+        )
+
+
 def test_annulation_achat_consigne_et_direct():
     app = create_app()
     with app.app_context():
