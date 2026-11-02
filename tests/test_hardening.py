@@ -76,7 +76,17 @@ def _client(app):
 def test_cents_and_helpers_are_bounded():
     _expect(cents("12,50") == 1250, "cents accepte la virgule")
     _expect(cents(None) == 0, "cents(None) -> 0")
-    for bad in ("inf", "-inf", "nan", "abc", "1e400", "9999999999"):
+    for bad in (
+        "inf",
+        "-inf",
+        "nan",
+        "abc",
+        "1e400",
+        "9999999999",
+        "1e308",
+        "9e307",
+        "-1e308",
+    ):
         try:
             cents(bad)
         except ValueError:

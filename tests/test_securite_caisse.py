@@ -584,6 +584,8 @@ def test_b5_parseur_montants():
     _expect(parse_amount(20) == 2000, "entier JSON accepté")
     for bad in (
         "1e999",
+        "1e308",
+        "9e307",
         "nan",
         "inf",
         "-1",
@@ -625,15 +627,19 @@ def test_b5_formulaires_equipe_sans_500():
     _expect(res.status_code == 200 and balance(student_id) == 29, "rechargement 0,29 -> 29")
     res = post("/equipe/rechargement", user_id=student_id, amount="4,35", method="cb")
     _expect(balance(student_id) == 29 + 435, "rechargement 4,35 -> 435 (pas 434)")
-    for bad in ("1e999", "nan", "-5", "0", "5001", "abc"):
+    for bad in ("1e999", "1e308", "9e307", "nan", "-5", "0", "5001", "abc"):
         res = post("/equipe/rechargement", user_id=student_id, amount=bad, method="cb")
         _expect(res.status_code == 200, f"rechargement {bad!r} : 200 avec message, pas de 500")
     _expect(balance(student_id) == 29 + 435, "aucune saisie invalide n'a crédité le compte")
 
     res = post("/equipe/retrait", user_id=student_id, amount="0,29")
     _expect(res.status_code == 200 and balance(student_id) == 435, "retrait 0,29 -> 29")
-    res = post("/equipe/retrait", user_id=student_id, amount="1e999")
-    _expect(res.status_code == 200 and balance(student_id) == 435, "retrait 1e999 : refus")
+    for bad in ("1e999", "1e308", "9e307"):
+        res = post("/equipe/retrait", user_id=student_id, amount=bad)
+        _expect(
+            res.status_code == 200 and balance(student_id) == 435,
+            f"retrait {bad!r} : refus",
+        )
 
     res = post("/equipe/transfert", from_id=other_id, to_id=student_id, amount="0,29")
     _expect(balance(student_id) == 435 + 29 and balance(other_id) == 1000 - 29, "transfert 0,29")
@@ -647,8 +653,12 @@ def test_b5_formulaires_equipe_sans_500():
         balance(student_id) == 464 + 100 and balance(other_id) == 971 - 100,
         "transfert avec un compte à la fois donneur et receveur",
     )
-    res = post("/equipe/transfert", from_id=other_id, to_id=student_id, amount="1e999")
-    _expect(res.status_code == 200 and balance(other_id) == 971 - 100, "transfert 1e999 : refus")
+    for bad in ("1e999", "1e308", "9e307"):
+        res = post("/equipe/transfert", from_id=other_id, to_id=student_id, amount=bad)
+        _expect(
+            res.status_code == 200 and balance(other_id) == 971 - 100,
+            f"transfert {bad!r} : refus",
+        )
 
 
 def test_b5_api_types_json_valides():

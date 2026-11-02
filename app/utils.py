@@ -96,7 +96,13 @@ def cents(value):
         raise ValueError("montant invalide") from exc
     if not math.isfinite(number):
         raise ValueError("montant invalide")
-    amount = round(number * 100)
+    # Vérifier aussi le résultat de la multiplication : une valeur finie comme
+    # 1e308 devient `inf` une fois convertie en centimes, et `round(inf)` lève
+    # OverflowError au lieu de la ValueError attendue par les appelants.
+    scaled = number * 100
+    if not math.isfinite(scaled):
+        raise ValueError("montant hors limites")
+    amount = round(scaled)
     if abs(amount) > MAX_CENTS:
         raise ValueError("montant hors limites")
     return amount
