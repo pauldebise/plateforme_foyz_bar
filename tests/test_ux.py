@@ -288,6 +288,19 @@ def test_c_annulation_multiple():
     token = _login(client)
     annuler = "/equipe/historique/annuler"
 
+    # Le formulaire rendu doit envoyer les cases cochées : sans attribut
+    # `name`, le navigateur les omet et la sélection est perdue.
+    page = client.get("/equipe/historique").get_data(as_text=True)
+    _expect('id="bulk-cancel-form"' in page, "formulaire d'annulation multiple présent")
+    checkboxes = re.findall(r'<input[^>]*class="[^"]*row-check[^"]*"[^>]*>', page)
+    selected = []
+    for tid in ids:
+        tag = next((c for c in checkboxes if f'value="{tid}"' in c), None)
+        _expect(tag is not None, f"case à cocher rendue pour #{tid}")
+        _expect('name="transaction_ids"' in tag, f"case #{tid} envoyée avec le formulaire")
+        _expect('form="bulk-cancel-form"' in tag, f"case #{tid} rattachée au formulaire")
+        selected.append(str(tid))
+
     # Mauvais mot de passe : rien n'est annulé.
     client.post(
         annuler,
@@ -307,7 +320,7 @@ def test_c_annulation_multiple():
     client.post(
         annuler,
         data={
-            "transaction_ids": [str(ids[0]), str(ids[1])],
+            "transaction_ids": selected[:2],
             "admin_password": ADMIN_PASSWORD,
             "_csrf": token,
         },

@@ -70,7 +70,7 @@
         <tr class="{{ 'cancelled-row' if t.cancelled }}">
           <td>
             {% if not t.cancelled and t.campus == own_campus %}
-            <input class="form-check-input row-check" type="checkbox" value="{{ t.id }}"
+            <input class="form-check-input row-check" type="checkbox" name="transaction_ids" value="{{ t.id }}"
                    form="bulk-cancel-form" aria-label="Sélectionner la transaction {{ t.id }}">
             {% endif %}
           </td>
