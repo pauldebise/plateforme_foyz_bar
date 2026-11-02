@@ -34,7 +34,7 @@ from sqlalchemy import select  # noqa: E402
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import Article, Event, Keg, Tap, User  # noqa: E402
-from datetime import timedelta  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
 
 from app.utils import utcnow  # noqa: E402
 
@@ -302,6 +302,80 @@ def test_affectation_fut_sans_prix_campus_refusee():
         ).all()
         _expect(len(articles) == 3, f"trois articles actifs (obtenu {len(articles)})")
         _expect(all(article.price_std > 0 for article in articles), "prix non nuls")
+
+
+def test_evenement_dates_invalides_refusees():
+    """L'édition refuse une fin antérieure au début et les années extrêmes."""
+    s = _setup()
+    client, csrf = s["client"], s["csrf"]
+    with s["app"].app_context():
+        event = Event(
+            name="Fuzz Dates",
+            campus="brest",
+            starts_at=datetime(2025, 1, 1, 18, 0),
+            ends_at=datetime(2025, 1, 2, 2, 0),
+            token="fuzz-dates",
+        )
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
+        previous = (event.starts_at, event.ends_at)
+
+    def edit(starts, ends):
+        return client.post(
+            f"/admin/evenements/{event_id}",
+            data={
+                "action": "edit",
+                "name": "Fuzz Dates",
+                "starts_at": starts,
+                "ends_at": ends,
+                "_csrf": csrf,
+            },
+        )
+
+    def current_schedule():
+        with s["app"].app_context():
+            db.session.expire_all()
+            current = db.session.get(Event, event_id)
+            return current.starts_at, current.ends_at
+
+    invalid = (
+        ("2026-12-02T02:00", "2026-12-01T20:00"),
+        ("0001-01-01T00:00", "0001-01-02T00:00"),
+        ("9999-12-30T00:00", "9999-12-31T23:59"),
+    )
+    for starts, ends in invalid:
+        res = edit(starts, ends)
+        _expect(res.status_code == 302, f"édition refusée sans erreur 5xx ({starts} → {ends})")
+        _expect(
+            current_schedule() == previous,
+            f"horaires inchangés après refus ({starts} → {ends})",
+        )
+
+    for index, (starts, ends) in enumerate(invalid, start=1):
+        name = f"Fuzz Événement refusé {index}"
+        res = client.post(
+            "/admin/evenements/nouveau",
+            data={"name": name, "starts_at": starts, "ends_at": ends, "_csrf": csrf},
+        )
+        _expect(res.status_code == 302, f"création refusée sans erreur 5xx ({starts} → {ends})")
+        with s["app"].app_context():
+            _expect(
+                db.session.scalars(select(Event).where(Event.name == name)).first() is None,
+                f"aucun événement créé ({starts} → {ends})",
+            )
+
+    for starts, ends in (
+        ("2000-01-01T00:00", "2000-01-01T01:00"),
+        ("2100-12-31T22:00", "2100-12-31T23:59"),
+    ):
+        res = edit(starts, ends)
+        _expect(res.status_code == 302, f"bornes acceptées ({starts} → {ends})")
+        _expect(
+            current_schedule() != previous,
+            f"horaires aux bornes enregistrés ({starts} → {ends})",
+        )
+        previous = current_schedule()
 
 
 def test_tireuses_futs_evenements():

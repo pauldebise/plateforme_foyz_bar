@@ -1328,20 +1328,50 @@ def evenements():
     )
 
 
+EVENT_SCHEDULE_FORMAT = "%Y-%m-%dT%H:%M"
+# Plage de saisie des événements, en heure de Paris. Les années extrêmes
+# (0001, 9999) débordaient lors de la conversion en UTC ou des calculs de
+# fenêtre de la passerelle.
+EVENT_MIN_DATE = datetime(2000, 1, 1)
+EVENT_MAX_DATE = datetime(2100, 12, 31, 23, 59)
+EVENT_DATE_RANGE = "du 01/01/2000 au 31/12/2100"
+
+
+def _event_schedule_from_form():
+    """Horaires de l'événement saisis en heure de Paris -> couple UTC.
+
+    Lève ValueError avec un message utilisateur si le format, la plage ou
+    l'ordre des dates est invalide. L'ordre est vérifié avant toute
+    affectation pour ne pas enregistrer partiellement une édition.
+    """
+    try:
+        starts = datetime.strptime(request.form.get("starts_at", ""), EVENT_SCHEDULE_FORMAT)
+        ends = datetime.strptime(request.form.get("ends_at", ""), EVENT_SCHEDULE_FORMAT)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Horaires invalides.") from exc
+    if not (
+        EVENT_MIN_DATE <= starts <= EVENT_MAX_DATE and EVENT_MIN_DATE <= ends <= EVENT_MAX_DATE
+    ):
+        raise ValueError(f"Horaires hors plage autorisée ({EVENT_DATE_RANGE}).")
+    if ends <= starts:
+        raise ValueError("La fin doit être après le début.")
+    try:
+        return paris_to_utc(starts), paris_to_utc(ends)
+    except OverflowError as exc:
+        raise ValueError(f"Horaires hors plage autorisée ({EVENT_DATE_RANGE}).") from exc
+
+
 @bp.route("/evenements/nouveau", methods=["POST"])
 @login_required
 def evenement_nouveau():
     name = (request.form.get("name") or "").strip()
     campus = own_campus()
     try:
-        starts = paris_to_utc(
-            datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M")
-        )
-        ends = paris_to_utc(datetime.strptime(request.form.get("ends_at", ""), "%Y-%m-%dT%H:%M"))
-    except ValueError:
-        flash("Horaires invalides.", "danger")
+        starts, ends = _event_schedule_from_form()
+    except ValueError as exc:
+        flash(str(exc), "danger")
         return redirect(url_for("admin.evenements"))
-    if not name or ends <= starts:
+    if not name:
         flash("Nom et horaires cohérents requis.", "danger")
         return redirect(url_for("admin.evenements"))
     poster = save_upload(request.files.get("poster"), allowed=(".jpg", ".jpeg", ".png", ".webp"))
@@ -1376,17 +1406,14 @@ def evenement(event_id):
             abort(403)
         action = request.form.get("action", "edit")
         if action == "edit":
-            ev.name = clamp_text((request.form.get("name") or ev.name).strip(), 160)
             try:
-                ev.starts_at = paris_to_utc(
-                    datetime.strptime(request.form.get("starts_at", ""), "%Y-%m-%dT%H:%M")
-                )
-                ev.ends_at = paris_to_utc(
-                    datetime.strptime(request.form.get("ends_at", ""), "%Y-%m-%dT%H:%M")
-                )
-            except ValueError:
-                flash("Horaires invalides.", "danger")
+                starts, ends = _event_schedule_from_form()
+            except ValueError as exc:
+                flash(str(exc), "danger")
                 return redirect(url_for("admin.evenement", event_id=ev.id))
+            ev.name = clamp_text((request.form.get("name") or ev.name).strip(), 160)
+            ev.starts_at = starts
+            ev.ends_at = ends
             poster = save_upload(
                 request.files.get("poster"), allowed=(".jpg", ".jpeg", ".png", ".webp")
             )
