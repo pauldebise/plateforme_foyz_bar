@@ -169,6 +169,7 @@ def glasses_return():
             campus=campus,
             user=u,
             count=payload.get("count", 0),
+            idempotency_key=payload.get("idempotency_key"),
         )
         return jsonify(ok=True, total=t.total)
     except T.OperationError as e:

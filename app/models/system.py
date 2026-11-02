@@ -58,6 +58,11 @@ class AuditLog(db.Model):
     target: db.Mapped[str] = db.mapped_column(db.String(160), default="")
     details: db.Mapped[str] = db.mapped_column(db.Text, default="")
     ip: db.Mapped[str] = db.mapped_column(db.String(64), default="")
+    # Jeton d'idempotence des opérations qui n'ont pas de transaction
+    # monétaire (arbitrage de solde) : un rejeu retrouve l'entrée existante.
+    idempotency_key: db.Mapped[str | None] = db.mapped_column(
+        db.String(64), nullable=True, unique=True, index=True
+    )
     created_at: db.Mapped[datetime] = db.mapped_column(db.DateTime, default=utcnow, index=True)
 
 

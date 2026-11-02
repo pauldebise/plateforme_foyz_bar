@@ -36,6 +36,7 @@ from app.utils import (
     clamp_text,
     is_safe_target,
     login_required,
+    new_token,
     paris_day_bound,
     parse_amount,
     utcnow,
@@ -196,6 +197,7 @@ def rechargement():
                 user=user,
                 amount_cents=amount,
                 payment_method=request.form.get("method", ""),
+                idempotency_key=request.form.get("idempotency_key"),
             )
             flash(
                 f"Rechargement de {t.total / 100:.2f} € pour {user.display_name} enregistré.",
@@ -204,7 +206,12 @@ def rechargement():
             return redirect(url_for("team.rechargement"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Montant invalide."), "danger")
-    return render_template("team/operation.html", op="rechargement", read_only=not can_write())
+    return render_template(
+        "team/operation.html",
+        op="rechargement",
+        read_only=not can_write(),
+        idempotency_key=new_token(),
+    )
 
 
 @bp.route("/retrait", methods=["GET", "POST"])
@@ -217,7 +224,11 @@ def retrait():
             user = _get_user_or_fail(request.form.get("user_id"))
             amount = parse_amount(request.form.get("amount", ""))
             T.create_withdrawal(
-                operator_label=operator(), campus=campus(), user=user, amount_cents=amount
+                operator_label=operator(),
+                campus=campus(),
+                user=user,
+                amount_cents=amount,
+                idempotency_key=request.form.get("idempotency_key"),
             )
             flash(
                 f"Retrait de {amount / 100:.2f} € pour {user.display_name} enregistré.", "success"
@@ -225,7 +236,12 @@ def retrait():
             return redirect(url_for("team.retrait"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Montant invalide."), "danger")
-    return render_template("team/operation.html", op="retrait", read_only=not can_write())
+    return render_template(
+        "team/operation.html",
+        op="retrait",
+        read_only=not can_write(),
+        idempotency_key=new_token(),
+    )
 
 
 @bp.route("/transfert", methods=["GET", "POST"])
@@ -244,6 +260,7 @@ def transfert():
                 from_users=srcs,
                 to_users=dsts,
                 amount_cents=amount,
+                idempotency_key=request.form.get("idempotency_key"),
             )
             flash(
                 f"Transfert de {amount / 100:.2f} € : {len(srcs)} donneur(s) → "
@@ -253,7 +270,12 @@ def transfert():
             return redirect(url_for("team.transfert"))
         except (T.OperationError, ValueError) as e:
             flash(getattr(e, "message", "Transfert invalide."), "danger")
-    return render_template("team/operation.html", op="transfert", read_only=not can_write())
+    return render_template(
+        "team/operation.html",
+        op="transfert",
+        read_only=not can_write(),
+        idempotency_key=new_token(),
+    )
 
 
 def _next_target():
@@ -281,7 +303,13 @@ def consigne_return():
     try:
         user = _get_user_or_fail(request.form.get("user_id"))
         count = int(request.form.get("count", "1"))
-        t = T.return_glasses(operator_label=operator(), campus=campus(), user=user, count=count)
+        t = T.return_glasses(
+            operator_label=operator(),
+            campus=campus(),
+            user=user,
+            count=count,
+            idempotency_key=request.form.get("idempotency_key"),
+        )
         flash(
             f"{t.deposit_glasses} verre(s) rendu(s) : {t.total / 100:.2f} € crédités à {user.display_name}.",
             "success",

@@ -12,6 +12,7 @@
   <div class="card-body">
     <form method="post">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
 
       {% if op == 'transfert' %}
       <div class="mb-3">

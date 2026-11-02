@@ -104,6 +104,7 @@
         <form method="post" action="{{ url_for('admin.compte_arbitrer_solde', user_id=u.id) }}"
               data-confirm="Confirmer l'arbitrage du solde ? Cette opération est journalisée.">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
           <div class="row g-2 mb-3">
             <div class="col-6">
               <label class="form-label" for="arbitrage-amount">Montant (€)</label>

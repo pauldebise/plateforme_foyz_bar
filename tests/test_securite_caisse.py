@@ -661,6 +661,100 @@ def test_b5_formulaires_equipe_sans_500():
         )
 
 
+def test_b5_idempotence_operations_argent():
+    """Un rejeu du même formulaire ne double aucun mouvement monétaire."""
+    app = create_app()
+    client, _ = _team_client(app)
+    with app.app_context():
+        student = _user(balance=0)
+        other = _user(balance=1000)
+        student_id, other_id = student.id, other.id
+
+    def form_tokens(path):
+        html = client.get(path).get_data(as_text=True)
+        match = re.search(r'name="idempotency_key" value="([^"]+)"', html)
+        _expect(match is not None, f"jeton d'idempotence présent sur {path}")
+        return _csrf_form(html), match.group(1)
+
+    def balance(uid):
+        with app.app_context():
+            db.session.expire_all()
+            return db.session.get(User, uid).wallet("brest").balance
+
+    def transaction_count(key):
+        with app.app_context():
+            return db.session.scalar(
+                select(func.count(Transaction.id)).where(Transaction.idempotency_key == key)
+            )
+
+    # Rechargement : deux envois du même formulaire.
+    csrf, key = form_tokens("/equipe/rechargement")
+    data = {
+        "_csrf": csrf,
+        "idempotency_key": key,
+        "user_id": student_id,
+        "amount": "5,00",
+        "method": "cb",
+    }
+    for _ in range(2):
+        res = client.post("/equipe/rechargement", data=data)
+        _expect(res.status_code == 302, "rechargement rejoué sans erreur")
+    _expect(balance(student_id) == 500, f"un seul crédit (obtenu {balance(student_id)})")
+    _expect(transaction_count(key) == 1, "une seule transaction de rechargement")
+
+    # Retrait : même jeton, un seul débit.
+    csrf, key = form_tokens("/equipe/retrait")
+    data = {
+        "_csrf": csrf,
+        "idempotency_key": key,
+        "user_id": student_id,
+        "amount": "1,00",
+    }
+    for _ in range(2):
+        res = client.post("/equipe/retrait", data=data)
+        _expect(res.status_code == 302, "retrait rejoué sans erreur")
+    _expect(balance(student_id) == 400, f"un seul débit (obtenu {balance(student_id)})")
+    _expect(transaction_count(key) == 1, "une seule transaction de retrait")
+
+    # Transfert : même jeton, un seul mouvement entre les deux comptes.
+    csrf, key = form_tokens("/equipe/transfert")
+    data = {
+        "_csrf": csrf,
+        "idempotency_key": key,
+        "from_id": student_id,
+        "to_id": other_id,
+        "amount": "1,00",
+    }
+    for _ in range(2):
+        res = client.post("/equipe/transfert", data=data)
+        _expect(res.status_code == 302, "transfert rejoué sans erreur")
+    _expect(
+        balance(student_id) == 300 and balance(other_id) == 1100,
+        f"un seul transfert ({balance(student_id)}, {balance(other_id)})",
+    )
+    _expect(transaction_count(key) == 1, "une seule transaction de transfert")
+
+    # Retour de consigne par l'API : le rejeu ne rend qu'un verre.
+    with app.app_context():
+        db.session.get(User, student_id).wallet("brest").glasses_outstanding = 1
+        db.session.commit()
+    csrf = _csrf_meta(client.get("/equipe/paiement").get_data(as_text=True))
+    payload = {"user_id": student_id, "count": 1, "idempotency_key": "secu-consigne-idem"}
+    first = client.post("/api/glasses/return", json=payload, headers={"X-CSRFToken": csrf})
+    second = client.post("/api/glasses/return", json=payload, headers={"X-CSRFToken": csrf})
+    _expect(
+        first.status_code == 200 and second.status_code == 200,
+        f"retour rejoué accepté ({first.status_code}, {second.status_code})",
+    )
+    total = first.get_json()["total"]
+    _expect(second.get_json()["total"] == total, "le rejeu renvoie le même remboursement")
+    _expect(balance(student_id) == 300 + total, f"un seul remboursement ({balance(student_id)})")
+    with app.app_context():
+        wallet = db.session.get(User, student_id).wallet("brest")
+        _expect(wallet.glasses_outstanding == 0, "un seul verre rendu")
+        _expect(transaction_count(payload["idempotency_key"]) == 1, "une seule consigne")
+
+
 def test_b5_api_types_json_valides():
     app = create_app()
     client, csrf = _team_client(app)

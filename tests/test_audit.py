@@ -282,14 +282,18 @@ def test_arbitrage_solde_mandat_et_audit():
     fiche = client.get(f"/admin/comptes/{target_id}").get_data(as_text=True)
     _expect("Arbitrer le solde" in fiche, "formulaire d'arbitrage visible pour un mandat")
     _expect('name="direction"' in fiche and 'name="amount"' in fiche, "champs d'arbitrage présents")
-
-    token = _csrf(client, f"/admin/comptes/{target_id}")
+    token_match = re.search(r'name="_csrf" value="([^"]+)"', fiche)
+    key_match = re.search(r'name="idempotency_key" value="([^"]+)"', fiche)
+    _expect(token_match is not None, "jeton CSRF du formulaire d'arbitrage")
+    _expect(key_match is not None, "jeton d'idempotence du formulaire d'arbitrage")
+    token, idempotency_key = token_match.group(1), key_match.group(1)
 
     # Mauvais mot de passe : aucun mouvement.
     res = client.post(
         f"/admin/comptes/{target_id}/arbitrer-solde",
         data={
             "_csrf": token,
+            "idempotency_key": idempotency_key,
             "amount": "2.50",
             "direction": "credit",
             "admin_password": "mauvais",
@@ -302,21 +306,22 @@ def test_arbitrage_solde_mandat_et_audit():
             "solde intact après refus du mot de passe",
         )
 
-    # Augmentation.
-    token = _csrf(client, f"/admin/comptes/{target_id}")
-    res = client.post(
-        f"/admin/comptes/{target_id}/arbitrer-solde",
-        data={
-            "_csrf": token,
-            "amount": "12,50",
-            "direction": "credit",
-            "admin_password": ADMIN_PASSWORD,
-        },
-    )
+    # Augmentation, puis rejeu exact du même formulaire : le second envoi ne
+    # doit ni recréditer le compte ni créer une seconde entrée d'audit.
+    data = {
+        "_csrf": token,
+        "idempotency_key": idempotency_key,
+        "amount": "12,50",
+        "direction": "credit",
+        "admin_password": ADMIN_PASSWORD,
+    }
+    res = client.post(f"/admin/comptes/{target_id}/arbitrer-solde", data=data)
     _expect(res.status_code == 302, "arbitrage créditeur accepté")
+    res = client.post(f"/admin/comptes/{target_id}/arbitrer-solde", data=data)
+    _expect(res.status_code == 302, "rejeu de l'arbitrage accepté sans erreur")
     with app.app_context():
         target = db.session.get(User, target_id)
-        _expect(target.wallet("brest").balance == 2250, "solde Brest augmenté")
+        _expect(target.wallet("brest").balance == 2250, "solde Brest augmenté une seule fois")
         _expect(target.wallet("paris").balance == 4200, "solde Paris inchangé")
         logged = (
             db.session.query(AuditLog)
@@ -330,13 +335,23 @@ def test_arbitrage_solde_mandat_et_audit():
             "Brest : +12,50 € (solde 10,00 € -> 22,50 €)" in logged.details,
             f"mouvement décrit ({logged.details})",
         )
+        _expect(
+            db.session.query(AuditLog).filter(AuditLog.idempotency_key == idempotency_key).count()
+            == 1,
+            "une seule entrée pour le jeton d'idempotence",
+        )
 
-    # Diminution.
+    # Diminution, avec le nouveau jeton de la fiche rechargée.
+    fiche = client.get(f"/admin/comptes/{target_id}").get_data(as_text=True)
     token = _csrf(client, f"/admin/comptes/{target_id}")
+    key_match = re.search(r'name="idempotency_key" value="([^"]+)"', fiche)
+    _expect(key_match is not None, "nouveau jeton d'idempotence après rechargement")
+    _expect(key_match.group(1) != idempotency_key, "jeton renouvelé pour une nouvelle opération")
     res = client.post(
         f"/admin/comptes/{target_id}/arbitrer-solde",
         data={
             "_csrf": token,
+            "idempotency_key": key_match.group(1),
             "amount": "2,50",
             "direction": "debit",
             "admin_password": ADMIN_PASSWORD,

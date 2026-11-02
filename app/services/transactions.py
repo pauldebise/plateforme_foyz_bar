@@ -125,6 +125,39 @@ def _existing_by_key(idempotency_key):
     ).first()
 
 
+def validated_idempotency_key(value):
+    """Jeton d'idempotence facultatif : None si absent, sinon chaîne bornée.
+
+    Un jeton vide équivaut à une absence. Toute autre valeur non textuelle ou
+    trop longue est un refus métier (400), jamais une erreur serveur.
+    """
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or len(value) > MAX_IDEMPOTENCY_KEY_LENGTH:
+        raise OperationError("invalid", "Clé d'idempotence invalide.")
+    return value
+
+
+def _add_transaction_once(t, idempotency_key):
+    """Ajoute la transaction et réserve son jeton d'idempotence.
+
+    Retourne la transaction déjà enregistrée si le jeton a été utilisé par un
+    rejeu concurrent, sinon None après un flush réussi.
+    """
+    db.session.add(t)
+    try:
+        db.session.flush()
+    except IntegrityError:
+        # Course entre deux rejeux du même jeton : on renvoie la transaction
+        # gagnante plutôt que de propager l'erreur d'unicité.
+        db.session.rollback()
+        existing = _existing_by_key(idempotency_key)
+        if existing is not None:
+            return existing
+        raise
+    return None
+
+
 def _split_shares(total, n):
     """Répartit ``total`` (centimes) en ``n`` parts entières.
 
@@ -394,10 +427,7 @@ def create_purchase(
     Un panier dont le total est nul (article offert) est encaissé et enregistré
     comme une vente à 0 €.
     """
-    if idempotency_key is not None and (
-        not isinstance(idempotency_key, str) or len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH
-    ):
-        raise OperationError("invalid", "Clé d'idempotence invalide.")
+    idempotency_key = validated_idempotency_key(idempotency_key)
     # Rejeu d'un encaissement déjà traité : on renvoie la transaction existante
     # plutôt que d'en créer une seconde (double soumission, retentative réseau).
     existing = _existing_by_key(idempotency_key)
@@ -549,19 +579,11 @@ def create_purchase(
         event_id=event_id,
         deposit_glasses=glasses,
         deposit_user_id=primary.id if primary and glasses else None,
-        idempotency_key=idempotency_key or None,
+        idempotency_key=idempotency_key,
     )
-    db.session.add(t)
-    try:
-        db.session.flush()
-    except IntegrityError:
-        # Rejeu concurrent du même jeton : la transaction gagnante a été
-        # insérée (le flush attend sa validation), on la renvoie telle quelle.
-        db.session.rollback()
-        existing = _existing_by_key(idempotency_key)
-        if existing is not None:
-            return existing
-        raise
+    existing = _add_transaction_once(t, idempotency_key)
+    if existing is not None:
+        return existing
     for c in cart:
         db.session.add(
             TransactionLine(
@@ -643,7 +665,11 @@ def balances_after(transaction):
     ]
 
 
-def return_glasses(*, operator_label, campus, user, count):
+def return_glasses(*, operator_label, campus, user, count, idempotency_key=None):
+    idempotency_key = validated_idempotency_key(idempotency_key)
+    existing = _existing_by_key(idempotency_key)
+    if existing is not None:
+        return existing
     count = _int_or_invalid(count or 0, "Nombre de verres invalide.")
     if count <= 0 or count > MAX_GLASSES:
         raise OperationError("invalid", "Nombre de verres invalide.")
@@ -683,9 +709,11 @@ def return_glasses(*, operator_label, campus, user, count):
         deposit_glasses=count,
         deposit_user_id=user.id,
         note=f"Retour de {count} verre(s) consigné(s)",
+        idempotency_key=idempotency_key,
     )
-    db.session.add(t)
-    db.session.flush()
+    existing = _add_transaction_once(t, idempotency_key)
+    if existing is not None:
+        return existing
     w.glasses_outstanding = Wallet.glasses_outstanding - count
     for user_id, credit in credits.items():
         wallets[user_id].balance = Wallet.balance + credit
@@ -710,7 +738,13 @@ def return_glasses(*, operator_label, campus, user, count):
     return t
 
 
-def create_reload(*, operator_label, campus, user, amount_cents, payment_method):
+def create_reload(
+    *, operator_label, campus, user, amount_cents, payment_method, idempotency_key=None
+):
+    idempotency_key = validated_idempotency_key(idempotency_key)
+    existing = _existing_by_key(idempotency_key)
+    if existing is not None:
+        return existing
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
     _check_operation_amount(amount)
     if payment_method not in PAYMENT_METHODS:
@@ -722,9 +756,11 @@ def create_reload(*, operator_label, campus, user, amount_cents, payment_method)
         total=amount,
         operator_label=clamp_text(operator_label or "", 255),
         payment_method=payment_method,
+        idempotency_key=idempotency_key,
     )
-    db.session.add(t)
-    db.session.flush()
+    existing = _add_transaction_once(t, idempotency_key)
+    if existing is not None:
+        return existing
     w.balance = Wallet.balance + amount
     db.session.flush()
     db.session.add(
@@ -740,7 +776,11 @@ def create_reload(*, operator_label, campus, user, amount_cents, payment_method)
     return t
 
 
-def create_withdrawal(*, operator_label, campus, user, amount_cents):
+def create_withdrawal(*, operator_label, campus, user, amount_cents, idempotency_key=None):
+    idempotency_key = validated_idempotency_key(idempotency_key)
+    existing = _existing_by_key(idempotency_key)
+    if existing is not None:
+        return existing
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
     _check_operation_amount(amount)
     w = _lock_wallets(campus, [user])[user.id]
@@ -751,9 +791,11 @@ def create_withdrawal(*, operator_label, campus, user, amount_cents):
         campus=campus,
         total=amount,
         operator_label=clamp_text(operator_label or "", 255),
+        idempotency_key=idempotency_key,
     )
-    db.session.add(t)
-    db.session.flush()
+    existing = _add_transaction_once(t, idempotency_key)
+    if existing is not None:
+        return existing
     w.balance = Wallet.balance - amount
     db.session.flush()
     if w.balance < 0:
@@ -772,7 +814,9 @@ def create_withdrawal(*, operator_label, campus, user, amount_cents):
     return t
 
 
-def create_transfer(*, operator_label, campus, from_users, to_users, amount_cents):
+def create_transfer(
+    *, operator_label, campus, from_users, to_users, amount_cents, idempotency_key=None
+):
     """Transfert de N donneurs vers M receveurs pour un montant total fixé.
 
     Le montant est réparti en centimes entiers, sans jamais diviser un centime :
@@ -784,6 +828,10 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
     personne qui a avancé un achat groupé et se rembourse, sa propre part de
     donneur venant alors en déduction de ce qu'elle reçoit.
     """
+    idempotency_key = validated_idempotency_key(idempotency_key)
+    existing = _existing_by_key(idempotency_key)
+    if existing is not None:
+        return existing
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
     _check_operation_amount(amount)
     donors = _unique_users(from_users, "Sélectionnez au moins un donneur.")
@@ -825,9 +873,11 @@ def create_transfer(*, operator_label, campus, from_users, to_users, amount_cent
         # Conservés pour l'affichage/l'historique quand le transfert est simple.
         from_user_id=donors[0].id if len(donors) == 1 else None,
         to_user_id=recipients[0].id if len(recipients) == 1 else None,
+        idempotency_key=idempotency_key,
     )
-    db.session.add(t)
-    db.session.flush()
+    existing = _add_transaction_once(t, idempotency_key)
+    if existing is not None:
+        return existing
 
     for uid, delta in deltas.items():
         if delta:

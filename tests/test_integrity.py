@@ -460,6 +460,27 @@ def test_schema_upgrade_adds_idempotency_key():
         )
 
 
+def test_schema_upgrade_adds_audit_idempotency_key():
+    if not IS_SQLITE:
+        print("  (ignoré : évolution de schéma SQLite)")
+        return
+    from app import ensure_schema_upgrades
+
+    app = create_app()
+    with app.app_context():
+        with db.engine.begin() as conn:
+            conn.execute(text("DROP INDEX IF EXISTS ix_audit_logs_idempotency_key"))
+            conn.execute(text("ALTER TABLE audit_logs DROP COLUMN idempotency_key"))
+        ensure_schema_upgrades()
+        columns = {c["name"] for c in sqla_inspect(db.engine).get_columns("audit_logs")}
+        _expect("idempotency_key" in columns, "colonne d'idempotence d'audit rétablie")
+        indexes = {ix["name"] for ix in sqla_inspect(db.engine).get_indexes("audit_logs")}
+        _expect(
+            "ix_audit_logs_idempotency_key" in indexes,
+            "index unique d'idempotence d'audit rétabli",
+        )
+
+
 def test_schema_upgrade_drops_keg_remaining():
     if not IS_SQLITE:
         print("  (ignoré : évolution de schéma SQLite)")

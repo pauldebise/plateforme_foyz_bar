@@ -167,6 +167,17 @@ def ensure_schema_upgrades():
                     "ON transactions (idempotency_key)"
                 )
             )
+    if "audit_logs" in table_columns and "idempotency_key" not in table_columns["audit_logs"]:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE audit_logs ADD COLUMN idempotency_key VARCHAR(64)"))
+    if "audit_logs" in table_columns:
+        with db.engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS ix_audit_logs_idempotency_key "
+                    "ON audit_logs (idempotency_key)"
+                )
+            )
     if "users" in table_columns:
         cols = table_columns["users"]
         with db.engine.begin() as conn:

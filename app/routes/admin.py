@@ -20,6 +20,7 @@ from flask import (
     url_for,
 )
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
 from werkzeug.utils import secure_filename
 
@@ -45,6 +46,7 @@ from app.services import audit as A
 from app.services import catalog as C
 from app.services import christmas
 from app.services import settings as S
+from app.services import transactions as T
 from app.services.event_recap import build_recap, export_rows as event_recap_export_rows
 from app.services.names import plain_details, plain_names
 from app.services.stats import TOP_ARTICLES_DAYS, top_article_sales
@@ -534,6 +536,7 @@ def compte(user_id):
         u=u,
         warnings=_compte_warnings(u),
         blacklists=_blacklists_view(u),
+        idempotency_key=new_token(),
     )
 
 
@@ -554,6 +557,19 @@ def compte_arbitrer_solde(user_id):
     # Le compte d'administration global n'a pas de solde à arbitrer.
     if u.is_super_admin:
         abort(403)
+
+    try:
+        idempotency_key = T.validated_idempotency_key(request.form.get("idempotency_key"))
+    except T.OperationError:
+        flash("Jeton d'idempotence invalide.", "danger")
+        return redirect(url_for("admin.compte", user_id=u.id))
+    if idempotency_key is not None:
+        existing = db.session.scalars(
+            select(AuditLog).where(AuditLog.idempotency_key == idempotency_key)
+        ).first()
+        if existing is not None:
+            flash("Arbitrage déjà enregistré : aucun nouveau mouvement.", "success")
+            return redirect(url_for("admin.compte", user_id=u.id))
 
     direction = request.form.get("direction", "")
     if direction not in ("credit", "debit"):
@@ -589,13 +605,28 @@ def compte_arbitrer_solde(user_id):
     db.session.flush()
     after = wallet.balance
     movement = f"{'+' if delta > 0 else '-'}{euros(abs(delta))}"
-    A.record(
+    entry = A.record(
         "compte.arbitrage_solde",
         target=f"{u.display_name} ({u.username})",
         details=f"{CAMPUSSES[campus]} : {movement} (solde {euros(before)} -> {euros(after)})",
         campus=campus,
     )
-    db.session.commit()
+    entry.idempotency_key = idempotency_key
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Rejeu concurrent : l'autre requête a déjà appliqué le mouvement.
+        # Le rollback annule aussi la mise à jour de solde de cette requête.
+        db.session.rollback()
+        if (
+            idempotency_key is not None
+            and db.session.scalars(
+                select(AuditLog).where(AuditLog.idempotency_key == idempotency_key)
+            ).first()
+        ):
+            flash("Arbitrage déjà enregistré : aucun nouveau mouvement.", "success")
+            return redirect(url_for("admin.compte", user_id=u.id))
+        raise
     flash(
         f"Solde {CAMPUSSES[campus]} de {u.display_name} arbitré : {movement} "
         f"(nouveau solde {euros(after)}).",

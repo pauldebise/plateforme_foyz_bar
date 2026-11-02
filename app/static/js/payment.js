@@ -526,6 +526,12 @@ function fallbackOrderKey() {
   return 'k-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
 }
 
+function newOperationKey() {
+  return (window.crypto && window.crypto.randomUUID)
+    ? window.crypto.randomUUID()
+    : fallbackOrderKey();
+}
+
 // Jeton d'idempotence stable tant que le panier ne change pas : un rejeu
 // (double clic, retentative réseau) renvoie la transaction déjà créée sans
 // débiter une seconde fois.
@@ -538,9 +544,7 @@ function orderKeyFor(payload) {
     payload.contributors || null,
   ]);
   if (orderKey === null || signature !== orderSignature) {
-    orderKey = (window.crypto && window.crypto.randomUUID)
-      ? window.crypto.randomUUID()
-      : fallbackOrderKey();
+    orderKey = newOperationKey();
     orderSignature = signature;
   }
   return orderKey;
@@ -851,6 +855,21 @@ initStudentSearch(els.search, els.results, (r) => {
 
 if (els.rgSearch) {
   let rgUser = null;
+  let returningGlasses = false;
+  let glassesKey = null;
+  let glassesSignature = null;
+  // Jeton stable pour un même retour (étudiant + nombre) : un double clic ou
+  // une relance réseau renvoie la transaction existante au lieu de rendre
+  // deux fois les verres. Il est remis à zéro après un succès pour qu'un
+  // retour volontaire suivant soit bien une nouvelle opération.
+  function glassesKeyFor(userId, count) {
+    const signature = `${userId}:${count}`;
+    if (glassesKey === null || signature !== glassesSignature) {
+      glassesKey = newOperationKey();
+      glassesSignature = signature;
+    }
+    return glassesKey;
+  }
   // Solde et verres viennent déjà du résultat de recherche : pas d'appel
   // réseau supplémentaire à la sélection.
   initStudentSearch(els.rgSearch, els.rgResults, (r) => {
@@ -869,18 +888,28 @@ if (els.rgSearch) {
   });
 
   async function returnGlasses(count) {
-    if (!rgUser) return;
+    if (!rgUser || returningGlasses) return;
+    returningGlasses = true;
+    const user = rgUser;
     try {
-      const res = await apiFetch('/api/glasses/return', { json: { user_id: rgUser.id, count } });
+      const res = await apiFetch('/api/glasses/return', {
+        json: {
+          user_id: user.id,
+          count,
+          idempotency_key: glassesKeyFor(user.id, count),
+        },
+      });
       toast(`Retour enregistré : ${(res.total / 100).toFixed(2)} € crédités.`, 'success');
+      glassesKey = null;
+      glassesSignature = null;
       // Mise à jour sur place : pas de rechargement de page (U4).
-      rgUser.glasses = Math.max(0, (rgUser.glasses || 0) - count);
-      if (rgUser.glasses > 0) {
+      user.glasses = Math.max(0, (user.glasses || 0) - count);
+      if (user.glasses > 0) {
         const info = $('glasses-info');
         info.replaceChildren();
-        info.appendChild(makeEl('strong', '', rgUser.name));
+        info.appendChild(makeEl('strong', '', user.name));
         info.appendChild(document.createTextNode(' — verres consignés en cours : '));
-        info.appendChild(makeEl('span', 'badge bg-secondary', `${rgUser.glasses}`));
+        info.appendChild(makeEl('span', 'badge bg-secondary', `${user.glasses}`));
       } else {
         els.rgPanel.classList.add('d-none');
         els.rgSearch.value = '';
@@ -888,6 +917,8 @@ if (els.rgSearch) {
       }
     } catch (e) {
       toast(e.message);
+    } finally {
+      returningGlasses = false;
     }
   }
 }
