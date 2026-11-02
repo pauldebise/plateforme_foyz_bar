@@ -16,19 +16,43 @@ def _tap_article_name(label, tap, keg):
     return clamp_text(f"{label} de {tap_label} ({keg_label})", 255)
 
 
+def _row_has_price(row):
+    """Vrai si la ligne de prix contient au moins un tarif non nul."""
+    return any(
+        (
+            row.price_half_std,
+            row.price_pint_std,
+            row.price_pot_std,
+            row.price_half_team,
+            row.price_pint_team,
+            row.price_pot_team,
+        )
+    )
+
+
+def keg_has_price(keg, campus):
+    """Vrai si le fût a au moins un prix non nul sur le campus."""
+    row = next((p for p in keg.prices if p.campus == campus), None)
+    return row is not None and _row_has_price(row)
+
+
 def assign_keg(tap, keg):
     """Monte un fût sur une tireuse et régénère ses trois articles.
 
     Les articles déjà présents sur la tireuse sont désactivés : seuls les
     nouveaux articles, créés avec le nom et les prix actuels du fût, restent
-    proposés à la caisse.
+    proposés à la caisse. Retourne False sans rien modifier si le fût n'a aucun
+    prix non nul sur le campus de la tireuse : une ligne absente ou vide ne doit
+    pas produire trois articles à 0 €.
     """
+    row = next((p for p in keg.prices if p.campus == tap.campus), None)
+    if row is None or not _row_has_price(row):
+        return False
     tap.keg_id = keg.id
     for a in db.session.scalars(
         select(Article).where(Article.tap_number == tap.number, Article.is_tap.is_(True))
     ):
         a.active = False
-    row = keg.price_row(tap.campus)
     prices = {
         "demi": (row.price_half_std, row.price_half_team),
         "pinte": (row.price_pint_std, row.price_pint_team),
@@ -53,6 +77,7 @@ def assign_keg(tap, keg):
             )
         )
     db.session.commit()
+    return True
 
 
 def detach_keg(tap):

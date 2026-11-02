@@ -36,7 +36,7 @@
               <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
               <select class="form-select form-select-sm" name="keg_id" required>
                 <option value="">Choisir un fût…</option>
-                {% for k in kegs if not t.keg %}
+                {% for k in assignable_kegs if not t.keg %}
                 <option value="{{ k.id }}">{{ k.name }}</option>
                 {% endfor %}
               </select>

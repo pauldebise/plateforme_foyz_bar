@@ -1077,10 +1077,12 @@ def tireuses():
     campus = view_campus()
     writable = campus == own_campus()
     kegs = db.session.scalars(select(Keg).order_by(Keg.name)).unique().all()
+    assignable_kegs = [keg for keg in kegs if C.keg_has_price(keg, campus)]
     taps = db.session.scalars(select(Tap).where(Tap.campus == campus).order_by(Tap.number)).all()
     return render_template(
         "admin/tireuses.html",
         kegs=kegs,
+        assignable_kegs=assignable_kegs,
         taps=taps,
         campus=campus,
         writable=writable,
@@ -1271,7 +1273,12 @@ def tap_assigner(tap_id):
     keg_id = _optional_int(request.form.get("keg_id"), maximum=999_999_999)
     keg = db.session.get(Keg, keg_id) if keg_id is not None else None
     if tap and keg:
-        C.assign_keg(tap, keg)
+        if not C.assign_keg(tap, keg):
+            flash(
+                f'Fût "{keg.name}" non assigné : aucun prix non nul pour {CAMPUSSES[tap.campus]}.',
+                "danger",
+            )
+            return redirect(url_for("admin.tireuses"))
         A.record(
             "tireuse.affectation", target=tap.display_name, details=f"Fût {keg.name}", commit=True
         )

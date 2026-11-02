@@ -29,6 +29,7 @@ os.environ["ADMIN_PASSWORD"] = "mot-de-passe-admin"
 os.environ.pop("FLASK_ENV", None)
 
 from werkzeug.security import generate_password_hash  # noqa: E402
+from sqlalchemy import select  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
@@ -216,6 +217,93 @@ def test_articles():
     _fuzz_form(f"/admin/articles/{s['article']}", form)
 
 
+def test_affectation_fut_sans_prix_campus_refusee():
+    """Un fût sans prix non nul sur le campus ne doit pas créer d'articles à 0 €."""
+    s = _setup()
+    client, csrf = s["client"], s["csrf"]
+    with s["app"].app_context():
+        tap = Tap(number=950, campus="brest")
+        keg_vide = Keg(name="Fût sans prix Brest", volume_l=30)
+        keg_paris = Keg(name="Fût Paris seulement", volume_l=30)
+        keg_brest = Keg(name="Fût Brest valide", volume_l=30)
+        db.session.add_all([tap, keg_vide, keg_paris, keg_brest])
+        db.session.flush()
+        paris = keg_paris.price_row("paris")
+        paris.price_half_std = 200
+        paris.price_pint_std = 400
+        paris.price_pot_std = 300
+        paris.price_half_team = 180
+        paris.price_pint_team = 360
+        paris.price_pot_team = 270
+        brest = keg_brest.price_row("brest")
+        brest.price_half_std = 200
+        brest.price_pint_std = 400
+        brest.price_pot_std = 300
+        brest.price_half_team = 180
+        brest.price_pint_team = 360
+        brest.price_pot_team = 270
+        db.session.commit()
+        tap_id = tap.id
+        keg_vide_id, keg_paris_id, keg_brest_id = (
+            keg_vide.id,
+            keg_paris.id,
+            keg_brest.id,
+        )
+
+    # Le sélecteur ne propose que les fûts ayant un prix non nul sur Brest,
+    # mais la liste de gestion continue d'afficher tous les fûts.
+    page = client.get("/admin/tireuses").get_data(as_text=True)
+    _expect(
+        f'<option value="{keg_brest_id}">Fût Brest valide</option>' in page,
+        "fût valide proposé",
+    )
+    _expect(
+        f'<option value="{keg_vide_id}">Fût sans prix Brest</option>' not in page,
+        "fût sans prix absent du sélecteur",
+    )
+    _expect(
+        f'<option value="{keg_paris_id}">Fût Paris seulement</option>' not in page,
+        "fût de l'autre campus absent du sélecteur",
+    )
+    _expect("Fût sans prix Brest" in page, "fût sans prix visible dans la gestion")
+
+    for keg_id in (keg_vide_id, keg_paris_id):
+        res = client.post(
+            f"/admin/tireuses/taps/{tap_id}/assigner",
+            data={"_csrf": csrf, "keg_id": str(keg_id)},
+        )
+        _expect(res.status_code == 302, f"refus sans erreur serveur ({res.status_code})")
+        with s["app"].app_context():
+            current = db.session.get(Tap, tap_id)
+            _expect(current.keg_id is None, "aucune affectation enregistrée")
+            articles = db.session.scalars(
+                select(Article).where(
+                    Article.tap_number == 950,
+                    Article.is_tap.is_(True),
+                    Article.active.is_(True),
+                )
+            ).all()
+            _expect(not articles, "aucun article à 0 € créé")
+
+    res = client.post(
+        f"/admin/tireuses/taps/{tap_id}/assigner",
+        data={"_csrf": csrf, "keg_id": str(keg_brest_id)},
+    )
+    _expect(res.status_code == 302, f"affectation valide ({res.status_code})")
+    with s["app"].app_context():
+        current = db.session.get(Tap, tap_id)
+        _expect(current.keg_id == keg_brest_id, "fût valide assigné")
+        articles = db.session.scalars(
+            select(Article).where(
+                Article.tap_number == 950,
+                Article.is_tap.is_(True),
+                Article.active.is_(True),
+            )
+        ).all()
+        _expect(len(articles) == 3, f"trois articles actifs (obtenu {len(articles)})")
+        _expect(all(article.price_std > 0 for article in articles), "prix non nuls")
+
+
 def test_tireuses_futs_evenements():
     s = _setup()
     keg = {
@@ -273,6 +361,14 @@ def test_tireuse_nom_long_et_article_derive():
     with s["app"].app_context():
         keg = Keg(name="F" * 255, volume_l=30)
         db.session.add(keg)
+        db.session.flush()
+        row = keg.price_row("brest")
+        row.price_half_std = 200
+        row.price_pint_std = 400
+        row.price_pot_std = 300
+        row.price_half_team = 180
+        row.price_pint_team = 360
+        row.price_pot_team = 270
         db.session.commit()
         keg_id = keg.id
     res = client.post(

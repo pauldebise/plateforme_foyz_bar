@@ -194,6 +194,14 @@ def test_tireuse_accepts_keg_without_stock():
         keg = Keg(name="Fût sans stock", volume_l=30.0)
         tap = Tap(number=502, name="Tireuse assignation", campus="brest")
         db.session.add_all([keg, tap])
+        db.session.flush()
+        row = keg.price_row("brest")
+        row.price_half_std = 200
+        row.price_pint_std = 400
+        row.price_pot_std = 300
+        row.price_half_team = 180
+        row.price_pint_team = 360
+        row.price_pot_team = 270
         db.session.commit()
         keg_id = keg.id
 
