@@ -186,6 +186,54 @@ def test_b_politique_dans_administration():
         _expect(check_admin_password("huitcarac", "brest"), "admin : 8 caractères sans diversité")
 
 
+def test_b2_reset_admin_efface_legacy_password():
+    from app.routes import auth as auth_module
+
+    app = create_app()
+    old_legacy = "Ancien-MotDePasse-2025!"
+    new_password = "Nouveau-MotDePasse-2026!"
+    with app.app_context():
+        member = User(
+            name="Membre Legacy Reset",
+            username="membre.legacy.reset",
+            team_status="mandat",
+            team_campus="brest",
+            password_hash=generate_password_hash("Ancien-Hash-2025!"),
+            legacy_password=old_legacy,
+        )
+        db.session.add(member)
+        db.session.commit()
+        member_id = member.id
+
+    auth_module.reset_throttle(app)
+    admin = app.test_client()
+    _expect(_login(admin).status_code == 302, "connexion administrateur")
+    token = _csrf(admin, f"/admin/equipe/{member_id}")
+    res = admin.post(
+        f"/admin/equipe/{member_id}",
+        data={"team_status": "mandat", "password": new_password, "_csrf": token},
+    )
+    _expect(res.status_code == 302, f"mot de passe réinitialisé ({res.status_code})")
+
+    with app.app_context():
+        updated = db.session.get(User, member_id)
+        _expect(updated.legacy_password is None, "legacy_password effacé par le reset")
+        _expect(
+            updated.password_hash and check_password_hash(updated.password_hash, new_password),
+            "nouveau mot de passe enregistré",
+        )
+
+    legacy_client = app.test_client()
+    res = _login(legacy_client, "membre.legacy.reset", old_legacy)
+    _expect(res.status_code == 401, f"ancien mot de passe legacy refusé ({res.status_code})")
+    auth_module.reset_throttle(app)
+
+    new_client = app.test_client()
+    res = _login(new_client, "membre.legacy.reset", new_password)
+    _expect(res.status_code == 302, f"nouveau mot de passe accepté ({res.status_code})")
+    auth_module.reset_throttle(app)
+
+
 def main():
     tests = [
         (name, fn)

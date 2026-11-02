@@ -777,6 +777,9 @@ def membre(user_id):
                 flash(problem, "danger")
                 return redirect(url_for("admin.membre", user_id=u.id))
             u.password_hash = generate_password_hash(password)
+            # Un reset doit invalider le mot de passe hérité : sinon la
+            # connexion retombe sur legacy_password et réécrit ce nouveau hash.
+            u.legacy_password = None
         A.record(
             "equipe.modification",
             target=f"{u.display_name} ({u.username})",
