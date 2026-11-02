@@ -5,6 +5,7 @@ from functools import lru_cache
 
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from app.extensions import db
 from app.models import (
@@ -646,16 +647,38 @@ def return_glasses(*, operator_label, campus, user, count):
     count = _int_or_invalid(count or 0, "Nombre de verres invalide.")
     if count <= 0 or count > MAX_GLASSES:
         raise OperationError("invalid", "Nombre de verres invalide.")
-    w = _lock_wallets(campus, [user])[user.id]
+    # Comptes susceptibles d'être crédités : le portefeuille qui rend les
+    # verres et les contributeurs de ses achats consignés. Verrouillage dans
+    # l'ordre des identifiants, comme les autres opérations.
+    purchases, _outstanding = _deposit_ledger(campus, user.id)
+    participants = {user.id: user}
+    for purchase in purchases:
+        for contribution in purchase.contributions:
+            if contribution.user is not None:
+                participants[contribution.user.id] = contribution.user
+    wallets = _lock_wallets(campus, [participants[uid] for uid in sorted(participants)])
+    w = wallets[user.id]
     if w.glasses_outstanding < count:
         raise OperationError(
             "invalid", f"{user.display_name} n'a que {w.glasses_outstanding} verre(s) consigné(s)."
         )
-    credit = _returned_deposit_credit(campus, user, count)
+    credits = _returned_deposit_credits(campus, user, count)
+    credits.setdefault(user.id, 0)
+    for user_id in list(credits):
+        if user_id in wallets:
+            continue
+        # Un achat concurrent a pu ajouter un contributeur après la collecte.
+        # La mise à jour reste relative, donc sûre sans verrou supplémentaire.
+        contributor = db.session.get(User, user_id)
+        if contributor is None:
+            credits[user.id] += credits.pop(user_id)
+        else:
+            wallets[user_id] = _get_wallet(contributor, campus)
+    total = sum(credits.values())
     t = Transaction(
         type="consigne",
         campus=campus,
-        total=credit,
+        total=total,
         operator_label=clamp_text(operator_label or "", 255),
         deposit_glasses=count,
         deposit_user_id=user.id,
@@ -664,7 +687,8 @@ def return_glasses(*, operator_label, campus, user, count):
     db.session.add(t)
     db.session.flush()
     w.glasses_outstanding = Wallet.glasses_outstanding - count
-    w.balance = Wallet.balance + credit
+    for user_id, credit in credits.items():
+        wallets[user_id].balance = Wallet.balance + credit
     db.session.flush()
     if w.glasses_outstanding < 0:
         db.session.rollback()
@@ -672,15 +696,16 @@ def return_glasses(*, operator_label, campus, user, count):
             "invalid",
             f"{user.display_name} n'a pas assez de verre(s) consigné(s).",
         )
-    db.session.add(
-        Contribution(
-            transaction_id=t.id,
-            user_id=user.id,
-            campus=campus,
-            amount=credit,
-            balance_after=w.balance,
+    for user_id in sorted(credits):
+        db.session.add(
+            Contribution(
+                transaction_id=t.id,
+                user_id=user_id,
+                campus=campus,
+                amount=credits[user_id],
+                balance_after=wallets[user_id].balance,
+            )
         )
-    )
     db.session.commit()
     return t
 
@@ -882,6 +907,7 @@ def _deposit_ledger(campus, user_id):
             Transaction.deposit_user_id == user_id,
             Transaction.deposit_glasses > 0,
         )
+        .options(selectinload(Transaction.contributions).selectinload(Contribution.user))
         .order_by(Transaction.created_at, Transaction.id)
     ).all()
     returns = db.session.scalars(
@@ -940,15 +966,19 @@ def _returned_deposit_count(transaction):
     )
 
 
-def _returned_deposit_credit(campus, user, count):
-    """Crédit d'un retour, au tarif d'origine de chaque verre (FIFO).
+def _returned_deposit_credits(campus, user, count):
+    """Crédits d'un retour, au tarif d'origine de chaque verre (FIFO).
 
-    Les verres sans achat source retrouvé (données migrées incomplètes) sont
-    remboursés au tarif courant, pour ne pas bloquer un retour légitime.
+    Les verres rendus sont affectés aux achats dans l'ordre chronologique. Pour
+    chaque achat, la part de consigne remboursée est répartie entre ses
+    contributeurs au prorata de leur participation : chacun récupère la part de
+    consigne qu'il a payée. Les verres sans achat source retrouvé (données
+    migrées incomplètes) sont remboursés au tarif courant au compte qui rend les
+    verres. Retourne ``{user_id: montant}``.
     """
     purchases, outstanding = _deposit_ledger(campus, user.id)
     remaining = count
-    credit = 0
+    credits = defaultdict(int)
     for purchase in purchases:
         if remaining <= 0:
             break
@@ -957,13 +987,22 @@ def _returned_deposit_credit(campus, user, count):
             continue
         taken = min(remaining, available)
         before = purchase.deposit_glasses - available
-        credit += _deposit_refund_share(purchase, before + taken) - _deposit_refund_share(
+        credit = _deposit_refund_share(purchase, before + taken) - _deposit_refund_share(
             purchase, before
         )
+        allocated = 0
+        for contribution, share in _refund_shares(purchase.contributions, credit):
+            allocated += share
+            if share:
+                credits[contribution.user_id] += share
+        if credit > allocated:
+            # Détail incomplet (contribution supprimée, achat migré) : le
+            # reliquat revient au compte qui rend les verres.
+            credits[user.id] += credit - allocated
         remaining -= taken
     if remaining:
-        credit += remaining * S.deposit_value()
-    return credit
+        credits[user.id] += remaining * S.deposit_value()
+    return credits
 
 
 def _purchase_refund_total(transaction, returned):
@@ -1059,11 +1098,16 @@ def cancel_transaction(transaction, admin_password, *, verified=False):
             if deposit_wallet is not None:
                 deposit_wallet.glasses_outstanding = Wallet.glasses_outstanding - unreturned
         else:
+            # Retour de consigne : annuler le crédit de chaque contributeur,
+            # mais ne restaurer les verres qu'au compte qui les avait rendus.
             for c in transaction.contributions:
                 if c.user is not None:
                     w = w_of(c.campus, c.user_id)
                     w.balance = Wallet.balance - c.amount
-                    w.glasses_outstanding = Wallet.glasses_outstanding + transaction.deposit_glasses
+            if transaction.deposit_user_id is not None:
+                w_of(transaction.campus, transaction.deposit_user_id).glasses_outstanding = (
+                    Wallet.glasses_outstanding + transaction.deposit_glasses
+                )
     elif transaction.type == "rechargement":
         for c in transaction.contributions:
             if c.user is not None:

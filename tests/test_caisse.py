@@ -423,6 +423,77 @@ def test_consigne_retour_au_tarif_origine():
             db.session.commit()
 
 
+def test_consigne_partagee_remboursee_aux_contributeurs():
+    app = create_app()
+    with app.app_context():
+        article = _article(std=200)
+        set_setting("deposit_value_cents", "100")
+        db.session.commit()
+        try:
+            # Article à 2 € + 1 verre à 1 € : chaque contributeur paie 1,50 €.
+            premier = _user(balance=1000)
+            second = _user(balance=1000)
+            achat = T.create_purchase(
+                operator_label="test",
+                campus="brest",
+                items=[{"article_id": article.id, "quantity": 1}],
+                contributor_ids=[premier.id, second.id],
+                deposit_glasses=1,
+            )
+            _expect(achat.total == 300, f"total partagé (obtenu {achat.total})")
+            _expect(
+                _balance(premier.id) == 850 and _balance(second.id) == 850,
+                f"consigne répartie à l'achat (soldes {_balance(premier.id)}, "
+                f"{_balance(second.id)})",
+            )
+            _expect(
+                _glasses(premier.id) == 1 and _glasses(second.id) == 0,
+                "le verre reste rattaché au compte principal",
+            )
+
+            retour = T.return_glasses(operator_label="test", campus="brest", user=premier, count=1)
+            _expect(retour.total == 100, f"retour au tarif payé (obtenu {retour.total})")
+            _expect(
+                _balance(premier.id) == 900 and _balance(second.id) == 900,
+                f"remboursement réparti (soldes {_balance(premier.id)}, {_balance(second.id)})",
+            )
+            parts = {c.user_id: c.amount for c in retour.contributions}
+            _expect(
+                parts == {premier.id: 50, second.id: 50},
+                f"parts de consigne remboursées (obtenu {parts})",
+            )
+            _expect(
+                _glasses(premier.id) == 0 and _glasses(second.id) == 0,
+                "verres rendus",
+            )
+
+            # Annulation du retour : retirer la part de chacun et restaurer le
+            # verre au compte principal, puis annuler l'achat.
+            T.cancel_transaction(retour, ADMIN_PASSWORD)
+            _expect(
+                _balance(premier.id) == 850 and _balance(second.id) == 850,
+                f"annulation du retour répartie (soldes {_balance(premier.id)}, "
+                f"{_balance(second.id)})",
+            )
+            _expect(
+                _glasses(premier.id) == 1 and _glasses(second.id) == 0,
+                "verre restauré au compte principal",
+            )
+            T.cancel_transaction(achat, ADMIN_PASSWORD)
+            _expect(
+                _balance(premier.id) == 1000 and _balance(second.id) == 1000,
+                f"achat annulé : soldes restaurés (soldes {_balance(premier.id)}, "
+                f"{_balance(second.id)})",
+            )
+            _expect(
+                _glasses(premier.id) == 0 and _glasses(second.id) == 0,
+                "aucun verre restant",
+            )
+        finally:
+            set_setting("deposit_value_cents", "100")
+            db.session.commit()
+
+
 def test_mouvements_rechargement_retrait_transfert():
     app = create_app()
     with app.app_context():
