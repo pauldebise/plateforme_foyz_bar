@@ -34,7 +34,7 @@ from werkzeug.security import generate_password_hash  # noqa: E402
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import Article, Event, Transaction, User  # noqa: E402
-from app.utils import utcnow  # noqa: E402
+from app.utils import to_paris, utcnow  # noqa: E402
 
 app = create_app()
 _seq = count(1)
@@ -360,7 +360,7 @@ def test_historique_filtre_ventes_evenement():
         direct_name not in composed, "paiement direct sans étudiant exclu par le filtre étudiant"
     )
 
-    tomorrow = (utcnow() + timedelta(days=1)).date().isoformat()
+    tomorrow = (to_paris(utcnow()) + timedelta(days=1)).date().isoformat()
     dated = client.get(
         "/equipe/historique",
         query_string={"type": "ventes_evenement", "from": tomorrow},

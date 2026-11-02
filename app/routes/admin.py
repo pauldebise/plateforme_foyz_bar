@@ -1,4 +1,3 @@
-import contextlib
 import csv
 import io
 import math
@@ -57,6 +56,7 @@ from app.utils import (
     euros,
     login_required,
     new_token,
+    paris_day_bound,
     paris_to_utc,
     parse_amount,
     safe_color,
@@ -1551,14 +1551,13 @@ def _journal_connexions():
     if cutoff is not None:
         query = query.filter(LoginLog.created_at >= cutoff)
     if ffrom:
-        with contextlib.suppress(ValueError):
-            query = query.filter(LoginLog.created_at >= datetime.strptime(ffrom, "%Y-%m-%d"))
+        start = paris_day_bound(ffrom)
+        if start is not None:
+            query = query.filter(LoginLog.created_at >= start)
     if fto:
-        with contextlib.suppress(ValueError):
-            query = query.filter(
-                LoginLog.created_at
-                <= datetime.strptime(fto, "%Y-%m-%d") + timedelta(days=1, microseconds=-1)
-            )
+        end = paris_day_bound(fto, end_of_day=True)
+        if end is not None:
+            query = query.filter(LoginLog.created_at <= end)
     if fuser:
         query = query.filter(
             LoginLog.name.ilike(f"%{fuser}%")
@@ -1593,14 +1592,13 @@ def _journal_actions():
         like = f"%{fuser}%"
         stmt = stmt.where(or_(AuditLog.actor.ilike(like), AuditLog.target.ilike(like)))
     if ffrom:
-        with contextlib.suppress(ValueError):
-            stmt = stmt.where(AuditLog.created_at >= datetime.strptime(ffrom, "%Y-%m-%d"))
+        start = paris_day_bound(ffrom)
+        if start is not None:
+            stmt = stmt.where(AuditLog.created_at >= start)
     if fto:
-        with contextlib.suppress(ValueError):
-            stmt = stmt.where(
-                AuditLog.created_at
-                <= datetime.strptime(fto, "%Y-%m-%d") + timedelta(days=1, microseconds=-1)
-            )
+        end = paris_day_bound(fto, end_of_day=True)
+        if end is not None:
+            stmt = stmt.where(AuditLog.created_at <= end)
     stmt = stmt.order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
     rows, page, pages, total = _journal_pagination(stmt)
     # Acteurs et cibles des actions sur les comptes sont toujours des libellés

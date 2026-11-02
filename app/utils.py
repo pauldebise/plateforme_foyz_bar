@@ -3,7 +3,7 @@ import math
 import re
 import secrets
 import unicodedata
-from datetime import datetime, UTC
+from datetime import UTC, date, datetime, time as dt_time, timedelta
 from functools import wraps
 from urllib.parse import unquote, urlsplit
 from zoneinfo import ZoneInfo
@@ -57,6 +57,26 @@ def paris_to_utc(dt):
     if dt is None:
         return None
     return dt.replace(tzinfo=PARIS_TZ).astimezone(UTC).replace(tzinfo=None)
+
+
+def paris_day_bound(value, *, end_of_day=False):
+    """Date ISO (« 2026-10-24 ») -> borne UTC du jour de Paris.
+
+    Renvoie None si la date est invalide. Les bornes extrêmes (an 0001 ou
+    9999) sont ramenées à `datetime.min`/`datetime.max` pour conserver le sens
+    du filtre au lieu de provoquer un OverflowError.
+    """
+    try:
+        day = date.fromisoformat(str(value or "").strip())
+    except (TypeError, ValueError):
+        return None
+    try:
+        start = datetime.combine(day, dt_time.min)
+        if not end_of_day:
+            return paris_to_utc(start)
+        return paris_to_utc(start + timedelta(days=1)) - timedelta(microseconds=1)
+    except (OverflowError, ValueError):
+        return datetime.max if end_of_day else datetime.min
 
 
 def new_token():

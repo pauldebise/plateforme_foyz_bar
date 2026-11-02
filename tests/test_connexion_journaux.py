@@ -18,7 +18,7 @@ import re
 import sys
 import tempfile
 import time
-from datetime import timedelta
+from datetime import datetime, time as dt_time, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,10 +39,10 @@ from werkzeug.security import generate_password_hash  # noqa: E402
 import app.routes.auth as auth_module  # noqa: E402
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
-from app.models import AuditLog, LoginLog, LoginThrottle, User  # noqa: E402
+from app.models import AuditLog, LoginLog, LoginThrottle, Transaction, User  # noqa: E402
 from app.services import loginthrottle as LT  # noqa: E402
 from app.services import settings as S  # noqa: E402
-from app.utils import utcnow  # noqa: E402
+from app.utils import PARIS_TZ, paris_to_utc, utcnow  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
 GOOD = "secret123"
@@ -304,6 +304,65 @@ def test_b7_duree_filtre_l_affichage_sans_purger():
         db.session.commit()
     _expect("ancienne.connexion" in page("connexions"), "retour à 365 j : connexion réapparaît")
     _expect("cible-ancienne-xyz" in page("actions"), "retour à 365 j : action réapparaît")
+
+
+def test_filtres_dates_paris():
+    """Les filtres « du/au » couvrent le jour de Paris, pas celui d'UTC."""
+    app = create_app()
+    client = _admin_client(app)
+    day = datetime.now(PARIS_TZ).date() - timedelta(days=1)
+    moments = {
+        "dedans": paris_to_utc(datetime.combine(day, dt_time(0, 30))),
+        "avant": paris_to_utc(datetime.combine(day - timedelta(days=1), dt_time(23, 30))),
+        "apres": paris_to_utc(datetime.combine(day + timedelta(days=1), dt_time(0, 30))),
+    }
+    with app.app_context():
+        for label, when in moments.items():
+            db.session.add(
+                LoginLog(
+                    name=f"filtre-connexion-{label}",
+                    campus="brest",
+                    ip="192.0.2.1",
+                    success=True,
+                    created_at=when,
+                )
+            )
+            db.session.add(
+                AuditLog(
+                    actor="filtre",
+                    campus="brest",
+                    action="compte.creation",
+                    target=f"filtre-action-{label}",
+                    details="",
+                    ip="192.0.2.1",
+                    created_at=when,
+                )
+            )
+            db.session.add(
+                Transaction(
+                    type="direct",
+                    campus="brest",
+                    total=100,
+                    operator_label=f"filtre-histoire-{label}",
+                    created_at=when,
+                )
+            )
+        db.session.commit()
+
+    params = f"from={day.isoformat()}&to={day.isoformat()}"
+    for tab, prefix in (
+        ("connexions", "filtre-connexion"),
+        ("actions", "filtre-action"),
+    ):
+        html = client.get(f"/admin/journal?tab={tab}&{params}").get_data(as_text=True)
+        _expect(f"{prefix}-dedans" in html, f"{tab} : entrée du jour de Paris visible")
+        _expect(f"{prefix}-avant" not in html, f"{tab} : veille de Paris exclue")
+        _expect(f"{prefix}-apres" not in html, f"{tab} : lendemain de Paris exclu")
+
+    html = client.get(f"/equipe/historique?{params}").get_data(as_text=True)
+    _expect("filtre-histoire-dedans" in html, "historique : transaction du jour de Paris visible")
+    _expect("filtre-histoire-avant" not in html, "historique : veille de Paris exclue")
+    _expect("filtre-histoire-apres" not in html, "historique : lendemain de Paris exclu")
 
 
 def _settings_post(client, **fields):

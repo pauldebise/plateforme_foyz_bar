@@ -1,6 +1,6 @@
 import csv
 import io
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from flask import (
     Blueprint,
@@ -36,6 +36,7 @@ from app.utils import (
     clamp_text,
     is_safe_target,
     login_required,
+    paris_day_bound,
     parse_amount,
     utcnow,
 )
@@ -309,17 +310,13 @@ def historique():
     if fcampus in ("brest", "paris"):
         query = query.filter(Transaction.campus == fcampus)
     if ffrom:
-        try:
-            d = datetime.strptime(ffrom, "%Y-%m-%d")
-            query = query.filter(Transaction.created_at >= d)
-        except ValueError:
-            pass
+        start = paris_day_bound(ffrom)
+        if start is not None:
+            query = query.filter(Transaction.created_at >= start)
     if fto:
-        try:
-            d = datetime.strptime(fto, "%Y-%m-%d") + timedelta(days=1, microseconds=-1)
-            query = query.filter(Transaction.created_at <= d)
-        except ValueError:
-            pass
+        end = paris_day_bound(fto, end_of_day=True)
+        if end is not None:
+            query = query.filter(Transaction.created_at <= end)
     if fuser:
         like = f"%{fuser}%"
         ids = set(
