@@ -53,13 +53,26 @@ class OperationError(Exception):
 
 def _int_or_invalid(value, message="Valeur numérique invalide."):
     """Conversion défensive : une entrée non numérique est un refus métier,
-    jamais une erreur serveur (500)."""
-    if isinstance(value, bool) or (isinstance(value, str) and len(value) > 18):
+    jamais une erreur serveur (500).
+
+    Seuls les entiers et leurs représentations décimales sont acceptés : un
+    flottant JSON (``1.9``) est refusé au lieu d'être tronqué silencieusement.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise OperationError("invalid", message)
+    if isinstance(value, str) and len(value) > 18:
         raise OperationError("invalid", message)
     try:
         return int(value)
     except (TypeError, ValueError, OverflowError):
         raise OperationError("invalid", message) from None
+
+
+def _payment_method_or_invalid(value, message="Moyen de paiement invalide."):
+    """Moyen de paiement : chaîne connue uniquement (pas de liste ni d'objet)."""
+    if not isinstance(value, str) or value not in PAYMENT_METHODS:
+        raise OperationError("invalid", message)
+    return value
 
 
 def id_or_invalid(value, message):
@@ -438,8 +451,7 @@ def create_purchase(
     if campus not in ("brest", "paris"):
         raise OperationError("invalid", "Campus invalide.")
     if direct:
-        if payment_method not in PAYMENT_METHODS:
-            raise OperationError("invalid", "Moyen de paiement invalide.")
+        payment_method = _payment_method_or_invalid(payment_method)
         contributor_ids = []
         deposit_glasses = 0
     else:
@@ -747,8 +759,7 @@ def create_reload(
         return existing
     amount = _int_or_invalid(amount_cents, "Montant invalide.")
     _check_operation_amount(amount)
-    if payment_method not in PAYMENT_METHODS:
-        raise OperationError("invalid", "Moyen de paiement invalide.")
+    payment_method = _payment_method_or_invalid(payment_method)
     w = _lock_wallets(campus, [user])[user.id]
     t = Transaction(
         type="rechargement",

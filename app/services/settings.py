@@ -110,7 +110,7 @@ def check_admin_password(password, campus):
     annulation, suppression de compte, retrait des statuts blacklist). Un campus
     inconnu refuse la vérification.
     """
-    if not password or campus not in CAMPUSSES:
+    if not isinstance(password, str) or not password or campus not in CAMPUSSES:
         return False
     stored = get_setting(admin_password_key(campus), "")
     if stored:

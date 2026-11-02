@@ -30,7 +30,7 @@ def verify(password, campus, context):
     - Échec : l'opération est refusée, donc son travail en attente est annulé
       (rollback) et l'échec est journalisé immédiatement.
     """
-    if not password or campus not in CAMPUSSES:
+    if not isinstance(password, str) or not password or campus not in CAMPUSSES:
         return False
     if check_admin_password(password, campus):
         A.record(ACTION_SUCCESS, target=CAMPUSSES[campus], details=context, campus=campus)

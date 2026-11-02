@@ -804,6 +804,76 @@ def test_b5_api_types_json_valides():
     _expect(res.status_code == 200 and res.get_json()["ok"], "payload valide accepté")
 
 
+def test_b12_entrees_json_strictes():
+    """Types JSON invalides : refus métier (400), jamais d'exception brute.
+
+    Couvre les flottants tronqués par ``int()``, le moyen de paiement non
+    textuel (liste non hachable) et le mot de passe administrateur non
+    textuel.
+    """
+    app = create_app()
+    client, csrf = _team_client(app)
+    with app.app_context():
+        student = _user(balance=1000)
+        negative = _user(balance=-100)
+        glass_user = _user(balance=0)
+        glass_user.wallet("brest").glasses_outstanding = 1
+        article = _article(100)
+        db.session.commit()
+        student_id, negative_id = student.id, negative.id
+        glass_user_id, article_id = glass_user.id, article.id
+    headers = {"X-CSRFToken": csrf}
+
+    def post(payload):
+        return client.post("/api/purchase", json=payload, headers=headers)
+
+    base = {
+        "items": [{"article_id": article_id, "quantity": 1}],
+        "contributors": [student_id],
+    }
+
+    # Un moyen de paiement non textuel provoquait « unhashable type: list ».
+    for method in ([], {"especes": True}, 1):
+        res = post({**base, "direct": True, "payment_method": method})
+        _expect(
+            res.status_code == 400,
+            f"moyen de paiement {method!r} -> 400 ({res.status_code})",
+        )
+
+    # Un mot de passe non textuel provoquait une AttributeError dans
+    # check_password_hash() lorsqu'un contributeur était déjà négatif.
+    negative_base = {**base, "contributors": [negative_id]}
+    for password in (1, ["x"], {"x": 1}):
+        res = post({**negative_base, "admin_password": password})
+        _expect(
+            res.status_code == 400 and res.get_json().get("code") == "admin_password_required",
+            f"mot de passe {password!r} -> refus métier ({res.status_code})",
+        )
+
+    # Les flottants ne doivent plus être tronqués silencieusement en entiers.
+    for items in (
+        [{"article_id": article_id + 0.5, "quantity": 1}],
+        [{"article_id": article_id, "quantity": 1.5}],
+    ):
+        res = post({**base, "items": items})
+        _expect(res.status_code == 400, f"flottant refusé : {items} ({res.status_code})")
+    res = post({**base, "contributors": [student_id + 0.5]})
+    _expect(res.status_code == 400, f"identifiant contributeur flottant refusé ({res.status_code})")
+
+    res = client.post(
+        "/api/glasses/return",
+        json={"user_id": glass_user_id, "count": 1.5},
+        headers=headers,
+    )
+    _expect(res.status_code == 400, f"nombre de verres flottant refusé ({res.status_code})")
+    with app.app_context():
+        wallet = db.session.get(User, glass_user_id).wallet("brest")
+        _expect(wallet.glasses_outstanding == 1, "aucun verre rendu par une entrée invalide")
+
+    res = post(base)
+    _expect(res.status_code == 200 and res.get_json()["ok"], "payload entier valide accepté")
+
+
 def test_operateur_au_surnom_tres_long():
     """Les surnoms importés peuvent atteindre ~245 caractères : le libellé de
     l'opérateur (nom + surnom) dépasse alors VARCHAR(255). PostgreSQL rejette
