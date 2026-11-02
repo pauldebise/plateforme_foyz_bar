@@ -10,6 +10,8 @@ Couvre :
 
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -91,6 +93,38 @@ def test_a_ux_garde_fous():
     css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
     _expect(":focus-visible" in css, "focus visible")
     _expect("pointer: coarse" in css and "min-height: 44px" in css, "cibles tactiles de 44 px")
+
+
+def test_paiement_direct_au_tarif_standard():
+    """Le panier direct affiche le tarif standard, comme le montant débité."""
+    js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    start = js.index("function allTeam()")
+    end = js.index("function depositActive()")
+    bloc = js[start:end]
+    _expect("!isDirect()" in bloc, "le tarif équipe est désactivé en paiement direct")
+    switch = js[js.index("els.directSwitch.addEventListener('change'") :]
+    switch = switch[: switch.index("});")]
+    _expect("renderCatalog();" in switch, "prix du catalogue recalculés en changeant de mode")
+
+    node = shutil.which("node")
+    if not node:
+        print("  (node absent : exécution de allTeam() ignorée)")
+        return
+    script = (
+        "let contributors = [{is_team: true}];"
+        "const els = {directSwitch: {checked: false}};"
+        + bloc
+        + "const article = {std: 300, team: 250};"
+        "if (!allTeam() || unitPrice(article) !== 250) process.exit(1);"
+        "els.directSwitch.checked = true;"
+        "if (allTeam() || unitPrice(article) !== 300) process.exit(2);"
+        "contributors = [];"
+        "els.directSwitch.checked = false;"
+        "if (allTeam() || unitPrice(article) !== 300) process.exit(3);"
+        "console.log('ok');"
+    )
+    res = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30)
+    _expect(res.returncode == 0 and "ok" in res.stdout, f"tarif direct : {res.stdout}{res.stderr}")
 
 
 def test_payment_mobile_card_order():

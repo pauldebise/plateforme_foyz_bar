@@ -49,7 +49,10 @@ const els = {
 };
 
 function allTeam() {
-  return contributors.length > 0 && contributors.every((c) => c.is_team);
+  // En paiement direct, le serveur facture le tarif standard : le panier doit
+  // afficher le même prix, même si des membres d'équipe restent sélectionnés
+  // pour un retour ultérieur au paiement partagé.
+  return !isDirect() && contributors.length > 0 && contributors.every((c) => c.is_team);
 }
 
 function unitPrice(article) {
@@ -689,6 +692,8 @@ if (els.directSwitch) {
     if (els.depositSwitch) $('deposit-card').classList.toggle('d-none', isDirect());
     $('direct-card').classList.toggle('d-none', !isDirect());
     renderContributors();
+    // Les prix du catalogue dépendent aussi du tarif (équipe ou standard).
+    renderCatalog();
     renderCart();
   });
 }
