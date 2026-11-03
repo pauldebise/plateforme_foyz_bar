@@ -137,8 +137,38 @@ def _buyer_match(event):
     return or_(Transaction.event_id == event.id, event_line)
 
 
+def _attributed_amount(event):
+    """Montant d'une contribution attribuable à l'événement.
+
+    Une transaction rattachée à l'événement est comptée entièrement. Pour un
+    panier multi-soirées (non rattaché), la contribution est répartie au
+    prorata de la valeur des lignes de cet événement dans le total payé : la
+    part des articles standard et des consignes reste hors du récap.
+    """
+    event_lines = (
+        select(func.coalesce(func.sum(TransactionLine.line_total), 0))
+        .where(
+            TransactionLine.transaction_id == Transaction.id,
+            TransactionLine.article_id.in_(select(Article.id).where(Article.event_id == event.id)),
+        )
+        .scalar_subquery()
+    )
+    total = func.coalesce(Transaction.total, 0)
+    prorata = (
+        cast(-Contribution.amount, db.BigInteger)
+        * cast(event_lines, db.BigInteger)
+        / cast(total, db.BigInteger)
+    )
+    return case(
+        (Transaction.event_id == event.id, -Contribution.amount),
+        (total > 0, prorata),
+        else_=0,
+    )
+
+
 def _buyer_stats(event):
     match = _buyer_match(event)
+    attributed = _attributed_amount(event)
     base = (
         select(Contribution.id)
         .join(Transaction, Contribution.transaction_id == Transaction.id)
@@ -158,7 +188,7 @@ def _buyer_stats(event):
             User.name,
             User.promotion,
             func.count(func.distinct(Transaction.id)).label("nb"),
-            func.sum(-Contribution.amount).label("spent"),
+            func.sum(attributed).label("spent"),
         )
         .select_from(Contribution)
         .join(Transaction, Contribution.transaction_id == Transaction.id)
@@ -170,14 +200,14 @@ def _buyer_stats(event):
             match,
         )
         .group_by(User.id, User.name, User.promotion)
-        .order_by(func.sum(-Contribution.amount).desc(), User.name)
+        .order_by(func.sum(attributed).desc(), User.name)
         .limit(10)
     ).all()
     promotions = db.session.execute(
         select(
             User.promotion,
             func.count(func.distinct(User.id)).label("buyers"),
-            func.sum(-Contribution.amount).label("spent"),
+            func.sum(attributed).label("spent"),
         )
         .select_from(Contribution)
         .join(Transaction, Contribution.transaction_id == Transaction.id)

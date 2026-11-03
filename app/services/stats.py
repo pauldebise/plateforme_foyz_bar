@@ -196,6 +196,22 @@ def _match_user_scope(filters):
     return exists(cond)
 
 
+def _has_event_line():
+    """Vrai si la transaction contient au moins une ligne d'article de soirée.
+
+    Un panier multi-soirées n'a pas de ``Transaction.event_id`` : le filtre
+    « Soirées uniquement » doit néanmoins le compter comme une vente de soirée.
+    """
+    return exists(
+        select(TransactionLine.id)
+        .join(Article, TransactionLine.article_id == Article.id)
+        .where(
+            TransactionLine.transaction_id == Transaction.id,
+            Article.event_id.isnot(None),
+        )
+    )
+
+
 def _apply_transaction_filters(stmt, filters, cutoff, types):
     """Filtres communs aux agrégats de ventes (type, campus, dates, portée
     utilisateur, soirées)."""
@@ -216,9 +232,14 @@ def _apply_transaction_filters(stmt, filters, cutoff, types):
         stmt = stmt.where(Transaction.created_at <= date_to)
     event_scope = filters.get("events", "")
     if event_scope == "events":
-        stmt = stmt.where(Transaction.event_id.isnot(None))
+        # Transaction rattachée à une soirée, ou panier multi-soirées dont au
+        # moins une ligne vient d'un article de soirée.
+        stmt = stmt.where(db.or_(Transaction.event_id.isnot(None), _has_event_line()))
     elif event_scope == "hors_events":
-        stmt = stmt.where(Transaction.event_id.is_(None))
+        stmt = stmt.where(
+            Transaction.event_id.is_(None),
+            ~_has_event_line(),
+        )
     scope = _match_user_scope(filters)
     if scope is not None:
         stmt = stmt.where(scope)
@@ -890,9 +911,12 @@ def students_stats(filters=None, search="", sort="depense", page=1, per_page=0):
         stmt = stmt.where(Transaction.created_at <= date_to)
     event_scope = filters.get("events", "")
     if event_scope == "events":
-        stmt = stmt.where(Transaction.event_id.isnot(None))
+        stmt = stmt.where(db.or_(Transaction.event_id.isnot(None), _has_event_line()))
     elif event_scope == "hors_events":
-        stmt = stmt.where(Transaction.event_id.is_(None))
+        stmt = stmt.where(
+            Transaction.event_id.is_(None),
+            ~_has_event_line(),
+        )
     if promotion:
         promotion_value = promotion_int(promotion)
         if promotion_value is None:
