@@ -281,6 +281,60 @@ def test_gateway_standard_toggle_and_live_catalogue():
     _expect(res.status_code == 200, "article événement toujours encaissable")
 
 
+def test_gateway_sans_delai_d_inactivite():
+    """La passerelle n'est pas soumise au délai d'inactivité de l'équipe.
+
+    Décision : une page ouverte pendant une soirée doit rester utilisable ;
+    seule la fenêtre de l'événement (72 h maximum après le début) la limite.
+    """
+    app = create_app()
+    ids = _seed(app, "idle")
+    client = app.test_client()
+    html = client.get(f"/passerelle/{ids['token']}").get_data(as_text=True)
+    token = _csrf(html)
+
+    with client.session_transaction() as sess:
+        sess["last_activity"] = 0
+
+    students = client.get("/api/students?q=eleve")
+    _expect(
+        students.status_code == 200,
+        f"recherche toujours autorisée après inactivité ({students.status_code})",
+    )
+
+    res = client.post(
+        f"/passerelle/{ids['token']}/encaisser",
+        json={
+            "items": [{"article_id": ids["event_article"], "quantity": 1}],
+            "contributors": [ids["user"]],
+        },
+        headers={"X-CSRFToken": token},
+    )
+    _expect(
+        res.status_code == 200,
+        f"encaissement accepté après inactivité ({res.status_code})",
+    )
+
+    with app.app_context():
+        ev = db.session.get(Event, ids["event"])
+        ev.starts_at = utcnow() - timedelta(hours=100)
+        ev.ends_at = utcnow() + timedelta(hours=10)
+        db.session.commit()
+
+    res = client.post(
+        f"/passerelle/{ids['token']}/encaisser",
+        json={
+            "items": [{"article_id": ids["event_article"], "quantity": 1}],
+            "contributors": [ids["user"]],
+        },
+        headers={"X-CSRFToken": token},
+    )
+    _expect(
+        res.status_code == 403,
+        f"fenêtre de 72 h toujours appliquée ({res.status_code})",
+    )
+
+
 def test_gateway_affiche_evenement():
     """L'affiche de l'événement est présentée dans une carte, comme la photo
     déco de l'interface équipe, uniquement quand elle existe."""

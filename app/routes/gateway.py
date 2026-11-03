@@ -26,6 +26,11 @@ bp = Blueprint("gateway", __name__)
 
 # Le lien passerelle n'est pas authentifié : on borne son usage par jeton et
 # par IP (ouverture de la page et surtout encaissements).
+#
+# Décision assumée : la session passerelle n'est pas soumise au délai
+# d'inactivité de l'équipe. Une page ouverte pendant une soirée doit rester
+# utilisable ; seule la fenêtre de l'événement (Event.gateway_deadline, 72 h
+# maximum après le début) limite sa durée de vie.
 _page_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=120)
 _pay_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=60)
 
@@ -141,6 +146,8 @@ def catalogue(token):
 
 @bp.route("/passerelle/<token>/encaisser", methods=["POST"])
 def encaisser(token):
+    # Pas de contrôle du délai d'inactivité ici : la passerelle est bornée par
+    # la fenêtre de l'événement, pas par la session équipe.
     if _too_many(_pay_limiter, token, "encaissements"):
         return jsonify(ok=False, error="Trop de requêtes, patientez un instant."), 429
     ev = _event_from_token(token)

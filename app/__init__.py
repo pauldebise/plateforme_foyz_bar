@@ -511,6 +511,13 @@ def create_app():
     def _session_timeout():
         if not session.get("user_id") and not session.get("gateway_event_id"):
             return
+        # La passerelle n'est pas soumise au délai d'inactivité de l'équipe :
+        # une page ouverte pendant une soirée doit rester utilisable. Sa durée
+        # de vie est bornée par la fenêtre de l'événement (72 h maximum).
+        if session.get("gateway_event_id") and not session.get("user_id"):
+            session["last_activity"] = time.time()
+            session.permanent = True
+            return
         from app.services.settings import session_timeout_minutes
 
         timeout_min = session_timeout_minutes()

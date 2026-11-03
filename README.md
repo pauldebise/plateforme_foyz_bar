@@ -268,7 +268,8 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
   sont de l'équipe), jamais d'encaissement sur un compte déjà à découvert ; recherche
   d'au moins 3 caractères, sans identifiant de connexion (le statut équipe reste
   visible : il détermine le tarif), avec limiteurs dédiés ; validité bornée à 72 h
-  après le début de l'événement ; page absente du cache du Service Worker ; jeton
+  après le début de l'événement, sans délai d'inactivité (une page ouverte pendant
+  une soirée reste utilisable) ; page absente du cache du Service Worker ; jeton
   masqué dans les journaux (application et accès Gunicorn, `app/gunicorn_logging.py`).
 - **API externe** (`docs/API.md`) : jetons créés uniquement par le compte
   `admin` depuis `/admin/api`, stockés sous forme d'empreinte SHA-256, limités à
