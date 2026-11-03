@@ -319,6 +319,24 @@ def test_invalid_csrf_renders_dedicated_error_page():
     _expect("400" in html and "Recharger" in html, "page d'erreur 400 dédiée affichée")
 
 
+def test_error_400_reload_link_has_no_inline_javascript():
+    app = create_app()
+    authed = _client(app)
+    res = authed.post(
+        "/admin/articles/nouveau?origine=test",
+        data={"name": "Jetons", "article_type": "biere", "_csrf": "jeton-invalide"},
+    )
+    _expect(res.status_code == 400, f"jeton CSRF invalide -> 400 ({res.status_code})")
+    html = res.get_data(as_text=True)
+    _expect("onclick=" not in html, "aucun handler inline bloqué par la CSP")
+    match = re.search(r'<a[^>]*href="([^"]+)"[^>]*>Recharger</a>', html)
+    _expect(match is not None, "lien « Recharger » présent")
+    _expect(
+        match.group(1) == "/admin/articles/nouveau?origine=test",
+        f"le lien recharge la page courante ({match.group(1)})",
+    )
+
+
 def test_long_names_are_truncated():
     app = create_app()
     authed = _client(app)
