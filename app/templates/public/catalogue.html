@@ -28,9 +28,9 @@
         <table class="table table-sm align-middle mb-0 catalogue-top-table">
           <tbody>
             {% for a, price in top %}
-            <tr class="catalogue-row" data-search="{{ a.name }} {{ ARTICLE_TYPES[a.article_type] }}">
+            <tr class="catalogue-row" data-search="{{ a.name }} {{ type_labels.get(a.article_type, fallback_type_label) }}">
               <td class="text-muted">{{ loop.index }}</td>
-              <td class="catalogue-name">{{ a.name }} <span class="text-muted small d-block d-sm-inline"><span class="d-none d-sm-inline">· </span>{{ ARTICLE_TYPES[a.article_type] }}</span></td>
+              <td class="catalogue-name">{{ a.name }} <span class="text-muted small d-block d-sm-inline"><span class="d-none d-sm-inline">· </span>{{ type_labels.get(a.article_type, fallback_type_label) }}</span></td>
               <td class="text-muted">{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
               {% if top_has_degree %}
               <td class="text-muted text-nowrap">{% if a.alcohol_degree %}{{ '%.1f'|format(a.alcohol_degree) }}°{% else %}—{% endif %}</td>
@@ -47,7 +47,7 @@
 
 {% for type, items in grouped %}
   <div class="card mb-4 catalogue-card" id="cat-{{ type }}">
-    <div class="card-header">{{ ARTICLE_TYPES[type] }}</div>
+    <div class="card-header">{{ type_labels[type] }}</div>
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 catalogue-table">
@@ -56,7 +56,7 @@
           </thead>
           <tbody>
             {% for a, price in items %}
-            <tr class="catalogue-row" data-search="{{ a.name }} {{ ARTICLE_TYPES[type] }}">
+            <tr class="catalogue-row" data-search="{{ a.name }} {{ type_labels[type] }}">
               <td class="catalogue-name">{{ a.name }}</td>
               <td class="text-muted">{% if a.volume_cl %}{{ a.volume_cl }} cl{% else %}—{% endif %}</td>
               {% if type in degree_types %}

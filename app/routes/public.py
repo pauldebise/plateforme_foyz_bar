@@ -12,6 +12,12 @@ bp = Blueprint("public", __name__)
 
 # Taille de la carte « les plus vendus » en tête du catalogue public.
 PUBLIC_TOP_COUNT = 10
+# Type legacy inconnu : regroupé sous « Autres », en dernière position, pour
+# ne jamais faire disparaître un article vendable du catalogue public.
+PUBLIC_TYPE_FALLBACK = "autres"
+PUBLIC_TYPE_FALLBACK_LABEL = "Autres"
+PUBLIC_TYPE_LABELS = {**ARTICLE_TYPES, PUBLIC_TYPE_FALLBACK: PUBLIC_TYPE_FALLBACK_LABEL}
+PUBLIC_TYPE_ORDER = (*ARTICLE_TYPES, PUBLIC_TYPE_FALLBACK)
 
 
 @bp.route("/")
@@ -72,8 +78,10 @@ def catalogue():
         if price is None:
             continue
         priced[a.id] = (a, price)
-        grouped.setdefault(a.article_type, []).append((a, price))
-    ordered = sorted(grouped.items(), key=lambda kv: list(ARTICLE_TYPES).index(kv[0]))
+        kind = a.article_type if a.article_type in ARTICLE_TYPES else PUBLIC_TYPE_FALLBACK
+        grouped.setdefault(kind, []).append((a, price))
+    order = {kind: index for index, kind in enumerate(PUBLIC_TYPE_ORDER)}
+    ordered = sorted(grouped.items(), key=lambda kv: order.get(kv[0], len(order)))
     # Coup d'œil rapide : les plus vendus toutes catégories confondues, parmi les
     # seuls articles affichés au public (jamais d'article sans vente récente).
     top = [priced[aid] for aid in ranking if aid in priced][:PUBLIC_TOP_COUNT]
@@ -88,6 +96,8 @@ def catalogue():
         campus=campus,
         degree_types=degree_types,
         top_has_degree=any(a.alcohol_degree for a, _price in top),
+        type_labels=PUBLIC_TYPE_LABELS,
+        fallback_type_label=PUBLIC_TYPE_FALLBACK_LABEL,
     )
 
 

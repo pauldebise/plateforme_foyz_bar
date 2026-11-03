@@ -68,6 +68,8 @@ def _setup():
             ("Delta snack", "snack", "brest"),
             ("Aaa biere", "biere", "brest"),
             ("Zzz biere", "biere", "brest"),
+            # Type legacy hors vocabulaire : doit rester visible sous « Autres ».
+            ("Article legacy", "cocktail", "brest"),
             ("Aaa paris", "snack", "paris"),
             ("Bbb paris", "snack", "paris"),
         ]
@@ -155,6 +157,26 @@ def test_categories_gardent_leur_ordre():
         "les plus vendus ces derniers temps" not in html,
         "phrase d'explication du classement retirée",
     )
+
+
+def test_type_inconnu_regroupe_dans_autres():
+    """Un type legacy hors vocabulaire ne casse plus la page publique.
+
+    L'article reste visible, dans une catégorie « Autres » placée en dernier ;
+    le code technique n'est pas exposé.
+    """
+    html = _setup()["client"].get("/catalogue?campus=brest").get_data(as_text=True)
+    _expect('id="cat-autres"' in html, "catégorie de repli présente")
+    _expect("Article legacy" in html, "article au type inconnu toujours visible")
+    _expect(
+        'data-search="Article legacy Autres"' in html,
+        "libellé de repli utilisé par la recherche",
+    )
+    _expect(
+        html.index('id="cat-snack"') < html.index('id="cat-autres"'),
+        "la catégorie Autres est affichée en dernier",
+    )
+    _expect("cocktail" not in html, "code de type legacy non exposé au public")
 
 
 def test_degre_alcool_dans_le_catalogue():
