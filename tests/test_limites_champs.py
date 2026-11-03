@@ -588,7 +588,6 @@ def test_passerelle_et_identifiants_dans_l_url():
         f"/admin/equipe/{big}",
         f"/admin/evenements/{big}",
         f"/admin/tireuses/kegs/{big}",
-        f"/api/wallet/{big}",
         f"/passerelle/{LONG}",
         "/passerelle/fuzz%00",
         "/passerelle/fuzz-passerelle",

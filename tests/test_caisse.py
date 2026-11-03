@@ -1091,7 +1091,6 @@ def test_api_authentification_et_csrf():
     app = create_app()
     client = app.test_client()
     _expect(client.get("/api/students").status_code == 401, "API sans session : 401")
-    _expect(client.get("/api/wallet/1").status_code == 401, "portefeuille sans session : 401")
     token = _csrf(client.get("/connexion").get_data(as_text=True))
     res = client.post("/api/purchase", json={}, headers={"X-CSRFToken": token})
     _expect(res.status_code == 401, f"achat sans session : 401 (obtenu {res.status_code})")

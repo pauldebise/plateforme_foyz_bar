@@ -17,7 +17,6 @@ bp = Blueprint("api", __name__)
 # l'aspiration de l'annuaire.
 GATEWAY_MIN_QUERY = 3
 _gateway_search_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=120)
-_gateway_wallet_limiter = SlidingWindowLimiter(window_seconds=60, max_requests=30)
 _GATEWAY_HIDDEN_FIELDS = ("username",)
 
 
@@ -34,7 +33,7 @@ def _json_payload():
 # Seuls endpoints lisibles depuis une session passerelle (campus de
 # l'événement, aucune écriture : l'encaissement passe par la route dédiée
 # /passerelle/<token>/encaisser du blueprint gateway).
-GATEWAY_ENDPOINTS = {"api.students", "api.wallet"}
+GATEWAY_ENDPOINTS = {"api.students"}
 
 
 def _gateway_event():
@@ -96,28 +95,6 @@ def students():
             for student in T.search_students(query, campus=read_campus())
         ]
     )
-
-
-@bp.route("/wallet/<int(max=2147483647):user_id>")
-def wallet(user_id):
-    in_gateway = getattr(g, "gateway_event", None) is not None
-    if in_gateway and _gateway_limited(_gateway_wallet_limiter):
-        return jsonify(ok=False, error="Trop de requêtes, patientez un instant."), 429
-    u = db.session.get(User, user_id)
-    if u is None:
-        return jsonify(ok=False, error="Étudiant introuvable."), 404
-    # lecture seule : on ne crée pas de portefeuille pour l'autre campus
-    w = T.wallet_view(u, read_campus())
-    data = {
-        "id": u.id,
-        "name": u.display_name,
-        "balance": w.balance if w else 0,
-        "glasses": w.glasses_outstanding if w else 0,
-        "blacklist": u.blacklist,
-        "blacklist_alcohol": u.blacklist_alcohol,
-        "is_team": u.is_team,
-    }
-    return jsonify(data)
 
 
 @bp.route("/purchase", methods=["POST"])

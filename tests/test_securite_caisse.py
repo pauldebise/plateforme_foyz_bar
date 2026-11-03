@@ -5,9 +5,10 @@ Exécutable sans pytest : python -m tests.test_securite_caisse
 Couvre :
 - B1 : échecs et succès du mot de passe administrateur au journal d'audit, sans
   jamais bloquer un campus, `admin_password` refusé sur la passerelle ;
-- B2 : plafonds de la passerelle, informations réduites de /api/students et
-  /api/wallet, recherche de 3 caractères minimum, validité bornée, jeton
-  masqué des journaux, page passerelle absente du cache du Service Worker ;
+- B2 : plafonds de la passerelle, informations réduites de /api/students
+  (/api/wallet supprimé), recherche de 3 caractères minimum, validité bornée,
+  jeton masqué des journaux, page passerelle absente du cache du Service
+  Worker ;
 - B3 : redirections `next` (liste d'URL piégées) ;
 - B4 : annulation concurrente (un seul remboursement) ;
 - B5 : parseur de montants unique (0,29 -> 29 centimes, 1e999 -> refus) et
@@ -345,8 +346,10 @@ def test_b2_api_passerelle_reduite():
     _expect("username" not in found[0], "pas d'identifiant de connexion en passerelle")
     _expect(found[0]["is_team"] is True, "statut équipe exposé : il détermine le tarif affiché")
     _expect("balance" in found[0] and "blacklist" in found[0], "champs utiles conservés")
-    wallet = client.get(f"/api/wallet/{member_id}").get_json()
-    _expect("username" not in wallet and wallet["is_team"] is True, "portefeuille passerelle")
+    _expect(
+        client.get(f"/api/wallet/{member_id}").status_code == 404,
+        "portefeuille direct supprimé en passerelle",
+    )
 
     res = client.post(
         f"/passerelle/{token}/encaisser",
@@ -357,12 +360,6 @@ def test_b2_api_passerelle_reduite():
         headers={"X-CSRFToken": csrf},
     )
     _expect(res.status_code == 200 and res.get_json()["total"] == 150, "tarif équipe en passerelle")
-
-    from app.routes.api import _gateway_wallet_limiter
-
-    statuses = {client.get(f"/api/wallet/{member_id}").status_code for _ in range(40)}
-    _expect(429 in statuses, "limiteur dédié sur /api/wallet en passerelle")
-    _gateway_wallet_limiter._hits.clear()
 
     # Hors passerelle, l'équipe garde les champs complets.
     team_client, _ = _team_client(app)

@@ -847,11 +847,6 @@ def test_blacklist_reasons_stay_on_account_page():
         motif not in str(students) and motif_alcool not in str(students),
         "motifs absents de la recherche caisse",
     )
-    wallet = client.get(f"/api/wallet/{user_id}").get_json()
-    _expect(
-        motif not in str(wallet) and motif_alcool not in str(wallet),
-        "motifs absents du portefeuille caisse",
-    )
     journal = client.get("/admin/journal?tab=actions&user=Motif+Test").get_data(as_text=True)
     _expect(motif not in journal and motif_alcool not in journal, "motifs absents du journal")
 

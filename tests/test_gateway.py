@@ -139,9 +139,6 @@ def test_gateway_full_parcours():
         "campus de l'événement imposé (solde Paris)",
     )
 
-    res = client.get(f"/api/wallet/{ids['user']}?campus=brest")
-    _expect(res.get_json()["balance"] == 1000, "portefeuille lu sur le campus de l'événement")
-
     for path in ("/api/stats", "/api/treasury"):
         _expect(client.get(path).status_code == 403, f"{path} refusé en passerelle")
     res = client.post("/api/purchase", json={}, headers={"X-CSRFToken": token})
@@ -184,6 +181,28 @@ def test_gateway_full_parcours():
     _expect(
         res.status_code == 302 and "/connexion" in res.headers["Location"],
         "interface équipe de nouveau protégée",
+    )
+
+
+def test_gateway_sans_portefeuille_direct():
+    """`/api/wallet/<id>` est supprimé : plus d'énumération par identifiant.
+
+    La recherche renvoie déjà les champs nécessaires (solde, verres,
+    blacklists) et reste protégée par le minimum de 3 caractères.
+    """
+    app = create_app()
+    ids = _seed(app, "nowallet")
+    client = app.test_client()
+    page = client.get(f"/passerelle/{ids['token']}")
+    _expect(page.status_code == 200, f"passerelle ouverte ({page.status_code})")
+
+    res = client.get(f"/api/wallet/{ids['user']}")
+    _expect(res.status_code == 404, f"portefeuille direct supprimé ({res.status_code})")
+
+    students = client.get("/api/students?q=eleve").get_json()
+    _expect(
+        any(s["id"] == ids["user"] and s["balance"] == 1000 for s in students),
+        "la recherche fournit toujours le solde",
     )
 
 
