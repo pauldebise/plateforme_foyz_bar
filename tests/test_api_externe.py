@@ -829,6 +829,83 @@ def test_unmounted_keg_scope():
     _expect({keg_id, second} <= keg_ids, "les deux fûts sont accessibles")
 
 
+def test_keg_campus_requires_non_zero_price():
+    admin = _admin_client()
+    with app.app_context():
+        # Fût tarifé à Paris : la ligne Brest existe mais reste entièrement
+        # vide, comme celle créée automatiquement par le formulaire fût.
+        paris_only = Keg(name="Fût tarifé à Paris seulement", volume_l=30)
+        db.session.add(paris_only)
+        db.session.flush()
+        paris = paris_only.price_row("paris")
+        paris.price_half_std = 250
+        paris.price_pint_std = 450
+        paris.price_pot_std = 350
+        empty_brest = paris_only.price_row("brest")
+        _expect(
+            all(
+                value == 0
+                for value in (
+                    empty_brest.price_half_std,
+                    empty_brest.price_pint_std,
+                    empty_brest.price_pot_std,
+                    empty_brest.price_half_team,
+                    empty_brest.price_pint_team,
+                    empty_brest.price_pot_team,
+                )
+            ),
+            "ligne Brest vide",
+        )
+
+        # Fût du campus avec un seul tarif renseigné : il reste sélectionnable.
+        partial = Keg(name="Fût partiellement tarifé", volume_l=30)
+        db.session.add(partial)
+        db.session.flush()
+        partial.price_row("brest").price_pot_team = 250
+        db.session.commit()
+        paris_only_id, partial_id = paris_only.id, partial.id
+
+    page = admin.get("/admin/api/nouveau").get_data(as_text=True)
+    _expect(
+        f'id="keg-{paris_only_id}-brest"' not in page,
+        "fût sans prix brest absent du formulaire",
+    )
+    _expect(
+        f'id="keg-{partial_id}-brest"' in page,
+        "fût avec au moins un prix brest proposé",
+    )
+
+    label = "Jeton fût Paris seulement"
+    data = _token_form_data(label=label, campus="brest", keg_ids=[paris_only_id])
+    data["_csrf"] = _csrf(page)
+    res = admin.post("/admin/api/nouveau", data=data, follow_redirects=True)
+    _expect(res.status_code == 200, "formulaire forgé traité")
+    _expect(
+        "pas rattaché à ce campus" in res.get_data(as_text=True),
+        "fût sans prix brest refusé",
+    )
+    with app.app_context():
+        _expect(
+            db.session.scalars(select(ApiToken).where(ApiToken.label == label)).first() is None,
+            "aucun jeton créé avec un fût de l'autre campus",
+        )
+
+    raw = _create_token(
+        admin,
+        label="Jeton fût partiellement tarifé",
+        campus="brest",
+        keg_ids=[partial_id],
+    )
+    with app.app_context():
+        token = db.session.scalars(
+            select(ApiToken).where(ApiToken.token_hash == AT.hash_token(raw))
+        ).one()
+        _expect(
+            {link.keg_id for link in token.keg_links} == {partial_id},
+            "un seul prix non nul suffit à rattacher le fût",
+        )
+
+
 def test_team_price_rights():
     admin = _admin_client()
     article = _article("Équipe article", std=400, team=350)

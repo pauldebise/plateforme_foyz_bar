@@ -166,10 +166,21 @@ def selection_objects(campus, article_values, keg_values):
         )
         # Un fût détaché reste modifiable s'il a déjà un prix sur ce campus :
         # une correction de borne ne doit pas être bloquée pendant une soirée.
+        # La ligne KegPrice existe pour les deux campus, même vide : seule une
+        # ligne avec au moins un prix non nul prouve l'appartenance au campus.
         priced = set(
             db.session.scalars(
                 select(KegPrice.keg_id).where(
-                    KegPrice.keg_id.in_(keg_ids), KegPrice.campus == campus
+                    KegPrice.keg_id.in_(keg_ids),
+                    KegPrice.campus == campus,
+                    or_(
+                        KegPrice.price_half_std != 0,
+                        KegPrice.price_pint_std != 0,
+                        KegPrice.price_pot_std != 0,
+                        KegPrice.price_half_team != 0,
+                        KegPrice.price_pint_team != 0,
+                        KegPrice.price_pot_team != 0,
+                    ),
                 )
             )
         )
