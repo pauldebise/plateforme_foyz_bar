@@ -1950,7 +1950,11 @@ def api_token_nouveau():
             ),
         )
         db.session.commit()
-        return render_template("admin/api_token_cree.html", token=token, raw_token=raw)
+        # Affichage unique : le jeton en clair transite par la session le temps
+        # d'une redirection, puis la page de consultation le retire. Un
+        # rafraîchissement de cette page ne recrée donc aucun jeton.
+        session["api_token_a_afficher"] = {"token_id": token.id, "raw": raw}
+        return redirect(url_for("admin.api_token_cree", token_id=token.id))
 
     context = _api_form_context()
     values = _api_form_values(None)
@@ -1967,6 +1971,29 @@ def api_token_nouveau():
         title="Nouveau jeton API",
         **values,
     )
+
+
+@bp.route("/api/<int(max=2147483647):token_id>/jeton-cree")
+@login_required
+@super_admin_required
+def api_token_cree(token_id):
+    """Affiche une seule fois le jeton en clair après sa création."""
+    pending = session.pop("api_token_a_afficher", None)
+    token = db.session.get(ApiToken, token_id)
+    if token is None:
+        abort(404)
+    if (
+        not isinstance(pending, dict)
+        or pending.get("token_id") != token.id
+        or not isinstance(pending.get("raw"), str)
+    ):
+        flash(
+            "Le jeton en clair n'est affiché qu'une seule fois, juste après sa "
+            "création. S'il est perdu, révoquez-le et créez-en un nouveau.",
+            "warning",
+        )
+        return redirect(url_for("admin.api_token", token_id=token.id))
+    return render_template("admin/api_token_cree.html", token=token, raw_token=pending["raw"])
 
 
 @bp.route("/api/<int(max=2147483647):token_id>", methods=["GET", "POST"])

@@ -247,7 +247,11 @@ def _post_token_form(client, url, **kwargs):
 
 def _create_token(client, **kwargs):
     res = _post_token_form(client, "/admin/api/nouveau", **kwargs)
-    _expect(res.status_code == 200, f"création du jeton ({res.status_code})")
+    _expect(res.status_code == 302, f"création du jeton redirigée ({res.status_code})")
+    location = res.headers.get("Location", "")
+    _expect(location.endswith("/jeton-cree"), "redirection vers l'affichage unique")
+    res = client.get(location)
+    _expect(res.status_code == 200, f"affichage du jeton ({res.status_code})")
     match = re.search(r'id="new-api-token"[^>]*value="([^"]+)"', res.get_data(as_text=True))
     _expect(match is not None, "jeton affiché une seule fois après création")
     raw = match.group(1)
@@ -382,6 +386,54 @@ def test_admin_only_and_token_lifecycle():
     _expect(res.status_code == 302, "révocation acceptée")
     res = admin.get("/api/v1/catalog", headers={"Authorization": f"Bearer {raw}"})
     _expect(res.status_code == 401, "jeton révoqué refusé")
+
+
+def test_creation_jeton_affichee_une_seule_fois():
+    """Un rafraîchissement de la page de création ne doit pas créer un second jeton."""
+    admin = _admin_client()
+    page = admin.get("/admin/api/nouveau").get_data(as_text=True)
+    data = _token_form_data(label="Jeton rafraîchi", campus="brest")
+    data["_csrf"] = _csrf(page)
+
+    res = admin.post("/admin/api/nouveau", data=data)
+    _expect(res.status_code == 302, f"création redirigée ({res.status_code})")
+    location = res.headers.get("Location", "")
+    with app.app_context():
+        tokens = db.session.scalars(
+            select(ApiToken).where(ApiToken.label == "Jeton rafraîchi")
+        ).all()
+        _expect(len(tokens) == 1, "un seul jeton créé")
+        token_id = tokens[0].id
+    _expect(location == f"/admin/api/{token_id}/jeton-cree", "redirection vers l'affichage")
+
+    display = admin.get(location)
+    _expect(display.status_code == 200, f"affichage du jeton ({display.status_code})")
+    match = re.search(r'id="new-api-token"[^>]*value="([^"]+)"', display.get_data(as_text=True))
+    _expect(match is not None, "jeton en clair affiché")
+    raw = match.group(1)
+    with admin.session_transaction() as sess:
+        _expect("api_token_a_afficher" not in sess, "jeton retiré de la session après affichage")
+
+    refreshed = admin.get(location)
+    _expect(refreshed.status_code == 302, "rafraîchissement redirigé")
+    _expect(
+        refreshed.headers.get("Location") == f"/admin/api/{token_id}",
+        "rafraîchissement vers la fiche du jeton",
+    )
+    with app.app_context():
+        _expect(
+            len(
+                db.session.scalars(
+                    select(ApiToken).where(ApiToken.label == "Jeton rafraîchi")
+                ).all()
+            )
+            == 1,
+            "aucun second jeton après rafraîchissement",
+        )
+    _expect(
+        raw not in admin.get(f"/admin/api/{token_id}").get_data(as_text=True),
+        "jeton jamais réaffiché sur la fiche",
+    )
 
 
 def test_api_auth_rate_limit_and_scopes():
