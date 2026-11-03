@@ -517,6 +517,44 @@ def test_admin_password_is_per_campus():
         db.session.commit()
 
 
+def test_account_password_labels_follow_own_campus():
+    """Un membre de Brest connecté sur Paris doit voir le mot de passe Brest."""
+    from app.routes import auth as auth_module
+
+    app = create_app()
+    with app.app_context():
+        mandat = User(
+            name="Mandat fiche campus",
+            username="mandat.fiche.campus",
+            password_hash=generate_password_hash("secret123"),
+            team_status="mandat",
+            team_campus="brest",
+        )
+        target = User(
+            name="Cible fiche campus",
+            username="cible.fiche.campus",
+            password_hash=generate_password_hash("secret123"),
+        )
+        db.session.add_all([mandat, target])
+        db.session.commit()
+        target_id = target.id
+
+    auth_module.reset_throttle(app)
+    client = app.test_client()
+    res = _login(client, "mandat.fiche.campus", "secret123", campus="paris")
+    _expect(res.status_code == 302, f"connexion Brest sur Paris ({res.status_code})")
+    page = client.get(f"/admin/comptes/{target_id}").get_data(as_text=True)
+    brest_label = '<label class="form-label">Mot de passe administrateur Brest</label>'
+    _expect(
+        page.count(brest_label) == 2,
+        f"profil et suppression indiquent Brest ({page.count(brest_label)})",
+    )
+    _expect(
+        "Mot de passe administrateur Paris" not in page,
+        "aucun libellé du campus consulté",
+    )
+
+
 def test_chart_pages_render_with_json_data():
     app = create_app()
     authed = _client(app)

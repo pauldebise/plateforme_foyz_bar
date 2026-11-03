@@ -63,7 +63,7 @@
             </div>
           </div>
           <div class="mb-3">
-            <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[current_campus] if current_campus else '' }}</label>
+            <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[own_campus] if own_campus else '' }}</label>
             <input class="form-control" type="password" name="admin_password">
           </div>
           <button class="btn btn-primary">Enregistrer</button>
@@ -155,7 +155,7 @@
         <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
         <p class="form-text">Cette action est irréversible.</p>
         <div class="mb-0">
-          <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[current_campus] if current_campus else '' }}</label>
+          <label class="form-label">Mot de passe administrateur {{ CAMPUSSES[own_campus] if own_campus else '' }}</label>
           <input class="form-control" type="password" name="admin_password" required autofocus>
         </div>
       </div>
