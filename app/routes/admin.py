@@ -71,15 +71,40 @@ bp = Blueprint("admin", __name__)
 
 # Pages ouvertes à tous les membres de l'équipe (mandats et anciens) : les
 # tireuses, les comptes, les articles et les événements, onglets sortis de la
-# section administrateur. Le reste de /admin/* demeure réservé aux mandats.
-MEMBER_ENDPOINTS = (
-    "admin.tireuse",
-    "admin.keg",
-    "admin.tap",
-    "admin.compte",
-    "admin.article",
-    "admin.evenement",
+# section administrateur. Liste explicite : un nouveau endpoint
+# `admin.compte*` ou `admin.article*` ne doit pas s'ouvrir par simple préfixe.
+# L'arbitrage de solde reste réservé aux mandats.
+MEMBER_ENDPOINTS = frozenset(
+    {
+        "admin.comptes",
+        "admin.comptes_nouveau",
+        "admin.compte",
+        "admin.compte_supprimer",
+        "admin.articles",
+        "admin.article_nouveau",
+        "admin.article",
+        "admin.article_supprimer",
+        "admin.tireuses",
+        "admin.keg_nouveau",
+        "admin.keg",
+        "admin.keg_supprimer",
+        "admin.tap_nouveau",
+        "admin.tap_renommer",
+        "admin.tap_assigner",
+        "admin.tap_detacher",
+        "admin.tap_supprimer",
+        "admin.evenements",
+        "admin.evenement_nouveau",
+        "admin.evenement",
+        "admin.evenement_recap",
+        "admin.evenement_recap_export",
+    }
 )
+
+
+def _member_endpoint_allowed(endpoint):
+    """Endpoint partagé accessible aux anciens membres (correspondance exacte)."""
+    return endpoint in MEMBER_ENDPOINTS
 
 
 @bp.before_request
@@ -88,7 +113,7 @@ def require_mandat():
         return redirect(url_for("auth.login", next=request.path))
     if g.current_user.team_status != "mandat" and not g.current_user.is_super_admin:
         endpoint = request.endpoint or ""
-        if g.current_user.team_status == "ancien" and endpoint.startswith(MEMBER_ENDPOINTS):
+        if g.current_user.team_status == "ancien" and _member_endpoint_allowed(endpoint):
             return None
         abort(403)
     return None

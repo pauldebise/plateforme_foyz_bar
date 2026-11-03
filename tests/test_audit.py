@@ -38,6 +38,7 @@ from werkzeug.security import generate_password_hash  # noqa: E402
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import Article, AuditLog, Event, User  # noqa: E402
+from app.routes.admin import _member_endpoint_allowed  # noqa: E402
 from app.utils import utcnow  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
@@ -518,6 +519,29 @@ def test_onglets_partages_ouverts_aux_anciens():
         data={"name": "Compte Ancien", "username": "compte.ancien", "_csrf": token},
     )
     _expect(res.status_code == 302, "création de compte par un ancien membre")
+    with app.app_context():
+        account_id = User.query.filter_by(username="compte.ancien").one().id
+    res = client.post(
+        f"/admin/comptes/{account_id}",
+        data={
+            "name": "Compte Ancien Modifié",
+            "username": "compte.ancien",
+            "_csrf": token,
+        },
+    )
+    _expect(res.status_code == 302, "modification de compte par un ancien membre")
+    with app.app_context():
+        _expect(
+            db.session.get(User, account_id).name == "Compte Ancien Modifié",
+            "profil modifié par un ancien membre",
+        )
+    res = client.post(
+        f"/admin/comptes/{account_id}/supprimer",
+        data={"admin_password": ADMIN_PASSWORD, "_csrf": token},
+    )
+    _expect(res.status_code == 302, "suppression de compte par un ancien membre")
+    with app.app_context():
+        _expect(db.session.get(User, account_id) is None, "compte supprimé par un ancien membre")
     token = _csrf(client, "/admin/evenements")
     res = client.post(
         "/admin/evenements/nouveau",
@@ -554,6 +578,49 @@ def test_onglets_partages_ouverts_aux_anciens():
     _expect("/admin/evenements" in html, "onglet Événements visible pour un ancien")
     _expect("/equipe/tresorerie" not in html, "onglet Trésorerie masqué pour un ancien")
     _expect("Administrateur" not in html, "section administrateur masquée pour un ancien")
+
+
+def test_perimetre_anciens_repose_sur_une_liste_explicite():
+    """Un futur endpoint admin.compte* ne doit pas s'ouvrir par préfixe."""
+    current = (
+        "admin.comptes",
+        "admin.comptes_nouveau",
+        "admin.compte",
+        "admin.compte_supprimer",
+        "admin.articles",
+        "admin.article_nouveau",
+        "admin.article",
+        "admin.article_supprimer",
+        "admin.tireuses",
+        "admin.keg_nouveau",
+        "admin.keg",
+        "admin.keg_supprimer",
+        "admin.tap_nouveau",
+        "admin.tap_renommer",
+        "admin.tap_assigner",
+        "admin.tap_detacher",
+        "admin.tap_supprimer",
+        "admin.evenements",
+        "admin.evenement_nouveau",
+        "admin.evenement",
+        "admin.evenement_recap",
+        "admin.evenement_recap_export",
+    )
+    for endpoint in current:
+        _expect(_member_endpoint_allowed(endpoint), f"{endpoint} reste ouvert aux anciens")
+    for endpoint in (
+        "admin.compte_arbitrer_solde",
+        "admin.compte_export",
+        "admin.comptes_export",
+        "admin.article_import",
+        "admin.evenement_export",
+        "admin.keg_import",
+        "admin.tap_import",
+    ):
+        _expect(
+            not _member_endpoint_allowed(endpoint),
+            f"{endpoint} n'est pas ouvert par préfixe",
+        )
 
 
 def test_purge_audit():
