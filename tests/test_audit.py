@@ -13,6 +13,7 @@ Couvre :
 - purge selon la rétention (CLI, --dry-run).
 """
 
+import html
 import os
 import re
 import sys
@@ -36,7 +37,7 @@ from werkzeug.security import generate_password_hash  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
-from app.models import AuditLog, Event, User  # noqa: E402
+from app.models import Article, AuditLog, Event, User  # noqa: E402
 from app.utils import utcnow  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
@@ -171,6 +172,48 @@ def test_actions_enregistrees():
         )
         link = db.session.query(AuditLog).filter(AuditLog.action == "lien.ajout").first()
         _expect(link is not None and link.target == "Site ENSTA", "lien journalisé")
+
+
+def test_suppression_article_libelle_et_filtre():
+    app = create_app()
+    client = app.test_client()
+    _expect(_login(client).status_code == 302, "connexion administrateur")
+    token = _csrf(client, "/admin/articles/nouveau")
+    with app.app_context():
+        article = Article(
+            name="Pinte suppression audit",
+            article_type="biere",
+            campus="brest",
+            price_std=450,
+            price_team=350,
+            active=True,
+        )
+        db.session.add(article)
+        db.session.commit()
+        article_id = article.id
+
+    res = client.post(f"/admin/articles/{article_id}/supprimer", data={"_csrf": token})
+    _expect(res.status_code == 302, "suppression d'article acceptée")
+    with app.app_context():
+        logged = (
+            db.session.query(AuditLog)
+            .filter(AuditLog.action == "article.suppression")
+            .order_by(AuditLog.id.desc())
+            .first()
+        )
+        _expect(logged is not None and logged.target == "Pinte suppression audit", "action auditée")
+        # Action non concernée par le filtre, volontairement plus récente.
+        db.session.add(
+            AuditLog(action="reglages.modification", target="Action non liée", actor="test")
+        )
+        db.session.commit()
+
+    page = html.unescape(
+        client.get("/admin/journal?tab=actions&action=article.suppression").get_data(as_text=True)
+    )
+    _expect("Suppression d'article" in page, "libellé de l'action affiché")
+    _expect("Pinte suppression audit" in page, "cible de l'action affichée")
+    _expect("Action non liée" not in page, "filtre par action appliqué")
 
 
 def test_mot_de_passe_jamais_journalise():
