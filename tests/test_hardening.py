@@ -40,7 +40,7 @@ from app.extensions import db  # noqa: E402
 from app.models import Article, Keg, User  # noqa: E402
 from app.routes.admin import _deletion_campus_ok, save_upload  # noqa: E402
 from app.services import legacy_passwords as LP  # noqa: E402
-from app.services.settings import check_admin_password, set_setting  # noqa: E402
+from app.services.settings import check_admin_password, get_setting, set_setting  # noqa: E402
 from app.utils import cents, clamp_text, safe_color  # noqa: E402
 
 ADMIN_PASSWORD = "mot-de-passe-admin"
@@ -233,6 +233,74 @@ def test_svg_upload_is_refused():
             save_upload(png, allowed=(".jpg", ".jpeg", ".png", ".webp")),
             "PNG accepté",
         )
+
+
+def test_media_removal_from_module_dev():
+    """Les logos, photos et PDF peuvent être retirés ; le fichier est supprimé.
+
+    Le retrait ne s'applique qu'au campus d'appartenance : une case cochée
+    pour l'autre campus est ignorée. Le sélecteur de logo ne propose plus SVG
+    (déjà refusé côté serveur).
+    """
+    app = create_app()
+    uploads = Path(os.environ["UPLOAD_DIR"])
+    files = {
+        "logo_brest": "logo-test.png",
+        "payment_photo_brest": "photo-test.jpg",
+        "regulation_pdf_brest": "reglement-test.pdf",
+        "logo_paris": "logo-paris.png",
+    }
+    with app.app_context():
+        originals = {key: get_setting(key) for key in files}
+        for key, name in files.items():
+            set_setting(key, name)
+        db.session.commit()
+    for name in files.values():
+        (uploads / name).write_bytes(b"x")
+    try:
+        client = _client(app)
+        page = client.get("/admin/module-dev").get_data(as_text=True)
+        token = _csrf(page)
+        _expect(
+            'accept=".jpg,.jpeg,.png,.webp,.svg"' not in page,
+            "le sélecteur de logo ne propose plus SVG",
+        )
+        for media in ("logo", "payment_photo", "regulation_pdf"):
+            _expect(
+                f'name="remove_{media}_brest"' in page,
+                f"case de suppression {media} présente",
+            )
+        _expect('name="remove_logo_paris"' not in page, "autre campus non modifiable")
+
+        res = client.post(
+            "/admin/module-dev",
+            data={
+                "_csrf": token,
+                "action": "settings",
+                "remove_logo_brest": "1",
+                "remove_payment_photo_brest": "1",
+                "remove_regulation_pdf_brest": "1",
+                "remove_logo_paris": "1",
+            },
+        )
+        _expect(res.status_code == 302, f"suppression enregistrée ({res.status_code})")
+        with app.app_context():
+            for media in ("logo", "payment_photo", "regulation_pdf"):
+                _expect(get_setting(f"{media}_brest") == "", f"{media} Brest vidé")
+            _expect(get_setting("logo_paris") == "logo-paris.png", "autre campus intact")
+        for media in ("logo", "payment_photo", "regulation_pdf"):
+            _expect(
+                not (uploads / files[f"{media}_brest"]).exists(),
+                f"{media} supprimé du disque",
+            )
+        _expect((uploads / files["logo_paris"]).exists(), "fichier Paris conservé")
+    finally:
+        with app.app_context():
+            for key, value in originals.items():
+                set_setting(key, value)
+            db.session.commit()
+        for name in files.values():
+            (uploads / name).unlink(missing_ok=True)
 
 
 def test_admin_rejects_invalid_numbers_without_500():

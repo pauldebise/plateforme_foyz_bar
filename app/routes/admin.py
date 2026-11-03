@@ -143,6 +143,20 @@ def save_upload(file_storage, allowed=None):
     return name
 
 
+def remove_upload(filename):
+    """Supprime un fichier téléversé, sans jamais sortir du dossier uploads."""
+    if not filename:
+        return False
+    name = os.path.basename(filename)
+    if name != filename or name in (".", ".."):
+        return False
+    try:
+        os.remove(os.path.join(current_app.config["UPLOAD_FOLDER"], name))
+    except FileNotFoundError:
+        return False
+    return True
+
+
 def session_campus():
     campus = session.get("campus")
     return campus if campus in CAMPUSSES else "brest"
@@ -2189,13 +2203,27 @@ def module_dev():
                 request.files.get(f"payment_photo_{own}"),
                 allowed=(".jpg", ".jpeg", ".png", ".webp"),
             )
-            if pdf_own:
-                S.set_setting(f"regulation_pdf_{own}", pdf_own)
-            if logo_own:
-                S.set_setting(f"logo_{own}", logo_own)
-            if payment_photo_own:
-                S.set_setting(f"payment_photo_{own}", payment_photo_own)
-            A.record("reglages.modification", details=f"Campus {CAMPUSSES[own]}")
+            uploads = {
+                "regulation_pdf": (pdf_own, "règlement PDF"),
+                "logo": (logo_own, "logo"),
+                "payment_photo": (payment_photo_own, "photo d'encaissement"),
+            }
+            removed = []
+            for media, (uploaded, label) in uploads.items():
+                key = f"{media}_{own}"
+                # Un nouveau fichier remplace le précédent ; la case de
+                # suppression ne s'applique qu'en l'absence de téléversement.
+                if uploaded:
+                    S.set_setting(key, uploaded)
+                elif request.form.get(f"remove_{media}_{own}"):
+                    old = S.get_setting(key)
+                    S.set_setting(key, "")
+                    if remove_upload(old):
+                        removed.append(label)
+            details = f"Campus {CAMPUSSES[own]}"
+            if removed:
+                details += f" ; suppression {', '.join(removed)}"
+            A.record("reglages.modification", details=details)
             for error in errors:
                 flash(error, "danger")
             flash(

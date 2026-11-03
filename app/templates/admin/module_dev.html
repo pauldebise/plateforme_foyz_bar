@@ -1,4 +1,12 @@
 {% extends "base.html" %}
+{% macro remove_media(media, campus, label) %}
+{% if own_campus == campus and values[media ~ '_' ~ campus] %}
+<div class="form-check mt-1">
+  <input class="form-check-input" type="checkbox" name="remove_{{ media }}_{{ campus }}" id="remove-{{ media }}-{{ campus }}">
+  <label class="form-check-label small text-danger" for="remove-{{ media }}-{{ campus }}">{{ label }}</label>
+</div>
+{% endif %}
+{% endmacro %}
 {% block title %}Module développement{% endblock %}
 {% block content %}
 <h1 class="h3 mb-4"><i class="bi bi-sliders"></i> Module développement</h1>
@@ -111,17 +119,20 @@
                   <div class="mb-3">
                     <label class="form-label" for="set-logo-brest">Logo</label>
                     {% if values['logo_brest'] %}<img src="/uploads/{{ values['logo_brest'] }}" class="brand-logo d-block mb-1" alt="">{% endif %}
-                    <input class="form-control" id="set-logo-brest" type="file" name="logo_brest" accept=".jpg,.jpeg,.png,.webp,.svg" {% if own_campus != 'brest' %}disabled{% endif %}>
+                    <input class="form-control" id="set-logo-brest" type="file" name="logo_brest" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'brest' %}disabled{% endif %}>
+                    {{ remove_media('logo', 'brest', 'Supprimer le logo actuel') }}
                   </div>
                   <div class="mb-3">
                     <label class="form-label" for="set-regulation-brest">Règlement intérieur (PDF)</label>
                     {% if values['regulation_pdf_brest'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
                     <input class="form-control" id="set-regulation-brest" type="file" name="regulation_pdf_brest" accept=".pdf" {% if own_campus != 'brest' %}disabled{% endif %}>
+                    {{ remove_media('regulation_pdf', 'brest', 'Supprimer le règlement publié') }}
                   </div>
                   <div>
                     <label class="form-label" for="set-photo-brest">Photo déco — Encaissement</label>
                     {% if values['payment_photo_brest'] %}<img src="/uploads/{{ values['payment_photo_brest'] }}" class="d-block mb-1 rounded img-fluid" style="max-height: 80px;" alt="">{% endif %}
                     <input class="form-control" id="set-photo-brest" type="file" name="payment_photo_brest" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'brest' %}disabled{% endif %}>
+                    {{ remove_media('payment_photo', 'brest', 'Supprimer la photo actuelle') }}
                   </div>
                 </div>
               </div>
@@ -134,17 +145,20 @@
                   <div class="mb-3">
                     <label class="form-label" for="set-logo-paris">Logo</label>
                     {% if values['logo_paris'] %}<img src="/uploads/{{ values['logo_paris'] }}" class="brand-logo d-block mb-1" alt="">{% endif %}
-                    <input class="form-control" id="set-logo-paris" type="file" name="logo_paris" accept=".jpg,.jpeg,.png,.webp,.svg" {% if own_campus != 'paris' %}disabled{% endif %}>
+                    <input class="form-control" id="set-logo-paris" type="file" name="logo_paris" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'paris' %}disabled{% endif %}>
+                    {{ remove_media('logo', 'paris', 'Supprimer le logo actuel') }}
                   </div>
                   <div class="mb-3">
                     <label class="form-label" for="set-regulation-paris">Règlement intérieur (PDF)</label>
                     {% if values['regulation_pdf_paris'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
                     <input class="form-control" id="set-regulation-paris" type="file" name="regulation_pdf_paris" accept=".pdf" {% if own_campus != 'paris' %}disabled{% endif %}>
+                    {{ remove_media('regulation_pdf', 'paris', 'Supprimer le règlement publié') }}
                   </div>
                   <div>
                     <label class="form-label" for="set-photo-paris">Photo déco — Encaissement</label>
                     {% if values['payment_photo_paris'] %}<img src="/uploads/{{ values['payment_photo_paris'] }}" class="d-block mb-1 rounded img-fluid" style="max-height: 80px;" alt="">{% endif %}
                     <input class="form-control" id="set-photo-paris" type="file" name="payment_photo_paris" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'paris' %}disabled{% endif %}>
+                    {{ remove_media('payment_photo', 'paris', 'Supprimer la photo actuelle') }}
                   </div>
                 </div>
               </div>
