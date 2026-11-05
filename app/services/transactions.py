@@ -22,6 +22,7 @@ from app.services import settings as S
 from app.services.events import running_event_ids
 from app.utils import (
     ALCOHOL_TYPES,
+    CAMPUSSES,
     MAX_OPERATION_CENTS,
     PAYMENT_METHODS,
     clamp_text,
@@ -94,6 +95,13 @@ def _check_operation_amount(amount):
         raise OperationError(
             "invalid", f"Montant invalide (de 0,01 € à {euros(MAX_OPERATION_CENTS)})."
         )
+
+
+def _require_active_campus(campus):
+    """Refuse toute écriture sur un campus désactivé (archivé)."""
+    if campus not in CAMPUSSES:
+        raise OperationError("invalid", "Campus invalide ou désactivé.")
+    return campus
 
 
 def _get_wallet(user, campus):
@@ -269,7 +277,11 @@ def _recent_activity(campus=None, days=45):
         Contribution.transaction_id.in_(recent),
     ]
     if campus:
+        if campus not in CAMPUSSES:
+            return {}
         conditions.append(Contribution.campus == campus)
+    else:
+        conditions.append(Contribution.campus.in_(CAMPUSSES))
     stmt = (
         select(
             Contribution.user_id,
@@ -357,6 +369,7 @@ def _resolve_items(
     max_quantity=MAX_LINE_QUANTITY,
     team_sale=False,
 ):
+    _require_active_campus(campus)
     if not items:
         raise OperationError("invalid", "Aucun article sélectionné.")
     if not isinstance(items, list) or len(items) > MAX_LINES:
@@ -400,7 +413,7 @@ def _resolve_items(
                 event_id is not None
                 and allow_standard
                 and a.event_id is None
-                and campus in ("brest", "paris")
+                and campus in CAMPUSSES
                 and a.price_for(campus) > 0
             )
             if not standard_ok:
@@ -440,16 +453,14 @@ def create_purchase(
     Un panier dont le total est nul (article offert) est encaissé et enregistré
     comme une vente à 0 €.
     """
+    campus = (campus or "").lower()
+    _require_active_campus(campus)
     idempotency_key = validated_idempotency_key(idempotency_key)
     # Rejeu d'un encaissement déjà traité : on renvoie la transaction existante
     # plutôt que d'en créer une seconde (double soumission, retentative réseau).
     existing = _existing_by_key(idempotency_key)
     if existing is not None:
         return existing
-
-    campus = (campus or "").lower()
-    if campus not in ("brest", "paris"):
-        raise OperationError("invalid", "Campus invalide.")
     if direct:
         payment_method = _payment_method_or_invalid(payment_method)
         contributor_ids = []
@@ -469,7 +480,7 @@ def create_purchase(
     allow_standard = False
     if event_id is not None and not team_sale:
         event = db.session.get(Event, event_id)
-        if event is None:
+        if event is None or event.campus != campus:
             raise OperationError("invalid", "Événement introuvable.")
         allow_standard = event.allow_standard_articles
 
@@ -678,6 +689,7 @@ def balances_after(transaction):
 
 
 def return_glasses(*, operator_label, campus, user, count, idempotency_key=None):
+    _require_active_campus(campus)
     idempotency_key = validated_idempotency_key(idempotency_key)
     existing = _existing_by_key(idempotency_key)
     if existing is not None:
@@ -753,6 +765,7 @@ def return_glasses(*, operator_label, campus, user, count, idempotency_key=None)
 def create_reload(
     *, operator_label, campus, user, amount_cents, payment_method, idempotency_key=None
 ):
+    _require_active_campus(campus)
     idempotency_key = validated_idempotency_key(idempotency_key)
     existing = _existing_by_key(idempotency_key)
     if existing is not None:
@@ -788,6 +801,7 @@ def create_reload(
 
 
 def create_withdrawal(*, operator_label, campus, user, amount_cents, idempotency_key=None):
+    _require_active_campus(campus)
     idempotency_key = validated_idempotency_key(idempotency_key)
     existing = _existing_by_key(idempotency_key)
     if existing is not None:
@@ -839,6 +853,7 @@ def create_transfer(
     personne qui a avancé un achat groupé et se rembourse, sa propre part de
     donneur venant alors en déduction de ce qu'elle reçoit.
     """
+    _require_active_campus(campus)
     idempotency_key = validated_idempotency_key(idempotency_key)
     existing = _existing_by_key(idempotency_key)
     if existing is not None:
@@ -1083,6 +1098,11 @@ def cancel_transaction(transaction, admin_password, *, verified=False):
     """
     if transaction.cancelled:
         raise OperationError("invalid", "Transaction déjà annulée.")
+    if transaction.campus not in CAMPUSSES:
+        raise OperationError(
+            "invalid",
+            "Transaction d'un campus désactivé : annulation impossible depuis cette interface.",
+        )
     if not verified and not _verify_admin(
         admin_password, transaction.campus, f"annulation de la transaction #{transaction.id}"
     ):
@@ -1214,9 +1234,15 @@ def history_cutoff():
 
 
 def visible_transactions():
-    return Transaction.query.filter(Transaction.created_at >= history_cutoff()).order_by(
-        Transaction.created_at.desc()
-    )
+    """Transactions consultables : fenêtre d'historique et campus actifs.
+
+    Un campus désactivé reste en base pour la comptabilité, mais n'apparaît
+    jamais dans l'historique opérationnel.
+    """
+    return Transaction.query.filter(
+        Transaction.created_at >= history_cutoff(),
+        Transaction.campus.in_(CAMPUSSES),
+    ).order_by(Transaction.created_at.desc())
 
 
 def describe_transaction(t, plain=False):

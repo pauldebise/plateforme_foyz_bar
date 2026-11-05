@@ -13,7 +13,7 @@ d'abord si le secret est nécessaire.
 from app.extensions import db
 from app.services import audit as A
 from app.services.settings import check_admin_password
-from app.utils import CAMPUSSES
+from app.utils import CAMPUSSES, campus_label
 
 ACTION_FAILURE = "mot_de_passe_admin.echec"
 ACTION_SUCCESS = "mot_de_passe_admin.succes"
@@ -33,8 +33,10 @@ def verify(password, campus, context):
     if not isinstance(password, str) or not password or campus not in CAMPUSSES:
         return False
     if check_admin_password(password, campus):
-        A.record(ACTION_SUCCESS, target=CAMPUSSES[campus], details=context, campus=campus)
+        A.record(ACTION_SUCCESS, target=campus_label(campus), details=context, campus=campus)
         return True
     db.session.rollback()
-    A.record(ACTION_FAILURE, target=CAMPUSSES[campus], details=context, campus=campus, commit=True)
+    A.record(
+        ACTION_FAILURE, target=campus_label(campus), details=context, campus=campus, commit=True
+    )
     return False

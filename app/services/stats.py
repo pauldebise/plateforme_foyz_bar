@@ -2,7 +2,7 @@ import time
 from collections import defaultdict
 from datetime import date, datetime, time as dt_time, timedelta
 
-from sqlalchemy import Float, case, cast, exists, func, literal, select
+from sqlalchemy import Float, case, cast, exists, false, func, literal, select
 
 from app.extensions import db
 from app.models import Article, Contribution, Event, Transaction, TransactionLine, User
@@ -212,6 +212,21 @@ def _has_event_line():
     )
 
 
+def _apply_campus_filter(stmt, filters, column):
+    """Restreint un agrégat aux campus actifs.
+
+    - campus actif demandé : ce campus uniquement ;
+    - campus absent ou ``tous`` : tous les campus actifs ;
+    - campus inconnu ou désactivé : aucune ligne, jamais « toutes les lignes ».
+    """
+    campus = filters.get("campus")
+    if campus:
+        if campus in CAMPUSSES:
+            return stmt.where(column == campus)
+        return stmt.where(false())
+    return stmt.where(column.in_(CAMPUSSES))
+
+
 def _apply_transaction_filters(stmt, filters, cutoff, types):
     """Filtres communs aux agrégats de ventes (type, campus, dates, portée
     utilisateur, soirées)."""
@@ -221,9 +236,7 @@ def _apply_transaction_filters(stmt, filters, cutoff, types):
     )
     if cutoff is not None:
         stmt = stmt.where(Transaction.created_at >= cutoff)
-    campus = filters.get("campus")
-    if campus in CAMPUSSES:
-        stmt = stmt.where(Transaction.campus == campus)
+    stmt = _apply_campus_filter(stmt, filters, Transaction.campus)
     date_from = _parse_date(filters.get("date_from"))
     date_to = _parse_date(filters.get("date_to"), end_of_day=True)
     if date_from:
@@ -595,18 +608,20 @@ def _event_label(event, start=None, end=None):
 
 
 def earliest_transaction_date(campus=""):
-    """Date de Paris de la première transaction conservée en base."""
-    stmt = select(func.min(Transaction.created_at))
-    if campus in CAMPUSSES:
-        stmt = stmt.where(Transaction.campus == campus)
+    """Date de Paris de la première transaction conservée, campus actifs seuls."""
+    stmt = _apply_campus_filter(
+        select(func.min(Transaction.created_at)), {"campus": campus}, Transaction.campus
+    )
     value = db.session.execute(stmt).scalar_one()
     return to_paris(value).date() if value is not None else None
 
 
 def latest_event(campus=""):
-    stmt = select(Event).where(Event.starts_at <= utcnow())
-    if campus in CAMPUSSES:
-        stmt = stmt.where(Event.campus == campus)
+    stmt = _apply_campus_filter(
+        select(Event).where(Event.starts_at <= utcnow()),
+        {"campus": campus},
+        Event.campus,
+    )
     return db.session.scalars(stmt.order_by(Event.starts_at.desc()).limit(1)).first()
 
 
@@ -618,9 +633,11 @@ def events_in_period(start, end, campus=""):
     except (OverflowError, ValueError):
         # Bornes extrêmes : aucune soirée ne peut être placée sur ce siècle.
         return []
-    stmt = select(Event).where(Event.starts_at < end_utc, Event.ends_at >= start_utc)
-    if campus in CAMPUSSES:
-        stmt = stmt.where(Event.campus == campus)
+    stmt = _apply_campus_filter(
+        select(Event).where(Event.starts_at < end_utc, Event.ends_at >= start_utc),
+        {"campus": campus},
+        Event.campus,
+    )
     result = []
     for event in db.session.scalars(stmt.order_by(Event.starts_at)):
         event_start = max(to_paris(event.starts_at).date(), start)
@@ -900,9 +917,7 @@ def students_stats(filters=None, search="", sort="depense", page=1, per_page=0):
         .where(*conditions)
         .group_by(User.id)
     )
-    campus = filters.get("campus")
-    if campus in CAMPUSSES:
-        stmt = stmt.where(Transaction.campus == campus)
+    stmt = _apply_campus_filter(stmt, filters, Transaction.campus)
     date_from = _parse_date(filters.get("date_from"))
     date_to = _parse_date(filters.get("date_to"), end_of_day=True)
     if date_from:
@@ -1059,8 +1074,12 @@ def top_article_sales(campus=None, limit=None, days=TOP_ARTICLES_DAYS):
         Transaction.cancelled.is_(False),
         Transaction.created_at >= since,
     )
-    if campus in ("brest", "paris"):
+    if campus:
+        if campus not in CAMPUSSES:
+            return []
         recent = recent.where(Transaction.campus == campus)
+    else:
+        recent = recent.where(Transaction.campus.in_(CAMPUSSES))
     stmt = (
         select(TransactionLine.article_id, func.sum(TransactionLine.quantity).label("qty"))
         .join(Transaction, TransactionLine.transaction_id == Transaction.id)

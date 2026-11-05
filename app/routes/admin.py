@@ -53,6 +53,8 @@ from app.services.stats import TOP_ARTICLES_DAYS, top_article_sales
 from app.utils import (
     ARTICLE_TYPES,
     CAMPUSSES,
+    DEFAULT_CAMPUS,
+    campus_label,
     cents,
     clamp_text,
     euros,
@@ -159,19 +161,25 @@ def remove_upload(filename):
 
 def session_campus():
     campus = session.get("campus")
-    return campus if campus in CAMPUSSES else "brest"
+    return campus if campus in CAMPUSSES else DEFAULT_CAMPUS
 
 
 def own_campus():
     """Campus d'appartenance du membre : seul campus où il peut écrire,
-    même s'il est connecté sur l'autre campus (lecture seule). Le compte
-    admin global fait exception : il écrit sur le campus qu'il consulte."""
+    même s'il est connecté sur l'autre campus actif (lecture seule). Le compte
+    admin global fait exception : il écrit sur le campus qu'il consulte.
+
+    Un ``team_campus`` renseigné mais désactivé renvoie None : jamais de repli
+    silencieux sur le campus par défaut."""
     u = g.current_user
     if u is not None and u.is_super_admin:
         return view_campus()
+    if u is not None and not u.team_campus:
+        # Comptes d'équipe historiques sans campus attribué.
+        return session_campus()
     if u is not None and u.team_campus in CAMPUSSES:
         return u.team_campus
-    return session_campus()
+    return None
 
 
 def view_campus():
@@ -238,7 +246,7 @@ def _render_list_page(template, rows_template, footer_template, **context):
 @login_required
 def changer_campus(campus):
     """Bascule du campus de travail de l'admin global, seul à disposer de
-    droits sur les deux campus (les autres membres suivent leur équipe)."""
+    droits sur les campus actifs (les autres membres suivent leur équipe)."""
     u = g.current_user
     if u is not None and u.is_super_admin and campus in CAMPUSSES:
         session["campus"] = campus
@@ -259,13 +267,18 @@ COMPTES_RESTRICTION = {
     "alcool": "Blacklist alcool",
     "aucune": "Aucune restriction",
 }
-COMPTES_TRI = {
-    "nom": "Nom (A → Z)",
-    "brest_asc": "Solde Brest croissant",
-    "brest_desc": "Solde Brest décroissant",
-    "paris_asc": "Solde Paris croissant",
-    "paris_desc": "Solde Paris décroissant",
-}
+
+
+def _comptes_tri():
+    """Tris de la liste des comptes : uniquement les campus actifs."""
+    options = {"nom": "Nom (A → Z)"}
+    for key, label in CAMPUSSES.items():
+        options[f"{key}_asc"] = f"Solde {label} croissant"
+        options[f"{key}_desc"] = f"Solde {label} décroissant"
+    return options
+
+
+COMPTES_TRI = _comptes_tri()
 
 
 @bp.route("/comptes")
@@ -393,14 +406,16 @@ def comptes_nouveau():
     db.session.flush()
     for c in CAMPUSSES:
         u.wallet(c)
+    labels = ", ".join(CAMPUSSES.values())
     A.record(
         "compte.creation",
         target=f"{u.display_name} ({u.username})",
-        details="Portefeuilles Brest et Paris initialisés",
+        details=f"Portefeuille(s) initialisé(s) : {labels}",
     )
     db.session.commit()
     flash(
-        f"Compte de {u.display_name} créé (identifiant {u.username}, portefeuilles Brest et Paris initialisés).",
+        f"Compte de {u.display_name} créé (identifiant {u.username}, "
+        f"portefeuille(s) {labels} initialisé(s)).",
         "success",
     )
     return redirect(url_for("admin.compte", user_id=u.id))
@@ -483,7 +498,7 @@ def compte(user_id):
                 if not _can_lift_blacklist(origin):
                     flash(
                         f"{label.capitalize()} posée par l'équipe de "
-                        f"{CAMPUSSES[_blacklist_origin(origin)]} : seul un membre de cette "
+                        f"{campus_label(_blacklist_origin(origin))} : seul un membre de cette "
                         "équipe peut la retirer.",
                         "danger",
                     )
@@ -537,12 +552,12 @@ def compte(user_id):
             changes.append(f"promotion : {u.promotion if u.promotion is not None else 'aucune'}")
         if before["blacklist"] != u.blacklist:
             origine = (
-                f" (par {CAMPUSSES[_blacklist_origin(u.blacklist_by)]})" if u.blacklist else ""
+                f" (par {campus_label(_blacklist_origin(u.blacklist_by))})" if u.blacklist else ""
             )
             changes.append(f"blacklist : {'oui' if u.blacklist else 'non'}{origine}")
         if before["blacklist_alcohol"] != u.blacklist_alcohol:
             origine = (
-                f" (par {CAMPUSSES[_blacklist_origin(u.blacklist_alcohol_by)]})"
+                f" (par {campus_label(_blacklist_origin(u.blacklist_alcohol_by))})"
                 if u.blacklist_alcohol
                 else ""
             )
@@ -621,10 +636,13 @@ def compte_arbitrer_solde(user_id):
         return redirect(url_for("admin.compte", user_id=u.id))
 
     campus = own_campus()
+    if campus is None:
+        flash("Votre campus d'équipe est désactivé : opération refusée.", "danger")
+        return redirect(url_for("admin.compte", user_id=u.id))
     if not AP.verify(
         request.form.get("admin_password", ""),
         campus,
-        f"arbitrage du solde {CAMPUSSES[campus]} de {u.name}",
+        f"arbitrage du solde {campus_label(campus)} de {u.name}",
     ):
         flash(
             "L'arbitrage du solde exige le mot de passe administrateur du campus.",
@@ -647,7 +665,7 @@ def compte_arbitrer_solde(user_id):
     entry = A.record(
         "compte.arbitrage_solde",
         target=f"{u.display_name} ({u.username})",
-        details=f"{CAMPUSSES[campus]} : {movement} (solde {euros(before)} -> {euros(after)})",
+        details=f"{campus_label(campus)} : {movement} (solde {euros(before)} -> {euros(after)})",
         campus=campus,
     )
     entry.idempotency_key = idempotency_key
@@ -667,7 +685,7 @@ def compte_arbitrer_solde(user_id):
             return redirect(url_for("admin.compte", user_id=u.id))
         raise
     flash(
-        f"Solde {CAMPUSSES[campus]} de {u.display_name} arbitré : {movement} "
+        f"Solde {campus_label(campus)} de {u.display_name} arbitré : {movement} "
         f"(nouveau solde {euros(after)}).",
         "success",
     )
@@ -678,10 +696,10 @@ def _compte_warnings(u):
     warnings = []
     if u.team_status:
         warnings.append("ce compte possède un accès équipe")
-    soldes = [f"{CAMPUSSES[w.campus]} : {euros(w.balance)}" for w in u.wallets if w.balance != 0]
+    soldes = [f"{campus_label(w.campus)} : {euros(w.balance)}" for w in u.wallets if w.balance != 0]
     if soldes:
         warnings.append("solde non nul (" + ", ".join(soldes) + ")")
-    verres = [CAMPUSSES[w.campus] for w in u.wallets if w.glasses_outstanding]
+    verres = [campus_label(w.campus) for w in u.wallets if w.glasses_outstanding]
     if verres:
         warnings.append("verres consignés non rendus (" + ", ".join(verres) + ")")
     return warnings
@@ -721,11 +739,13 @@ def _deletion_campus_ok(u):
     Rattaché signifie : membre d'équipe de l'autre campus, ou portefeuille
     (solde ou verres consignés) encore engagé sur l'autre campus. Un compte
     sans aucun engagement peut être supprimé par l'une ou l'autre équipe.
-    L'admin global, qui couvre les deux campus, n'est pas concerné.
+    L'admin global, qui couvre les campus actifs, n'est pas concerné.
     """
     if g.current_user is not None and g.current_user.is_super_admin:
         return True
     own = own_campus()
+    if own is None:
+        return False
     if u.team_campus and u.team_campus != own:
         return False
     return not any(w.campus != own and (w.balance != 0 or w.glasses_outstanding) for w in u.wallets)
@@ -856,11 +876,7 @@ def membre(user_id):
             details="; ".join(
                 [
                     f"statut équipe : {u.team_status or 'aucun'}",
-                    (
-                        f"campus {CAMPUSSES.get(u.team_campus, '—')}"
-                        if u.team_status
-                        else "aucun campus"
-                    ),
+                    (f"campus {campus_label(u.team_campus)}" if u.team_status else "aucun campus"),
                     "mot de passe redéfini" if password else "mot de passe inchangé",
                 ]
             ),
@@ -1001,9 +1017,12 @@ def articles():
 @bp.route("/articles/nouveau", methods=["GET", "POST"])
 @login_required
 def article_nouveau():
+    own = own_campus()
+    if own is None:
+        abort(403)
     if request.method == "POST":
         try:
-            a = _article_from_form(Article(), own_campus())
+            a = _article_from_form(Article(), own)
         except ValueError:
             flash("Valeurs invalides : vérifiez le prix et le degré d'alcool.", "danger")
             return redirect(url_for("admin.article_nouveau"))
@@ -1011,12 +1030,12 @@ def article_nouveau():
         A.record(
             "article.creation",
             target=a.name,
-            details=f"Type {a.article_type}, campus {CAMPUSSES[own_campus()]}",
+            details=f"Type {a.article_type}, campus {campus_label(own)}",
         )
         db.session.commit()
         flash("Article créé.", "success")
         return redirect(list_url("articles"))
-    return render_template("admin/article_form.html", a=None, own=own_campus(), writable=True)
+    return render_template("admin/article_form.html", a=None, own=own, writable=True)
 
 
 @bp.route("/articles/<int(max=2147483647):article_id>", methods=["GET", "POST"])
@@ -1028,14 +1047,18 @@ def article(article_id):
     if a.is_tap or a.event_id:
         flash("Les articles tireuse et évènement se gèrent dans leurs onglets dédiés.", "warning")
         return redirect(list_url("articles"))
-    # chaque campus gère ses propres articles ; l'autre campus est consultable
-    # en lecture seule (l'admin global écrit sur le campus consulté)
-    writable = a.campus == own_campus()
+    if a.campus not in CAMPUSSES:
+        # Article d'un campus désactivé : archivé, non consultable ici.
+        abort(404)
+    # chaque campus gère ses propres articles ; l'autre campus actif est
+    # consultable en lecture seule (l'admin global écrit sur le campus consulté)
+    own = own_campus()
+    writable = own is not None and a.campus == own
     if request.method == "POST":
-        if not writable:
+        if not writable or own is None:
             abort(403)
         try:
-            _article_from_form(a, own_campus())
+            _article_from_form(a, own)
         except ValueError:
             db.session.rollback()
             flash("Valeurs invalides : vérifiez le prix et le degré d'alcool.", "danger")
@@ -1043,9 +1066,7 @@ def article(article_id):
         A.record(
             "article.modification",
             target=a.name,
-            details=(
-                f"Privé : {'oui' if a.is_private else 'non'}, campus {CAMPUSSES[own_campus()]}"
-            ),
+            details=(f"Privé : {'oui' if a.is_private else 'non'}, campus {campus_label(own)}"),
         )
         db.session.commit()
         flash("Article mis à jour.", "success")
@@ -1069,7 +1090,8 @@ def article(article_id):
 def article_supprimer(article_id):
     a = db.session.get(Article, article_id)
     if a and not a.is_tap and not a.event_id:
-        if a.campus != own_campus():
+        own = own_campus()
+        if a.campus not in CAMPUSSES or own is None or a.campus != own:
             abort(403)
         name = a.name
         # Suppression réelle : l'historique des ventes reste lisible car chaque
@@ -1141,12 +1163,54 @@ def _article_from_form(a, writable_campus):
     return a
 
 
+def _keg_visible(keg):
+    """Un fût sans prix (neuf) ou rattaché à un campus actif est gérable.
+
+    Un fût exclusivement rattaché à un campus désactivé reste en base pour
+    l'historique mais ne doit être ni affiché, ni modifié, ni supprimé depuis
+    l'interface du campus actif.
+    """
+    if not keg.prices and not keg.taps:
+        return True
+    return any(price.campus in CAMPUSSES for price in keg.prices) or any(
+        tap.campus in CAMPUSSES for tap in keg.taps
+    )
+
+
+def _keg_has_inactive_data(keg):
+    """Vrai si le fût porte encore des données d'un campus désactivé.
+
+    La suppression effacerait ses prix et détacherait ses tireuses : elle est
+    refusée depuis l'interface tant que ces données n'ont pas été traitées.
+    """
+    for price in keg.prices:
+        if price.campus in CAMPUSSES:
+            continue
+        if any(
+            (
+                price.price_half_std,
+                price.price_pint_std,
+                price.price_pot_std,
+                price.price_half_team,
+                price.price_pint_team,
+                price.price_pot_team,
+            )
+        ):
+            return True
+    return any(tap.campus not in CAMPUSSES for tap in keg.taps)
+
+
 @bp.route("/tireuses")
 @login_required
 def tireuses():
     campus = view_campus()
-    writable = campus == own_campus()
-    kegs = db.session.scalars(select(Keg).order_by(Keg.name)).unique().all()
+    own = own_campus()
+    writable = own is not None and campus == own
+    all_kegs = db.session.scalars(select(Keg).order_by(Keg.name)).unique().all()
+    # Un fût n'a pas de campus : il appartient aux campus où il a un prix non
+    # nul ou une tireuse. Les fûts exclusivement rattachés à un campus
+    # désactivé restent en base mais sortent des écrans opérationnels.
+    kegs = [keg for keg in all_kegs if _keg_visible(keg)]
     assignable_kegs = [keg for keg in kegs if C.keg_has_price(keg, campus)]
     taps = db.session.scalars(select(Tap).where(Tap.campus == campus).order_by(Tap.number)).all()
     return render_template(
@@ -1156,15 +1220,18 @@ def tireuses():
         taps=taps,
         campus=campus,
         writable=writable,
-        own_campus=own_campus(),
+        own_campus=own,
     )
 
 
 @bp.route("/tireuses/kegs/nouveau", methods=["POST"])
 @login_required
 def keg_nouveau():
+    own = own_campus()
+    if own is None:
+        abort(403)
     try:
-        keg = _keg_from_form(Keg(), own_campus(), all_campuses=True)
+        keg = _keg_from_form(Keg(), own, all_campuses=True)
     except ValueError:
         db.session.rollback()
         flash(
@@ -1177,7 +1244,7 @@ def keg_nouveau():
     A.record(
         "fut.creation",
         target=keg.name,
-        details=f"{keg.volume_l:g} L, campus {CAMPUSSES[own_campus()]}",
+        details=f"{keg.volume_l:g} L, campus {campus_label(own)}",
     )
     db.session.commit()
     flash("Fût enregistré.", "success")
@@ -1188,11 +1255,14 @@ def keg_nouveau():
 @login_required
 def keg(keg_id):
     keg = db.session.get(Keg, keg_id)
-    if keg is None:
+    if keg is None or not _keg_visible(keg):
         abort(404)
+    own = own_campus()
+    if own is None:
+        abort(403)
     if request.method == "POST":
         try:
-            _keg_from_form(keg, own_campus())
+            _keg_from_form(keg, own)
         except ValueError:
             db.session.rollback()
             flash(
@@ -1210,32 +1280,46 @@ def keg(keg_id):
         # Les articles de tireuse sont toujours régénérés : ils portent le nom
         # et les prix du fût, et une case à cocher oubliée laisserait la caisse
         # sur d'anciens prix.
-        C.refresh_tap_articles(keg, campus=own_campus())
+        C.refresh_tap_articles(keg, campus=own)
         flash("Fût mis à jour.", "success")
         return redirect(url_for("admin.tireuses"))
-    return render_template("admin/keg_form.html", keg=keg, own=own_campus())
+    return render_template("admin/keg_form.html", keg=keg, own=own)
 
 
 @bp.route("/tireuses/kegs/<int(max=2147483647):keg_id>/supprimer", methods=["POST"])
 @login_required
 def keg_supprimer(keg_id):
+    own = own_campus()
+    if own is None:
+        abort(403)
     keg = db.session.get(Keg, keg_id)
+    if keg is not None and not _keg_visible(keg):
+        abort(404)
+    if keg and _keg_has_inactive_data(keg):
+        flash(
+            "Suppression refusée : ce fût porte encore des prix ou des tireuses "
+            "d'un campus désactivé. Traitez ces données avant de le supprimer.",
+            "danger",
+        )
+        return redirect(url_for("admin.tireuses"))
     if keg:
-        mounted_elsewhere = [
-            t
-            for t in db.session.scalars(select(Tap).where(Tap.keg_id == keg.id))
-            if t.campus != own_campus()
-        ]
+        mounted = list(db.session.scalars(select(Tap).where(Tap.keg_id == keg.id)))
+        # Une tireuse d'un campus désactivé ne bloque pas la gestion du fût :
+        # elle n'est de toute façon plus exposée. Les autres campus actifs, si
+        # la configuration en autorise plusieurs, restent protégés.
+        mounted_elsewhere = [t for t in mounted if t.campus in CAMPUSSES and t.campus != own]
         if mounted_elsewhere:
             labels = ", ".join(
-                f"{t.display_name} ({CAMPUSSES[t.campus]})" for t in mounted_elsewhere
+                f"{t.display_name} ({campus_label(t.campus)})" for t in mounted_elsewhere
             )
             flash(
                 f"Suppression impossible : ce fût est monté sur {labels}. Demandez à l'équipe concernée de le détacher.",
                 "danger",
             )
             return redirect(url_for("admin.tireuses"))
-        for tap in list(db.session.scalars(select(Tap).where(Tap.keg_id == keg.id))):
+        for tap in mounted:
+            # detach_keg ignore les campus désactivés : aucun article archivé
+            # n'est réactivé ou modifié.
             C.detach_keg(tap)
         A.record("fut.suppression", target=keg.name)
         db.session.delete(keg)
@@ -1257,9 +1341,10 @@ def _positive_float(field, default, maximum):
 def _keg_from_form(k, writable_campus, *, all_campuses=False):
     """Applique le formulaire fût.
 
-    À la création (`all_campuses=True`), les prix des deux campus sont exigés :
-    un prix nul doit être saisi explicitement. À la modification, seul le
-    campus de l'opérateur est modifiable, l'autre reste en lecture seule.
+    À la création (`all_campuses=True`), les prix de tous les campus actifs sont
+    exigés : un prix nul doit être saisi explicitement. À la modification, seul
+    le campus de l'opérateur est modifiable, les autres restent en lecture
+    seule. Aucune ligne n'est créée pour un campus désactivé.
     """
     k.name = clamp_text((request.form.get("name") or "Sans nom").strip(), 255)
     k.alcohol_degree = _positive_float("alcohol_degree", k.alcohol_degree or 0.0, 100.0)
@@ -1269,7 +1354,7 @@ def _keg_from_form(k, writable_campus, *, all_campuses=False):
         if c != writable_campus and not all_campuses:
             # les prix de l'autre campus sont consultables mais non modifiables
             continue
-        # À la création, les deux campus sont saisis explicitement : aucun prix
+        # À la création, tous les campus actifs sont saisis explicitement : aucun prix
         # ne reste à 0 par simple oubli.
         row.price_half_std = _required_cents(f"{c}_half_std")
         row.price_pint_std = _required_cents(f"{c}_pint_std")
@@ -1285,6 +1370,8 @@ def _keg_from_form(k, writable_campus, *, all_campuses=False):
 def tap_nouveau():
     name = clamp_text((request.form.get("name") or "").strip(), 255)
     campus = own_campus()
+    if campus is None:
+        abort(403)
     if not name:
         flash("Le nom de la tireuse est obligatoire.", "danger")
         return redirect(url_for("admin.tireuses"))
@@ -1295,15 +1382,16 @@ def tap_nouveau():
         return redirect(url_for("admin.tireuses"))
     max_number = db.session.scalar(select(func.max(Tap.number))) or 0
     db.session.add(Tap(number=max_number + 1, name=name[:255], campus=campus))
-    A.record("tireuse.creation", target=name, details=f"Campus {CAMPUSSES[campus]}")
+    A.record("tireuse.creation", target=name, details=f"Campus {campus_label(campus)}")
     db.session.commit()
     flash(f'"{name}" ajoutée.', "success")
     return redirect(url_for("admin.tireuses"))
 
 
 def _campus_tap_or_404(tap_id):
+    own = own_campus()
     tap = db.session.get(Tap, tap_id)
-    if tap is None or tap.campus != own_campus():
+    if tap is None or own is None or tap.campus != own:
         return None
     return tap
 
@@ -1345,7 +1433,7 @@ def tap_assigner(tap_id):
     if tap and keg:
         if not C.assign_keg(tap, keg):
             flash(
-                f'Fût "{keg.name}" non assigné : aucun prix non nul pour {CAMPUSSES[tap.campus]}.',
+                f'Fût "{keg.name}" non assigné : aucun prix non nul pour {campus_label(tap.campus)}.',
                 "danger",
             )
             return redirect(url_for("admin.tireuses"))
@@ -1388,7 +1476,9 @@ def tap_supprimer(tap_id):
 @bp.route("/evenements")
 @login_required
 def evenements():
-    events = db.session.scalars(select(Event).order_by(Event.starts_at.desc())).all()
+    events = db.session.scalars(
+        select(Event).where(Event.campus.in_(CAMPUSSES)).order_by(Event.starts_at.desc())
+    ).all()
     counts = {
         ev.id: len(db.session.scalars(select(Article).where(Article.event_id == ev.id)).all())
         for ev in events
@@ -1436,6 +1526,8 @@ def _event_schedule_from_form():
 def evenement_nouveau():
     name = (request.form.get("name") or "").strip()
     campus = own_campus()
+    if campus is None:
+        abort(403)
     try:
         starts, ends = _event_schedule_from_form()
     except ValueError as exc:
@@ -1457,7 +1549,10 @@ def evenement_nouveau():
     A.record(
         "evenement.creation",
         target=ev.name,
-        details=f"Campus {CAMPUSSES[campus]}, du {ev.starts_at:%d/%m/%Y %H:%M} au {ev.ends_at:%d/%m/%Y %H:%M}",
+        details=(
+            f"Campus {campus_label(campus)}, du {ev.starts_at:%d/%m/%Y %H:%M} "
+            f"au {ev.ends_at:%d/%m/%Y %H:%M}"
+        ),
     )
     db.session.commit()
     flash("Événement créé.", "success")
@@ -1468,7 +1563,7 @@ def evenement_nouveau():
 @login_required
 def evenement(event_id):
     ev = db.session.get(Event, event_id)
-    if ev is None:
+    if ev is None or ev.campus not in CAMPUSSES:
         abort(404)
     writable = ev.campus == own_campus() or g.current_user.is_super_admin
     if request.method == "POST":
@@ -1550,7 +1645,7 @@ def _recap_event(event_id):
     """Événement dont le récap est demandé ; None (avec message) s'il n'est
     pas encore terminé ou clôturé."""
     ev = db.session.get(Event, event_id)
-    if ev is None:
+    if ev is None or ev.campus not in CAMPUSSES:
         abort(404)
     if not ev.is_finished:
         flash(
@@ -1774,11 +1869,16 @@ def sante():
         "membres": db.session.scalar(
             select(func.count()).select_from(User).where(User.team_status.is_not(None))
         ),
-        "transactions": db.session.scalar(select(func.count()).select_from(Transaction)),
+        "transactions": db.session.scalar(
+            select(func.count()).select_from(Transaction).where(Transaction.campus.in_(CAMPUSSES))
+        ),
         "transactions_24h": db.session.scalar(
             select(func.count())
             .select_from(Transaction)
-            .where(Transaction.created_at >= utcnow() - timedelta(days=1))
+            .where(
+                Transaction.created_at >= utcnow() - timedelta(days=1),
+                Transaction.campus.in_(CAMPUSSES),
+            )
         ),
         "db_size": H.database_size(),
     }
@@ -1958,7 +2058,7 @@ def api_token_nouveau():
             "api.jeton_creation",
             target=token.label,
             details=(
-                f"Campus {CAMPUSSES[token.campus]}, "
+                f"Campus {campus_label(token.campus)}, "
                 f"{len(token.article_links)} article(s), {len(token.keg_links)} fût(s), "
                 f"expire le {to_paris(token.expires_at):%d/%m/%Y %H:%M}"
             ),
@@ -1970,12 +2070,15 @@ def api_token_nouveau():
         session["api_token_a_afficher"] = {"token_id": token.id, "raw": raw}
         return redirect(url_for("admin.api_token_cree", token_id=token.id))
 
-    context = _api_form_context()
+    own = own_campus()
+    if own is None:
+        abort(403)
+    context = _api_form_context(own)
     values = _api_form_values(None)
     return render_template(
         "admin/api_form.html",
         token=None,
-        campus=own_campus(),
+        campus=own,
         standard_articles=context["standard_articles"],
         event_groups=context["event_groups"],
         keg_options=context["keg_options"],
@@ -1994,7 +2097,7 @@ def api_token_cree(token_id):
     """Affiche une seule fois le jeton en clair après sa création."""
     pending = session.pop("api_token_a_afficher", None)
     token = db.session.get(ApiToken, token_id)
-    if token is None:
+    if token is None or token.campus not in CAMPUSSES:
         abort(404)
     if (
         not isinstance(pending, dict)
@@ -2015,7 +2118,7 @@ def api_token_cree(token_id):
 @super_admin_required
 def api_token(token_id):
     token = db.session.get(ApiToken, token_id)
-    if token is None:
+    if token is None or token.campus not in CAMPUSSES:
         abort(404)
     if request.method == "POST":
         if token.is_revoked:
@@ -2137,6 +2240,8 @@ def module_dev_deco_noel():
 @login_required
 def module_dev():
     own = own_campus()
+    if own is None:
+        abort(403)
     if request.method == "POST":
         action = request.form.get("action", "settings")
         if action == "settings":
@@ -2220,7 +2325,7 @@ def module_dev():
                     S.set_setting(key, "")
                     if remove_upload(old):
                         removed.append(label)
-            details = f"Campus {CAMPUSSES[own]}"
+            details = f"Campus {campus_label(own)}"
             if removed:
                 details += f" ; suppression {', '.join(removed)}"
             A.record("reglages.modification", details=details)
@@ -2233,7 +2338,7 @@ def module_dev():
         elif action == "reset_theme_colors":
             for key in ("theme_color_public", f"theme_color_{own}"):
                 S.set_setting(key, S.DEFAULTS[key])
-            A.record("reglages.couleurs", details=f"Campus {CAMPUSSES[own]}")
+            A.record("reglages.couleurs", details=f"Campus {campus_label(own)}")
             flash("Couleurs réinitialisées aux valeurs par défaut.", "success")
         elif action == "password":
             current = request.form.get("current_password", "")
@@ -2244,18 +2349,20 @@ def module_dev():
                 new, username="admin", name="administrateur", require_diversity=False
             )
             if not AP.verify(
-                current, own, f"changement du mot de passe administrateur ({CAMPUSSES[own]})"
+                current,
+                own,
+                f"changement du mot de passe administrateur ({campus_label(own)})",
             ):
                 flash(
-                    f"Mot de passe administrateur actuel incorrect ({CAMPUSSES[own]}).",
+                    f"Mot de passe administrateur actuel incorrect ({campus_label(own)}).",
                     "danger",
                 )
             elif problem:
                 flash(problem, "danger")
             else:
                 S.set_admin_password(new, own)
-                A.record("reglages.mot_de_passe", details=f"campus {CAMPUSSES[own]}")
-                flash(f"Mot de passe administrateur modifié ({CAMPUSSES[own]}).", "success")
+                A.record("reglages.mot_de_passe", details=f"campus {campus_label(own)}")
+                flash(f"Mot de passe administrateur modifié ({campus_label(own)}).", "success")
         elif action == "add_link":
             label = clamp_text((request.form.get("label") or "").strip(), 160)
             url = clamp_text((request.form.get("url") or "").strip(), 500)

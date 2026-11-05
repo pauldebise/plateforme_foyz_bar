@@ -20,7 +20,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app.extensions import db
 from app.models import LoginLog, User
 from app.services import loginthrottle as LT
-from app.utils import CAMPUSSES, client_ip, is_safe_target, slug_username
+from app.utils import CAMPUSSES, DEFAULT_CAMPUS, client_ip, is_safe_target, slug_username
 
 bp = Blueprint("auth", __name__)
 
@@ -83,7 +83,10 @@ def login():
         password = request.form.get("password") or ""
         campus = request.form.get("campus")
         if campus not in CAMPUSSES:
-            campus = "brest"
+            # Un campus désactivé (ou absent du formulaire) ne doit jamais être
+            # enregistré dans le journal ni ouvrir une session : repli sur le
+            # campus par défaut actif.
+            campus = DEFAULT_CAMPUS
 
         # Le login ne reconnaît que l'identifiant prenom.nom : la saisie est
         # normalisée comme à l'import (casse, accents et séparateurs tolérés).
@@ -127,6 +130,18 @@ def login():
                 if user.blacklist
                 else "Accès réservé aux membres de l'équipe."
             )
+        elif (
+            ok
+            and user
+            and not user.is_super_admin
+            and user.team_campus
+            and user.team_campus not in CAMPUSSES
+        ):
+            # Le compte existe et le mot de passe est bon, mais son équipe est
+            # archivée : aucun repli sur le campus par défaut ne doit ouvrir un
+            # accès en écriture.
+            ok = False
+            reason = "Accès refusé : le campus de ce compte est désactivé."
         else:
             reason = "Identifiants incorrects."
 
@@ -164,7 +179,10 @@ def login():
 
     if request.args.get("expired"):
         flash("Session expirée pour inactivité, reconnectez-vous.", "warning")
-    return render_template("auth/login.html", campus=session.get("campus", "brest"))
+    campus = session.get("campus")
+    return render_template(
+        "auth/login.html", campus=campus if campus in CAMPUSSES else DEFAULT_CAMPUS
+    )
 
 
 @bp.route("/deconnexion", methods=["POST"])

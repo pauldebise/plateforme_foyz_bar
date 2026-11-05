@@ -5,7 +5,15 @@ from sqlalchemy import case, func, select
 from app.extensions import db
 from app.models import Transaction, TransactionLine
 from app.services.transactions import history_cutoff
-from app.utils import ARTICLE_TYPES, PAYMENT_METHODS, paris_to_utc, to_paris, utcnow
+from app.utils import (
+    ARTICLE_TYPES,
+    CAMPUSSES,
+    DEFAULT_CAMPUS,
+    PAYMENT_METHODS,
+    paris_to_utc,
+    to_paris,
+    utcnow,
+)
 
 
 def _month_bounds(reference):
@@ -54,7 +62,7 @@ def _month_case(months):
 
 
 def treasury(campus):
-    campus = campus if campus in ("brest", "paris") else "brest"
+    campus = campus if campus in CAMPUSSES else DEFAULT_CAMPUS
     cutoff = history_cutoff()
     months = last_n_months(12)
     month_case = _month_case(months)

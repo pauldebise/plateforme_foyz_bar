@@ -30,9 +30,11 @@ from app.services.treasury import treasury
 from app.utils import (
     ARTICLE_TYPES,
     CAMPUSSES,
+    DEFAULT_CAMPUS,
     PARIS_TZ,
     PAYMENT_METHODS,
     TRANSACTION_TYPES,
+    campus_label,
     clamp_text,
     is_safe_target,
     login_required,
@@ -92,26 +94,41 @@ def campus():
 
 def own_campus():
     """Campus d'appartenance du membre : seul campus où il peut écrire.
-    Le compte admin global écrit sur le campus de sa connexion."""
+    Le compte admin global écrit sur le campus de sa connexion.
+
+    Un ``team_campus`` renseigné mais désactivé ne retombe jamais sur le campus
+    de session : il renvoie None et l'écriture est refusée."""
     u = g.current_user
     if u.is_super_admin:
         return campus()
+    if not u.team_campus:
+        # Comptes d'équipe historiques sans campus attribué : comportement
+        # inchangé, ils écrivent sur le campus de leur connexion.
+        return campus()
     if u.team_campus in CAMPUSSES:
         return u.team_campus
-    return campus()
+    return None
 
 
 def can_write():
-    return campus() == own_campus()
+    own = own_campus()
+    return own is not None and campus() == own
 
 
 def require_write():
     """Garde d'écriture : True (et un flash posé) si l'opération est refusée."""
     if can_write():
         return False
+    own = own_campus()
+    if own is None:
+        flash(
+            "Votre campus d'équipe est désactivé : les opérations sont refusées.",
+            "danger",
+        )
+        return True
     flash(
-        f"Campus {CAMPUSSES[campus()]} consulté en lecture seule : les opérations "
-        f"sont réservées au campus {CAMPUSSES[own_campus()]}.",
+        f"Campus {campus_label(campus())} consulté en lecture seule : les opérations "
+        f"sont réservées au campus {campus_label(own)}.",
         "danger",
     )
     return True
@@ -126,7 +143,9 @@ def require_mandat():
 
 def _payment_catalog(campus_name):
     """Catalogue de la caisse : articles standards et articles des événements
-    en cours du campus (même fenêtre que la passerelle)."""
+    en cours du campus actif (même fenêtre que la passerelle)."""
+    if campus_name not in CAMPUSSES:
+        return []
     events = running_events(campus_name)
     event_ids = {event.id for event in events}
     event_names = {event.id: event.name for event in events}
@@ -335,7 +354,7 @@ def historique():
         )
     elif ftype:
         query = query.filter(Transaction.type == ftype)
-    if fcampus in ("brest", "paris"):
+    if fcampus in CAMPUSSES:
         query = query.filter(Transaction.campus == fcampus)
     if ffrom:
         start = paris_day_bound(ffrom)
@@ -449,9 +468,10 @@ def _stats_request():
     """Filtres communs à la page et à l'export CSV des statistiques."""
     session_campus = session.get("campus")
     if session_campus not in CAMPUSSES:
-        session_campus = "brest"
+        session_campus = DEFAULT_CAMPUS
     campus = request.args.get("campus", session_campus)
-    if campus not in ("brest", "paris", "tous"):
+    allowed = (*CAMPUSSES, "tous") if len(CAMPUSSES) > 1 else CAMPUSSES
+    if campus not in allowed:
         campus = session_campus
 
     preset = request.args.get("preset", "")
@@ -663,14 +683,14 @@ def statistiques():
     if campus == "tous":
         chips.append(
             {
-                "label": "Les deux campus",
+                "label": "Tous les campus",
                 "url": url_for("team.statistiques", **stats_args(campus=session_campus)),
             }
         )
     elif campus != session_campus:
         chips.append(
             {
-                "label": CAMPUSSES[campus],
+                "label": campus_label(campus),
                 "url": url_for("team.statistiques", **stats_args(campus=session_campus)),
             }
         )
@@ -892,7 +912,7 @@ def statistiques():
         preset=period["preset"],
         periods=ST.PERIOD_PRESETS,
         campus=campus,
-        campus_label="Les deux campus" if campus == "tous" else CAMPUSSES[campus],
+        campus_label="Tous les campus" if campus == "tous" else campus_label(campus),
         period_label=ST.format_period(period["start"], period["end"]),
         period_note=period["note"],
         period_event=period["event"],
@@ -1081,8 +1101,8 @@ def statistiques_export():
 def tresorerie():
     require_mandat()
     c = request.args.get("campus", session["campus"])
-    if c not in ("brest", "paris"):
-        c = "brest"
+    if c not in CAMPUSSES:
+        c = DEFAULT_CAMPUS
     report = treasury(c)
     return render_template("team/tresorerie.html", report=report, campus=c)
 
@@ -1105,7 +1125,7 @@ def _csv_response(filename, header, rows):
 def tresorerie_export_mensuel():
     require_mandat()
     c = request.args.get("campus", session["campus"])
-    if c not in ("brest", "paris"):
+    if c not in CAMPUSSES:
         abort(404)
     try:
         year = int(request.args.get("year", ""))
@@ -1115,7 +1135,7 @@ def tresorerie_export_mensuel():
     entry = next((e for e in treasury(c) if e["year"] == year and e["month"] == month), None)
     if entry is None:
         abort(404)
-    rows = [[f"Rapport mensuel — {site_label()} — {CAMPUSSES[c]} — {entry['label']}"], []]
+    rows = [[f"Rapport mensuel — {site_label()} — {campus_label(c)} — {entry['label']}"], []]
     for key, label in PAYMENT_METHODS.items():
         rows.append(["Rechargements", label, f"{entry['reloads_by_method'][key] / 100:.2f}"])
     rows.append(["Rechargements", "Total rechargements", f"{entry['reloads_total'] / 100:.2f}"])
@@ -1138,7 +1158,7 @@ def tresorerie_export_mensuel():
 def tresorerie_export_annuel():
     require_mandat()
     c = request.args.get("campus", session["campus"])
-    if c not in ("brest", "paris"):
+    if c not in CAMPUSSES:
         abort(404)
     report = treasury(c)
     rows = []

@@ -6,7 +6,7 @@ from app.services import transactions as T
 from app.services.ratelimit import SlidingWindowLimiter
 from app.services.stats import sales_stats
 from app.services.treasury import treasury
-from app.utils import CAMPUSSES, client_ip
+from app.utils import CAMPUSSES, DEFAULT_CAMPUS, client_ip
 
 bp = Blueprint("api", __name__)
 
@@ -41,7 +41,7 @@ def _gateway_event():
     if not event_id:
         return None
     ev = db.session.get(Event, event_id)
-    if ev is None or not ev.is_running:
+    if ev is None or ev.campus not in CAMPUSSES or not ev.is_running:
         return None
     return ev
 
@@ -64,18 +64,26 @@ def read_campus():
     ev = getattr(g, "gateway_event", None)
     if ev is not None:
         return ev.campus
-    return request.args.get("campus") or session.get("campus") or "brest"
+    requested = request.args.get("campus")
+    if requested in CAMPUSSES:
+        return requested
+    current = session.get("campus")
+    return current if current in CAMPUSSES else DEFAULT_CAMPUS
 
 
 def write_campus():
-    """Campus d'encaissement : celui de la session, à condition qu'il soit le
-    campus d'appartenance du membre (l'autre campus est en lecture seule).
-    Le compte admin global encaisse sur les deux campus."""
-    campus = session.get("campus") or "brest"
+    """Campus d'encaissement : celui de la session, à condition qu'il soit un
+    campus actif et le campus d'appartenance du membre (l'autre campus actif est
+    en lecture seule). Le compte admin global encaisse sur les campus actifs."""
+    campus = session.get("campus")
+    if campus not in CAMPUSSES:
+        return None
     if g.current_user.is_super_admin:
         return campus
     own = g.current_user.team_campus
-    if own in CAMPUSSES and campus != own:
+    if not own:
+        return campus
+    if own not in CAMPUSSES or campus != own:
         return None
     return campus
 
@@ -164,5 +172,7 @@ def stats():
 
 @bp.route("/treasury")
 def treasury_data():
-    c = request.args.get("campus", "brest")
+    c = request.args.get("campus", DEFAULT_CAMPUS)
+    if c not in CAMPUSSES:
+        return jsonify(ok=False, error="Campus invalide ou désactivé."), 404
     return jsonify(treasury(c))

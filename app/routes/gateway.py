@@ -20,7 +20,7 @@ from app.models import Article, Event
 from app.services import transactions as T
 from app.services.ratelimit import SlidingWindowLimiter
 from app.services.stats import top_article_ids
-from app.utils import client_ip
+from app.utils import CAMPUSSES, client_ip
 
 bp = Blueprint("gateway", __name__)
 
@@ -58,14 +58,18 @@ def _too_many(limiter, token, action):
 def gateway_context():
     if session.get("gateway_event_id"):
         ev = db.session.get(Event, session["gateway_event_id"])
-        if ev:
+        if ev and ev.campus in CAMPUSSES:
             g.gateway_event = ev
             g.gateway_token = ev.token
+        else:
+            # Événement d'un campus désactivé : la session passerelle ne doit
+            # plus ouvrir aucun accès.
+            session.pop("gateway_event_id", None)
 
 
 def _event_from_token(token):
     ev = db.session.scalars(select(Event).where(Event.token == token)).first()
-    if ev is None or ev.closed:
+    if ev is None or ev.closed or ev.campus not in CAMPUSSES:
         abort(404)
     return ev
 
@@ -74,6 +78,8 @@ def _gateway_catalog(ev):
     """Catalogue de la passerelle : articles de l'événement, plus le catalogue
     standard du campus uniquement si l'événement l'autorise (réglage modifiable
     en direct). Chaque campus n'encaisse que ses propres articles."""
+    if ev.campus not in CAMPUSSES:
+        return []
     conditions = [
         Article.active.is_(True),
         Article.campus == ev.campus,
@@ -132,7 +138,7 @@ def catalogue(token):
     if _too_many(_page_limiter, token, "chargements"):
         return jsonify(ok=False, error="Trop de requêtes, patientez un instant."), 429
     ev = db.session.scalars(select(Event).where(Event.token == token)).first()
-    if ev is None:
+    if ev is None or ev.campus not in CAMPUSSES:
         return jsonify(ok=False, error="Événement introuvable."), 404
     if ev.closed or not ev.is_running:
         return jsonify(ok=True, running=False, catalog=[])

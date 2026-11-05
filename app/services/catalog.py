@@ -2,7 +2,7 @@ from sqlalchemy import select
 
 from app.extensions import db
 from app.models import Article, Note, Tap
-from app.utils import TAP_SIZES, clamp_text
+from app.utils import CAMPUSSES, TAP_SIZES, clamp_text
 
 
 def _tap_article_name(label, tap, keg):
@@ -31,7 +31,9 @@ def _row_has_price(row):
 
 
 def keg_has_price(keg, campus):
-    """Vrai si le fût a au moins un prix non nul sur le campus."""
+    """Vrai si le fût a au moins un prix non nul sur un campus actif."""
+    if campus not in CAMPUSSES:
+        return False
     row = next((p for p in keg.prices if p.campus == campus), None)
     return row is not None and _row_has_price(row)
 
@@ -45,12 +47,18 @@ def assign_keg(tap, keg):
     prix non nul sur le campus de la tireuse : une ligne absente ou vide ne doit
     pas produire trois articles à 0 €.
     """
+    if tap.campus not in CAMPUSSES:
+        return False
     row = next((p for p in keg.prices if p.campus == tap.campus), None)
     if row is None or not _row_has_price(row):
         return False
     tap.keg_id = keg.id
     for a in db.session.scalars(
-        select(Article).where(Article.tap_number == tap.number, Article.is_tap.is_(True))
+        select(Article).where(
+            Article.tap_number == tap.number,
+            Article.is_tap.is_(True),
+            Article.campus == tap.campus,
+        )
     ):
         a.active = False
     prices = {
@@ -81,34 +89,51 @@ def assign_keg(tap, keg):
 
 
 def detach_keg(tap):
+    if tap.campus not in CAMPUSSES:
+        return False
     tap.keg_id = None
     for a in db.session.scalars(
-        select(Article).where(Article.tap_number == tap.number, Article.is_tap.is_(True))
+        select(Article).where(
+            Article.tap_number == tap.number,
+            Article.is_tap.is_(True),
+            Article.campus == tap.campus,
+        )
     ):
         a.active = False
     db.session.commit()
+    return True
 
 
 def delete_tap(tap):
+    if tap.campus not in CAMPUSSES:
+        return False
     for a in db.session.scalars(
-        select(Article).where(Article.tap_number == tap.number, Article.is_tap.is_(True))
+        select(Article).where(
+            Article.tap_number == tap.number,
+            Article.is_tap.is_(True),
+            Article.campus == tap.campus,
+        )
     ):
         a.active = False
     db.session.delete(tap)
     db.session.commit()
+    return True
 
 
 def refresh_tap_articles(keg, campus=None):
-    """Régénère les articles des tireuses portant ce fût.
+    """Régénère les articles des tireuses portant ce fût sur les campus actifs.
 
     Appelée après chaque modification du fût pour que la caisse voie
     immédiatement les nouvelles valeurs. Un même fût peut être monté sur
     plusieurs tireuses : celles du campus demandé sont régénérées ; sans
-    `campus`, toutes le sont.
+    `campus`, seuls les campus actifs le sont.
     """
-    stmt = select(Tap).where(Tap.keg_id == keg.id)
-    if campus:
-        stmt = stmt.where(Tap.campus == campus)
+    if campus is not None and campus not in CAMPUSSES:
+        return
+    stmt = select(Tap).where(
+        Tap.keg_id == keg.id,
+        Tap.campus == campus if campus else Tap.campus.in_(CAMPUSSES),
+    )
     for tap in db.session.scalars(stmt):
         assign_keg(tap, keg)
 

@@ -57,7 +57,7 @@ def resolve_token(raw):
     token = db.session.scalars(
         select(ApiToken).where(ApiToken.token_hash == hash_token(raw))
     ).first()
-    if token is None or not token.is_active:
+    if token is None or not token.is_active or token.campus not in CAMPUSSES:
         return None
     return token
 
@@ -166,8 +166,8 @@ def selection_objects(campus, article_values, keg_values):
         )
         # Un fût détaché reste modifiable s'il a déjà un prix sur ce campus :
         # une correction de borne ne doit pas être bloquée pendant une soirée.
-        # La ligne KegPrice existe pour les deux campus, même vide : seule une
-        # ligne avec au moins un prix non nul prouve l'appartenance au campus.
+        # Une ligne KegPrice peut exister sans prix : seule une ligne avec au
+        # moins un prix non nul prouve l'appartenance au campus.
         priced = set(
             db.session.scalars(
                 select(KegPrice.keg_id).where(

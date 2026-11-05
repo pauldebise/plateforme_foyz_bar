@@ -10,7 +10,7 @@ DEFAULTS = {
     "deposit_enabled": "1",
     "regulation_pdf_brest": "",
     "regulation_pdf_paris": "",
-    "homepage_text": "Bienvenue sur la plateforme des Foy'z & Bar de l'ENSTA.\nRetrouvez ici les événements de chaque campus, les prix du bar et les informations pratiques.",
+    "homepage_text": "Bienvenue sur la plateforme du Foy'z & Bar de l'ENSTA Bretagne.\nRetrouvez ici les événements, les prix du bar et les informations pratiques.",
     "theme_color_public": "#804db3",
     "theme_color_brest": "#41699c",
     "theme_color_paris": "#9c4c41",
@@ -35,7 +35,7 @@ DEFAULTS = {
     "link_hosting": "",
     "link_database": "",
     "link_repository": "",
-    "site_name": "Foy'z & Bar",
+    "site_name": "Foy'z & Bar — Brest",
 }
 
 
@@ -126,6 +126,8 @@ def check_admin_password(password, campus):
 
 
 def set_admin_password(password, campus):
+    if campus not in CAMPUSSES:
+        raise ValueError("Campus inactif : mot de passe administrateur non modifié.")
     set_setting(admin_password_key(campus), generate_password_hash(password))
 
 

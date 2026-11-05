@@ -17,7 +17,7 @@ from flask import g, has_request_context, session
 
 from app.extensions import db
 from app.models import AuditLog
-from app.utils import clamp_text, client_ip, utcnow
+from app.utils import CAMPUSSES, clamp_text, client_ip, utcnow
 
 ACTION_LABELS = {
     "compte.creation": "Création de compte",
@@ -78,13 +78,20 @@ def record(action, target="", details="", *, commit=False, campus=None, actor_la
     # d'acteur ni d'IP, l'entrée est tout de même écrite.
     in_request = has_request_context()
     actor = getattr(g, "current_user", None) if in_request and actor_label is None else None
+    entry_campus = (
+        campus
+        or (session.get("campus") if in_request else None)
+        or (actor.team_campus if actor else "")
+        or ""
+    )
+    if entry_campus not in CAMPUSSES:
+        # Une session ou une donnée obsolète ne doit pas créer de nouvelles
+        # entrées rattachées à un campus désactivé.
+        entry_campus = ""
     entry = AuditLog(
         user_id=actor.id if actor else None,
         actor=clamp_text(actor_label or (actor.display_name if actor else ""), 160),
-        campus=campus
-        or (session.get("campus") if in_request else None)
-        or (actor.team_campus if actor else "")
-        or "",
+        campus=entry_campus,
         action=clamp_text(action, 60),
         target=clamp_text(target or "", 160),
         details=clamp_text(details or "", 2000),

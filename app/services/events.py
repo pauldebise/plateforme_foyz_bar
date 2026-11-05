@@ -5,12 +5,14 @@ from sqlalchemy import select
 from app.extensions import db
 from app.models import Event
 from app.models.event import GATEWAY_MARGIN, GATEWAY_MAX_DURATION
-from app.utils import utcnow
+from app.utils import CAMPUSSES, utcnow
 
 
 def running_events(campus):
-    """Événements accessibles sur un campus, avec la même fenêtre que la
+    """Événements accessibles sur un campus actif, avec la même fenêtre que la
     passerelle : de 12 h avant le début jusqu'à la fin (plafonnée à 72 h)."""
+    if campus not in CAMPUSSES:
+        return []
     now = utcnow()
     return list(
         db.session.scalars(

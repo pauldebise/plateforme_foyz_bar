@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request
+from flask import Blueprint, redirect, render_template, request, url_for
 from sqlalchemy import select
 
 from app.extensions import db
@@ -6,7 +6,7 @@ from app.models import Article, Event, Note, Tap, UsefulLink
 from app.services.names import public_note_authors
 from app.services.settings import get_setting, int_setting
 from app.services.stats import top_article_ids
-from app.utils import ARTICLE_TYPES, CAMPUSSES, HIDDEN_PUBLIC_TYPES, utcnow
+from app.utils import ARTICLE_TYPES, CAMPUSSES, DEFAULT_CAMPUS, HIDDEN_PUBLIC_TYPES, utcnow
 
 bp = Blueprint("public", __name__)
 
@@ -24,7 +24,11 @@ PUBLIC_TYPE_ORDER = (*ARTICLE_TYPES, PUBLIC_TYPE_FALLBACK)
 def home():
     now_events = db.session.scalars(
         select(Event)
-        .where(Event.closed.is_(False), Event.ends_at >= utcnow())
+        .where(
+            Event.closed.is_(False),
+            Event.ends_at >= utcnow(),
+            Event.campus.in_(CAMPUSSES),
+        )
         .order_by(Event.starts_at)
     ).all()
     events_by_campus = {c: [] for c in CAMPUSSES}
@@ -49,9 +53,12 @@ def home():
 
 @bp.route("/catalogue")
 def catalogue():
-    campus = request.args.get("campus")
-    if campus not in CAMPUSSES:
-        campus = next(iter(CAMPUSSES))
+    requested = request.args.get("campus")
+    if requested is not None and requested not in CAMPUSSES:
+        # Ne jamais servir le catalogue du campus par défaut sous l'URL d'un
+        # campus désactivé : redirection vers l'URL canonique.
+        return redirect(url_for("public.catalogue", campus=DEFAULT_CAMPUS))
+    campus = requested if requested in CAMPUSSES else DEFAULT_CAMPUS
     articles = db.session.scalars(
         select(Article)
         .where(
@@ -104,9 +111,9 @@ def catalogue():
 def _public_price(article, taps):
     """Prix public d'un article pour son campus ; None s'il ne doit pas s'afficher.
 
-    Chaque article appartient à un unique campus (catalogues Brest et Paris
-    distincts) : seul le campus sélectionné est affiché. Un article de tireuse
-    ne concerne que le campus de sa tireuse.
+    Chaque article appartient à un unique campus (catalogues distincts) : seul
+    le campus sélectionné est affiché. Un article de tireuse ne concerne que le
+    campus de sa tireuse.
     """
     if article.is_tap:
         tap = taps.get(article.tap_number)
@@ -122,10 +129,7 @@ def _public_price(article, taps):
 def reglement():
     return render_template(
         "public/reglement.html",
-        pdfs={
-            "brest": get_setting("regulation_pdf_brest"),
-            "paris": get_setting("regulation_pdf_paris"),
-        },
+        pdfs={key: get_setting(f"regulation_pdf_{key}") for key in CAMPUSSES},
     )
 
 
