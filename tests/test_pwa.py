@@ -84,11 +84,20 @@ def test_manifest_installable():
 
 
 def test_icones_png():
+    from ops.make_icons import render
+
     for size in (192, 512):
         data = (STATIC / "icons" / f"icon-{size}.png").read_bytes()
         _expect(data[:8] == b"\x89PNG\r\n\x1a\n", f"signature PNG {size}")
         width, height = struct.unpack(">II", data[16:24])
         _expect((width, height) == (size, size), f"dimensions {size}x{size}")
+        _expect(data == render(size), f"icône {size} synchronisée avec ops.make_icons")
+
+
+def test_favicon_sans_ancien_monogramme():
+    svg = (STATIC / "favicon.svg").read_text(encoding="utf-8")
+    _expect("F&#38;B" not in svg, "favicon sans l'ancien « F&B »")
+    _expect('shape-rendering="crispEdges"' in svg, "favicon pixels nets")
 
 
 def test_service_worker_pierre_tombale():

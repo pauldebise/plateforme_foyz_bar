@@ -2,9 +2,10 @@
 
     python -m ops.make_icons [dossier]
 
-Dessine « F&B » (police bitmap 5×7) blanc sur fond violet, aux formats
-attendus par le manifeste (`app/static/icons/`). À relancer si le thème
-change : les fichiers produits sont versionnés.
+Dessine « F » (police bitmap 5×7) blanc sur fond violet, aux formats attendus
+par le manifeste (`app/static/icons/`). Le « B » de Paris a été retiré avec le
+passage au campus unique de Brest. À relancer si le thème change : les fichiers
+produits sont versionnés.
 """
 
 import struct
@@ -19,10 +20,8 @@ FOREGROUND = (0xFF, 0xFF, 0xFF)
 
 GLYPHS = {
     "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
-    "&": ("01100", "10010", "10010", "01100", "10101", "10010", "01101"),
-    "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
 }
-TEXT = "F&B"
+TEXT = "F"
 
 
 def _png(width, height, rows):
@@ -48,7 +47,10 @@ def _png(width, height, rows):
 def render(size):
     glyph_width, glyph_height, spacing = 5, 7, 1
     columns = len(TEXT) * glyph_width + (len(TEXT) - 1) * spacing
-    scale = max(1, (size * 4 // 5) // columns)  # marge de sécurité de 20 %
+    # Marge de sécurité de 20 %, en largeur comme en hauteur : un glyphe seul
+    # est plus haut que large et serait rogné si l'échelle ne tenait compte
+    # que de la largeur.
+    scale = max(1, min((size * 4 // 5) // columns, (size * 4 // 5) // glyph_height))
     text_width = columns * scale
     text_height = glyph_height * scale
     x0 = (size - text_width) // 2
