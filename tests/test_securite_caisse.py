@@ -7,8 +7,8 @@ Couvre :
   jamais bloquer un campus, `admin_password` refusé sur la passerelle ;
 - B2 : plafonds de la passerelle, informations réduites de /api/students
   (/api/wallet supprimé), recherche de 3 caractères minimum, validité bornée,
-  jeton masqué des journaux, page passerelle absente du cache du Service
-  Worker ;
+  jeton masqué des journaux, page passerelle servie sans cache, service worker
+  supprimé ;
 - B3 : redirections `next` (liste d'URL piégées) ;
 - B4 : annulation concurrente (un seul remboursement) ;
 - B5 : parseur de montants unique (0,29 -> 29 centimes, 1e999 -> refus) et
@@ -424,16 +424,12 @@ def test_b2_jeton_absent_des_journaux():
     _expect(MaskingLogger is not None, "journal d'accès Gunicorn masquant disponible")
 
 
-def test_b2_service_worker_retire():
-    """L'ancien service worker ne cache plus rien : il ne reste qu'une pierre
-    tombale qui purge ses caches et se désenregistre sur les anciens postes."""
-    body = (ROOT / "app" / "static" / "js" / "sw.js").read_text(encoding="utf-8")
-    _expect("respondWith" not in body, "plus d'interception des requêtes")
-    _expect("caches.open" not in body, "plus aucune mise en cache (pages sensibles incluses)")
-    _expect(
-        "caches.delete" in body and "unregister" in body,
-        "purge des caches et désenregistrement",
-    )
+def test_b2_service_worker_supprime():
+    """Le service worker et son cache ont été retirés : plus aucune ressource
+    locale, plus de route /sw.js."""
+    _expect(not (ROOT / "app" / "static" / "js" / "sw.js").exists(), "fichier sw.js supprimé")
+    app = create_app()
+    _expect(app.test_client().get("/sw.js").status_code == 404, "route /sw.js retirée")
 
 
 # --------------------------------------------------------------------------- B3

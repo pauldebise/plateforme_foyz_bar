@@ -763,16 +763,6 @@ def create_app():
             {"Content-Type": "application/manifest+json"},
         )
 
-    @app.get("/sw.js")
-    def service_worker():
-        """Pierre tombale de l'ancienne coquille hors ligne (P10-6, retiré le
-        16/10/2026) : les postes l'ayant installée récupèrent ce fichier, qui
-        purge ses caches et se désenregistre. Jamais mis en cache."""
-        response = send_from_directory(app.static_folder, "js/sw.js")
-        response.headers["Service-Worker-Allowed"] = "/"
-        response.headers["Cache-Control"] = "no-cache"
-        return response
-
     @app.route("/uploads/<path:filename>")
     def uploaded_file(filename):
         response = send_from_directory(app.config["UPLOAD_FOLDER"], filename)

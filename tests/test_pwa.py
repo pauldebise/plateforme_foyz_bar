@@ -7,8 +7,7 @@ Couvre :
 - icônes PNG valides aux bonnes dimensions ;
 - retrait complet du mode hors ligne : plus de file IndexedDB, plus de page
   /hors-ligne, la caisse avertit en cas de panne réseau et conserve le panier ;
-- /sw.js réduit à une pierre tombale : les anciens postes désenregistrent la
-  coquille hors ligne et purgent ses caches, sans plus rien intercepter.
+- service worker supprimé : plus de /sw.js, plus de cache ni de stockage local.
 """
 
 import json
@@ -100,21 +99,11 @@ def test_favicon_sans_ancien_monogramme():
     _expect('shape-rendering="crispEdges"' in svg, "favicon pixels nets")
 
 
-def test_service_worker_pierre_tombale():
+def test_service_worker_supprime():
+    _expect(not (STATIC / "js" / "sw.js").exists(), "sw.js supprimé")
     app = create_app()
     res = app.test_client().get("/sw.js")
-    _expect(res.status_code == 200, f"pierre tombale servie ({res.status_code})")
-    _expect(
-        res.headers.get("Service-Worker-Allowed") == "/",
-        "portée racine autorisée",
-    )
-    _expect(res.headers.get("Cache-Control") == "no-cache", "service worker non mis en cache")
-    body = res.get_data(as_text=True)
-    _expect("javascript" in res.headers["Content-Type"], "type JavaScript")
-    for token in ("skipWaiting", "caches.delete", "unregister"):
-        _expect(token in body, f"sw.js : {token}")
-    _expect("respondWith" not in body, "plus aucune interception réseau")
-    _expect("caches.open" not in body, "plus aucune mise en cache")
+    _expect(res.status_code == 404, f"route /sw.js retirée ({res.status_code})")
 
 
 def test_encaissement_hors_ligne_retire():
@@ -131,6 +120,7 @@ def test_encaissement_hors_ligne_retire():
     _expect("FoyzOffline" not in payment_js, "plus de file locale dans la caisse")
     _expect("queueSale" not in payment_js, "plus de mise en file des ventes")
     _expect("instanceof TypeError" in payment_js, "panne réseau traitée à part")
+    _expect("indexedDB" not in payment_js, "plus aucun stockage local dans la caisse")
 
     _expect(_login(client).status_code == 302, "connexion administrateur")
     caisse = client.get("/equipe/paiement")

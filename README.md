@@ -282,8 +282,8 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
   d'au moins 3 caractères, sans identifiant de connexion (le statut équipe reste
   visible : il détermine le tarif), avec limiteurs dédiés ; validité bornée à 72 h
   après le début de l'événement, sans délai d'inactivité (une page ouverte pendant
-  une soirée reste utilisable) ; page absente du cache du Service Worker ; jeton
-  masqué dans les journaux (application et accès Gunicorn, `app/gunicorn_logging.py`).
+  une soirée reste utilisable) ; page authentifiée servie en `Cache-Control: no-store` ;
+  jeton masqué dans les journaux (application et accès Gunicorn, `app/gunicorn_logging.py`).
 - **API externe** (`docs/API.md`) : jetons créés uniquement par le compte
   `admin` depuis `/admin/api`, stockés sous forme d'empreinte SHA-256, limités à
   un campus, une fenêtre de lecture et une sélection d'articles/fûts ; une
@@ -645,10 +645,9 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
   conserve le panier pour réessayer ; aucune vente n'est mise en file sur le poste.
   La clé d'idempotence côté serveur reste : un double clic ou une retentative
   réseau ne débite jamais deux fois.
-- `/sw.js` ne sert plus qu'une **pierre tombale** : les postes qui avaient installé
-  l'ancienne coquille hors ligne la remplacent à la prochaine visite, purgent les
-  caches et se désenregistrent. À conserver tant que d'anciens postes peuvent
-  demander une mise à jour.
+- **Aucun service worker** : `/sw.js` et son fichier ont été supprimés le
+  5/11/2026, aucun ancien poste ne demandant plus de mise à jour. L'application
+  n'utilise plus de cache ni de stockage local côté navigateur.
 
 ### 7.7 Décor de Noël
 
