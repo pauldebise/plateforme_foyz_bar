@@ -27,9 +27,12 @@ from app.logging_setup import configure_logging
 from app.extensions import db
 from app.utils import (
     ARTICLE_TYPES,
+    CAMPUS_LABELS,
     CAMPUSSES,
+    DEFAULT_CAMPUS,
     PAYMENT_METHODS,
     TRANSACTION_TYPES,
+    campus_label,
     euros,
     redact_secrets,
     safe_color,
@@ -52,7 +55,7 @@ def ensure_dev_admin():
         admin = User(name="admin", username="admin")
         db.session.add(admin)
     # Le compte d'administration est à part : hors équipe et rattaché à aucun
-    # campus. Ses droits couvrent les deux campus via `is_super_admin` ; il ne
+    # campus. Ses droits couvrent les campus actifs via `is_super_admin` ; il ne
     # porte donc ni statut équipe ni campus d'appartenance.
     admin.team_status = None
     admin.team_campus = None
@@ -64,9 +67,10 @@ def ensure_dev_admin():
     admin.blacklist_alcohol_by = None
     if not admin.password_hash:
         admin.password_hash = generate_password_hash(password)
-    # Mot de passe administrateur : un par campus. Un ancien réglage global
-    # (`admin_password_hash`, installations antérieures) est dupliqué sur les
-    # deux campus pour ne pas changer les mots de passe en service.
+    # Mot de passe administrateur : un par campus actif. Un ancien réglage
+    # global (`admin_password_hash`, installations antérieures) est dupliqué sur
+    # les campus actifs pour ne pas changer les mots de passe en service. Un
+    # campus désactivé conserve son éventuel hash sans être initialisé.
     legacy = get_setting("admin_password_hash", "")
     for campus in CAMPUSSES:
         key = admin_password_key(campus)
@@ -378,6 +382,10 @@ def create_app():
     app.config.from_object(get_config())
     configure_logging(app)
     validate_config(app)
+    app.logger.info(
+        "Campus actifs : %s",
+        ", ".join(CAMPUS_LABELS[key] for key in CAMPUSSES),
+    )
 
     if app.config.get("PROXY_FIX_X_FOR", 0) > 0:
         # Nombre explicite de proxys de confiance : remote_addr devient l'IP
@@ -539,18 +547,26 @@ def create_app():
 
             u = db.session.get(User, session["user_id"])
             if u and (u.is_team or u.is_super_admin) and not u.blacklist:
+                # Un membre d'équipe rattaché à un campus désactivé n'a plus
+                # d'accès : jamais de repli silencieux sur le campus par défaut.
+                if not u.is_super_admin and u.team_campus and u.team_campus not in CAMPUSSES:
+                    session.clear()
+                    return
                 g.current_user = u
             else:
                 session.clear()
 
     def _sync_campus():
-        """Le campus de travail est choisi à la connexion (l'autre campus que
-        celui d'appartenance reste consultable en lecture seule). Ce fixup ne
-        fait que garantir un campus valide si la session en est dépourvue."""
+        """Le campus de travail est choisi à la connexion (l'autre campus actif
+        reste consultable en lecture seule). Ce fixup garantit un campus actif
+        si la session en est dépourvue ou si elle référence un campus désactivé."""
         u = getattr(g, "current_user", None)
         if u is None or session.get("campus") in CAMPUSSES:
             return
-        session["campus"] = u.team_campus if u.team_campus in CAMPUSSES else "brest"
+        if not u.is_super_admin and u.team_campus in CAMPUSSES:
+            session["campus"] = u.team_campus
+        else:
+            session["campus"] = DEFAULT_CAMPUS
 
     def _resolve_scope():
         bp = request.blueprint or ""
@@ -654,10 +670,11 @@ def create_app():
         from app.services.christmas import is_active as christmas_deco_active
         from app.services.settings import get_setting, int_setting, bool_setting
 
-        campus = session.get("campus") or ""
+        raw_campus = session.get("campus")
+        campus = raw_campus if raw_campus in CAMPUSSES else DEFAULT_CAMPUS
         current = getattr(g, "current_user", None)
         # campus d'appartenance du membre : seul campus où il peut écrire ;
-        # l'admin global écrit sur tout campus, il ne porte jamais
+        # l'admin global écrit sur tout campus actif, il ne porte jamais
         # l'avertissement « lecture seule »
         own = (
             current.team_campus
@@ -671,16 +688,21 @@ def create_app():
             "site_name": get_setting("site_name") or "Foy'z & Bar",
             "theme_color": safe_color(
                 get_setting(f"theme_color_{campus}")
-                if campus in CAMPUSSES
+                if raw_campus in CAMPUSSES
                 else get_setting("theme_color_public"),
             ),
-            "logo": get_setting(f"logo_{campus}") or "",
-            "payment_photo": (get_setting(f"payment_photo_{campus}") if campus in CAMPUSSES else "")
+            "logo": (get_setting(f"logo_{campus}") if raw_campus in CAMPUSSES else "") or "",
+            "payment_photo": (
+                get_setting(f"payment_photo_{campus}") if raw_campus in CAMPUSSES else ""
+            )
             or "",
             "current_user": getattr(g, "current_user", None),
-            "current_campus": session.get("campus", ""),
+            "current_campus": campus,
             "own_campus": own,
             "CAMPUSSES": CAMPUSSES,
+            "CAMPUS_LABELS": CAMPUS_LABELS,
+            "DEFAULT_CAMPUS": DEFAULT_CAMPUS,
+            "campus_label": campus_label,
             "ARTICLE_TYPES": ARTICLE_TYPES,
             "PAYMENT_METHODS": PAYMENT_METHODS,
             "TRANSACTION_TYPES": TRANSACTION_TYPES,
@@ -706,7 +728,8 @@ def create_app():
                 name=get_setting("site_name") or "Foy'z & Bar",
                 short_name="Foy'z",
                 description=(
-                    "Plateforme des Foy'z & Bar de l'ENSTA : caisse, soldes et événements."
+                    f"Plateforme du Foy'z & Bar — {campus_label(DEFAULT_CAMPUS)} : "
+                    "caisse, soldes et événements."
                 ),
                 lang="fr",
                 start_url="/",

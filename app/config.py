@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from typing import ClassVar
 
+from app import campus as campus_config
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 INSTANCE_DIR = BASE_DIR / "instance"
 UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", INSTANCE_DIR / "uploads"))
@@ -48,6 +50,9 @@ class Config:
     TRUSTED_PROXY = os.environ.get("TRUSTED_PROXY", "").strip().lower()
     # Nombre de proxys de confiance pour X-Forwarded-For (ProxyFix), 0 = désactivé.
     PROXY_FIX_X_FOR = _env_int("PROXY_FIX_X_FOR")
+    # Campus exposés par l'application (FOYZ_ACTIVE_CAMPUSES, voir app/campus.py).
+    ACTIVE_CAMPUSES = tuple(campus_config.ACTIVE_CAMPUSES)
+    DEFAULT_CAMPUS = campus_config.DEFAULT_CAMPUS
 
 
 def validate_config(app):
@@ -83,6 +88,14 @@ def validate_config(app):
         app.logger.warning(
             "HTTPS_ONLY=0 en production : le cookie de session n'est pas marqué "
             "« Secure » alors que l'URL publique est en HTTPS (voir README, §Cloudflare)."
+        )
+    active = app.config.get("ACTIVE_CAMPUSES") or ()
+    if not app.config.get("DEBUG") and len(active) > 1:
+        app.logger.warning(
+            "FOYZ_ACTIVE_CAMPUSES active %s campus en production (%s) : vérifiez "
+            "que c'est volontaire.",
+            len(active),
+            ", ".join(campus_config.CAMPUS_LABELS.get(key, key) for key in active),
         )
 
 

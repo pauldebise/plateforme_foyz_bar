@@ -34,6 +34,7 @@ class User(db.Model):
     # Équipe (campus) qui a posé la blacklist : seule cette équipe peut la
     # retirer (l'admin global est exempté). NULL est traité comme « brest »
     # pour les blacklists antérieures au suivi d'origine (imports legacy).
+    # L'origine peut être un campus désactivé : elle reste libellable.
     blacklist_by: db.Mapped[str | None] = db.mapped_column(
         db.String(10), nullable=True, default=None
     )
@@ -67,7 +68,7 @@ class User(db.Model):
     @property
     def is_super_admin(self):
         """Compte d'administration global : ses droits d'écriture couvrent
-        les deux campus, le campus de travail devient celui qu'il consulte."""
+        les campus actifs, le campus de travail devient celui qu'il consulte."""
         return (self.username or "") == "admin"
 
     @property
@@ -84,6 +85,15 @@ class User(db.Model):
         db.session.add(w)
         db.session.flush()
         return w
+
+    def wallet_or_none(self, campus):
+        """Portefeuille existant, sans jamais en créer un à l'affichage.
+
+        Les pages de consultation (et les campus inactifs) ne doivent pas
+        laisser de portefeuilles vides en base : la création reste réservée
+        aux opérations d'écriture sur un campus actif.
+        """
+        return next((w for w in self.wallets if w.campus == campus), None)
 
 
 class Wallet(db.Model):

@@ -15,9 +15,10 @@ class Article(db.Model):
     name: db.Mapped[str] = db.mapped_column(db.String(255))
     article_type: db.Mapped[str] = db.mapped_column(db.String(20), default="biere", index=True)
     volume_cl: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
-    # Chaque article appartient à un unique campus : les catalogues Brest et
-    # Paris sont distincts (un article commun aux deux bases historiques doit
-    # être enregistré deux fois, une par campus).
+    # Chaque article appartient à un unique campus : les catalogues sont
+    # distincts (un article commun aux deux bases historiques doit être
+    # enregistré deux fois, une par campus). Un campus inactif garde ses
+    # articles en base, sans exposition opérationnelle.
     campus: db.Mapped[str] = db.mapped_column(db.String(10), default="brest", index=True)
     price_std: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
     price_team: db.Mapped[int] = db.mapped_column(db.Integer, default=0)
@@ -46,7 +47,7 @@ class Article(db.Model):
 
     def price_for(self, campus, team=False):
         """Prix public/équipe : 0 dès que le campus demandé n'est pas celui de
-        l'article (un article brestois n'est ni visible ni vendable à Paris)."""
+        l'article (un article n'est ni visible ni vendable hors de son campus)."""
         if campus != self.campus:
             return 0
         return self.price_team if team else self.price_std
@@ -73,6 +74,10 @@ class Keg(db.Model):
         db.session.add(row)
         db.session.flush()
         return row
+
+    def price_or_none(self, campus):
+        """Ligne de prix existante, sans création à l'affichage."""
+        return next((p for p in self.prices if p.campus == campus), None)
 
 
 class KegPrice(db.Model):

@@ -10,9 +10,15 @@ from zoneinfo import ZoneInfo
 
 from flask import current_app, redirect, request, url_for, g
 
-PARIS_TZ = ZoneInfo("Europe/Paris")
+from app.campus import ACTIVE_CAMPUSES as ACTIVE_CAMPUSES
+from app.campus import CAMPUS_LABELS as CAMPUS_LABELS
+from app.campus import CAMPUSSES as CAMPUSSES
+from app.campus import DEFAULT_CAMPUS as DEFAULT_CAMPUS
+from app.campus import KNOWN_CAMPUSES as KNOWN_CAMPUSES
+from app.campus import campus_label as campus_label
+from app.campus import is_active as is_active
 
-CAMPUSSES = {"brest": "Brest", "paris": "Paris"}
+PARIS_TZ = ZoneInfo("Europe/Paris")
 PAYMENT_METHODS = {
     "cb": "Carte Bancaire",
     "lydia": "Lydia",
