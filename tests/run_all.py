@@ -59,6 +59,7 @@ SQLITE_SUITES = [
     "tests.test_pwa",
     "tests.test_charge",
     "tests.test_performance",
+    "tests.test_single_campus",
     "tests.migration.test_migration",
     "tests.test_ops",
 ]
@@ -96,6 +97,7 @@ POSTGRES_SUITES = [
     "tests.test_charge",
     "tests.test_security",
     "tests.test_identifiers",
+    "tests.test_single_campus",
 ]
 
 
@@ -105,6 +107,10 @@ SERIAL_SUITES = {"tests.test_charge", "tests.test_performance", "tests.test_conc
 
 def _run(module, extra_env):
     env = {**os.environ, **extra_env}
+    # Les suites historiques testent le comportement bi-campus, même si le
+    # shell courant est configuré pour la production mono-campus. La suite
+    # dédiée force elle-même son propre mode.
+    env["FOYZ_ACTIVE_CAMPUSES"] = "brest" if module == "tests.test_single_campus" else "brest,paris"
     res = subprocess.run(
         [sys.executable, "-m", module],
         cwd=ROOT,

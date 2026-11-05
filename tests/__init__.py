@@ -2,6 +2,14 @@
 
 import os
 
+# Les suites historiques couvrent le comportement bi-campus. Le mode
+# mono-campus est testé explicitement par tests.test_single_campus, qui écrase
+# cette valeur après l'import du package mais avant celui de `app`. La valeur
+# est imposée (et non pas seulement définie par défaut) pour qu'une variable
+# `FOYZ_ACTIVE_CAMPUSES=brest` présente dans le shell ne fasse pas échouer les
+# suites bi-campus.
+os.environ["FOYZ_ACTIVE_CAMPUSES"] = "brest,paris"
+
 # Les tests ne mesurent pas la robustesse du KDF : scrypt est volontairement
 # lent et représentait une part importante du temps de la suite (chaque compte
 # de test et chaque tentative de connexion en calcule un). Le format Werkzeug

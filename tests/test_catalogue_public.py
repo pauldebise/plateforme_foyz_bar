@@ -201,7 +201,7 @@ def test_libelles_carte_catalogue_accueil():
         "carte renommée en « Catalogue »",
     )
     _expect(
-        "Consultez le catalogue complet et les prix de chaque campus :" in accueil,
+        "Consultez le catalogue complet et les prix du bar :" in accueil,
         "phrase du catalogue simplifiée",
     )
     _expect("<strong>prix standards</strong>" not in accueil, "prix sans gras")
