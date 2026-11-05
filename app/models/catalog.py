@@ -26,11 +26,6 @@ class Article(db.Model):
     # Degré d'alcool facultatif (°) : renseigné pour les boissons dont
     # l'équipe connaît la valeur, affiché dans le catalogue public.
     alcohol_degree: db.Mapped[float | None] = db.mapped_column(db.Float, nullable=True)
-    # Article privé : conserve toutes ses fonctionnalités (vente en caisse,
-    # passerelle, statistiques) mais n'apparaît pas dans le catalogue public.
-    is_private: db.Mapped[bool] = db.mapped_column(
-        db.Boolean, default=False, server_default=db.false(), index=True
-    )
     is_tap: db.Mapped[bool] = db.mapped_column(db.Boolean, default=False, index=True)
     tap_number: db.Mapped[int | None] = db.mapped_column(db.Integer, nullable=True)
     keg_id: db.Mapped[int | None] = db.mapped_column(

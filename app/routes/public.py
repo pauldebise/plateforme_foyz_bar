@@ -6,7 +6,7 @@ from app.models import Article, Event, Note, Tap, UsefulLink
 from app.services.names import public_note_authors
 from app.services.settings import get_setting, int_setting
 from app.services.stats import top_article_ids
-from app.utils import ARTICLE_TYPES, CAMPUSSES, DEFAULT_CAMPUS, HIDDEN_PUBLIC_TYPES, utcnow
+from app.utils import ARTICLE_TYPES, BLAGUE_TYPE, CAMPUSSES, DEFAULT_CAMPUS, utcnow
 
 bp = Blueprint("public", __name__)
 
@@ -63,8 +63,7 @@ def catalogue():
         select(Article)
         .where(
             Article.active.is_(True),
-            Article.is_private.is_(False),
-            Article.article_type.notin_(HIDDEN_PUBLIC_TYPES),
+            Article.article_type != BLAGUE_TYPE,
             Article.event_id.is_(None),
             Article.campus == campus,
         )

@@ -9,6 +9,7 @@ from app.models import Article, Contribution, Event, Transaction, TransactionLin
 from app.services.transactions import history_cutoff, ranking_generation
 from app.utils import (
     ARTICLE_TYPES,
+    BLAGUE_TYPE,
     CAMPUSSES,
     PARIS_TZ,
     fold_text,
@@ -21,7 +22,6 @@ from app.utils import (
 # journalière est découpée en Python pour suivre le fuseau de Paris). Trois ans
 # couvrent largement l'historique conservé.
 MAX_STATS_DAYS = 1100
-BLAGUE_TYPE = "blague"
 
 PERIOD_PRESETS = {
     "7j": "7 derniers jours",

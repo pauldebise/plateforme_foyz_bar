@@ -25,6 +25,9 @@ PAYMENT_METHODS = {
     "especes": "Espèces",
     "helloasso": "HelloAsso",
 }
+# Type unique des articles vendables mais jamais affichés dans le catalogue
+# public des prix : articles « pour rire » ou compteurs de soirée.
+BLAGUE_TYPE = "blague"
 ARTICLE_TYPES = {
     "biere": "Bière",
     "vin": "Vin",
@@ -32,12 +35,9 @@ ARTICLE_TYPES = {
     "snack": "Snacks",
     "saucisson": "Saucisson",
     "evenement": "Évènement/Soirée",
-    "blague": "Blague",
+    BLAGUE_TYPE: "Blague",
 }
 ALCOHOL_TYPES = {"biere", "vin", "cidre"}
-# Types vendables (caisse, passerelle, statistiques, trésorerie) mais jamais
-# affichés dans le catalogue public des prix : articles « pour rire ».
-HIDDEN_PUBLIC_TYPES = {"blague"}
 TRANSACTION_TYPES = {
     "achat": "Achat",
     "direct": "Paiement direct",

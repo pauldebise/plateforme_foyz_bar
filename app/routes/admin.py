@@ -1066,7 +1066,7 @@ def article(article_id):
         A.record(
             "article.modification",
             target=a.name,
-            details=(f"Privé : {'oui' if a.is_private else 'non'}, campus {campus_label(own)}"),
+            details=f"campus {campus_label(own)}",
         )
         db.session.commit()
         flash("Article mis à jour.", "success")
@@ -1155,7 +1155,6 @@ def _article_from_form(a, writable_campus):
         a.article_type = "biere"
     a.volume_cl = _optional_int(request.form.get("volume_cl"))
     a.is_alcohol = request.form.get("is_alcohol") == "on"
-    a.is_private = request.form.get("is_private") == "on"
     a.alcohol_degree = _optional_degree("alcohol_degree") if a.is_alcohol else None
     a.campus = writable_campus
     a.price_std = _required_cents("price_std")

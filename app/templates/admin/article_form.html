@@ -30,7 +30,7 @@
             <option value="{{ key }}" {% if a and a.article_type == key %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
-          <div class="form-text">Les articles de type Blagues sont cachés dans le catalogue public, mettez vos conneries dans ce type svp :)</div>
+          <div class="form-text">Les articles de type Blague sont vendables mais jamais affichés dans le catalogue public, et exclus des tendances et des statistiques par défaut.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Volume (cl, optionnel)</label>
@@ -53,12 +53,6 @@
         <div class="col-md-6">
           <label class="form-label">Prix équipe (€)</label>
           <input class="form-control" name="price_team" value="{{ '%.2f'|format(a.price_team / 100) if a else '0.00' }}" {% if not writable %}disabled{% endif %} required>
-        </div>
-        <div class="col-12">
-          <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" name="is_private" id="is_private" {% if not writable %}disabled{% endif %} {% if a and a.is_private %}checked{% endif %}>
-            <label class="form-check-label" for="is_private">Article privé (masqué du catalogue public)</label>
-          </div>
         </div>
       </div>
       {% if writable %}

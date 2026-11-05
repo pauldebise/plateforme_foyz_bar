@@ -85,11 +85,10 @@ def _setup():
                     alcohol_degree=6.5 if name == "Zzz biere" else None,
                 )
             )
-        # Très vendus mais jamais affichés au public : privé, inactif, type masqué.
-        for name, kind, private in (
-            ("Prive hit", "snack", True),
-            ("Inactif hit", "snack", False),
-            ("Blague hit", "blague", False),
+        # Très vendus mais jamais affichés au public : inactif ou type masqué.
+        for name, kind in (
+            ("Inactif hit", "snack"),
+            ("Blague hit", "blague"),
         ):
             db.session.add(
                 Article(
@@ -98,13 +97,12 @@ def _setup():
                     campus="brest",
                     price_std=100,
                     price_team=100,
-                    is_private=private,
                 )
             )
         db.session.commit()
     for i in range(1, 9):
         _sell(app, f"Vin {i:02d}", 31 - i)  # 30 … 23 : tête du classement
-    for name in ("Prive hit", "Inactif hit", "Blague hit"):
+    for name in ("Inactif hit", "Blague hit"):
         _sell(app, name, 100)
     with app.app_context():
         inactive = db.session.scalars(select(Article).where(Article.name == "Inactif hit")).one()
@@ -225,7 +223,7 @@ def test_carte_des_plus_vendus():
 def test_top_sans_articles_non_publics():
     top = _cards()["catalogue-top"]
     page = " ".join(n for names in _cards().values() for n in names)
-    for hidden in ("Prive hit", "Inactif hit", "Blague hit"):
+    for hidden in ("Inactif hit", "Blague hit"):
         _expect(hidden not in top and hidden not in page, f"{hidden} jamais affiché au public")
 
 
