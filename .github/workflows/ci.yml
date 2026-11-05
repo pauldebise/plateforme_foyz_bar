@@ -61,10 +61,13 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Suites SQLite
         if: matrix.database == 'sqlite'
+        env:
+          FOYZ_ACTIVE_CAMPUSES: brest,paris
         run: python -m tests.run_all
       - name: Suites PostgreSQL
         if: matrix.database == 'postgresql'
         env:
+          FOYZ_ACTIVE_CAMPUSES: brest,paris
           PG_URL: postgresql+psycopg2://foyz:foyz@127.0.0.1:5432/foyz_test
         run: python -m tests.run_all --postgres "$PG_URL"
 

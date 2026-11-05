@@ -28,6 +28,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY est obligatoire (32 caractères minimum, openssl rand -hex 32)}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD est obligatoire}
       DATABASE_URL: postgresql+psycopg2://foyz:${POSTGRES_PASSWORD}@db:5432/foyz
+      FOYZ_ACTIVE_CAMPUSES: ${FOYZ_ACTIVE_CAMPUSES:-brest}
     volumes:
       - uploads:/data/uploads
     depends_on:
