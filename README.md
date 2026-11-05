@@ -1,8 +1,14 @@
-# Plateforme Foy'z & Bar — ENSTA Bretagne & ENSTA Paris
+# Plateforme Foy'z & Bar — Brest
 
-Plateforme web unifiée de gestion des Foy'z/Bar des deux campus : interface publique, interface
-équipe (caisse, comptes étudiants, statistiques, trésorerie) et interface administrateur,
-conformément au cahier des charges (`docs/main.tex`).
+Plateforme web de gestion du Foy'z/Bar de l'ENSTA Bretagne : interface publique,
+interface équipe (caisse, comptes étudiants, statistiques, trésorerie) et interface
+administrateur, conformément au cahier des charges (`docs/main.tex`).
+
+Le campus de Paris est **archivé** : ses données historiques restent en base et
+restent libellables, mais le campus n'est ni exposé ni modifiable. La liste des
+campus actifs est pilotée par `FOYZ_ACTIVE_CAMPUSES` (voir §3) ; le modèle
+`campus` est conservé pour permettre une évolution ultérieure sans migration
+prématurée.
 
 - Backend : **Python 3 / Flask 3** (architecture modulaire en blueprints)
 - Base de données : **SQLAlchemy 2** — SQLite en développement, PostgreSQL en production
@@ -22,6 +28,7 @@ conformément au cahier des charges (`docs/main.tex`).
 Foyz_plateforme/
 ├── app/
 │   ├── __init__.py            # Factory Flask : sécurité (CSRF, session), filtres, contexte
+│   ├── campus.py              # Campus connus (historique) / actifs (opérationnels)
 │   ├── config.py              # Configuration dev / prod via variables d'environnement
 │   ├── extensions.py          # Instance SQLAlchemy
 │   ├── utils.py               # Constantes métier, helpers temps/monnaie, décorateurs
@@ -236,11 +243,16 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 | `FLASK_ENV`     | `production` ou `development`                               | `production`      |
 | `SECRET_KEY`    | Signature des sessions — **obligatoire en production** (32 car. min.) | valeur de dev (refusée en production) |
 | `DATABASE_URL`  | URI SQLAlchemy (SQLite ou PostgreSQL)                       | SQLite locale     |
-| `ADMIN_PASSWORD`| Mot de passe administrateur initial des deux campus (créé par `init-db`) — **obligatoire en production** | `admin` (refusé en production) |
+| `ADMIN_PASSWORD`| Mot de passe administrateur initial des campus actifs (créé par `init-db`) — **obligatoire en production** | `admin` (refusé en production) |
+| `FOYZ_ACTIVE_CAMPUSES` | Codes des campus exposés, séparés par des virgules. Production : `brest`. Développement/tests bi-campus : `brest,paris`. | `brest,paris` |
 | `HTTPS_ONLY`    | `1` = cookies `Secure` (derrière HTTPS)                     | `0`               |
 | `UPLOAD_DIR`    | Dossier des fichiers téléversés                             | `instance/uploads`|
 | `TRUSTED_PROXY` | `cloudflare` = IP client lue dans `CF-Connecting-IP`        | vide (aucun)      |
 | `PROXY_FIX_X_FOR`| Nombre de proxys de confiance `X-Forwarded-For` (ProxyFix) | `0`               |
+
+> Sur une instance existante, ajouter `FOYZ_ACTIVE_CAMPUSES=brest` au `.env`
+> **avant** le redémarrage : sans cette variable, le code retombe sur
+> `brest,paris` (mode de compatibilité développement/tests).
 
 ## 4. Sécurité
 
@@ -260,9 +272,10 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 - Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
   annulations de transactions, retrait des statuts blacklist (réservé à l'équipe
   d'origine de la blacklist, admin global excepté).
-- **Mot de passe administrateur** : un campus n'est jamais bloqué ; les échecs **et** les
-  succès sont journalisés (« Actions » de `/admin/journal` : opérateur, opération
-  protégée, IP). Le champ `admin_password` est refusé par la passerelle.
+- **Mot de passe administrateur** : un campus actif n'est jamais bloqué ; les échecs
+  **et** les succès sont journalisés (« Actions » de `/admin/journal` : opérateur,
+  opération protégée, IP). Le champ `admin_password` est refusé par la passerelle.
+  Un campus désactivé ne peut plus vérifier ni modifier ce secret.
 - **Passerelle** (lien sans compte) : quantité limitée à 20 par article et montant à
   150 € par transaction, tarif équipe appliqué comme en caisse (si tous les payeurs
   sont de l'équipe), jamais d'encaissement sur un compte déjà à découvert ; recherche
@@ -311,19 +324,24 @@ corrige pas** les défauts applicatifs et introduit ses propres pièges.
 
 - **Sauvegardes automatiques, restauration, supervision, purge** : voir §7.
 - **Changer le mot de passe administrateur** : Module développement → Mot de passe
-  administrateur. Ce mot de passe est **propre à chaque campus** (il confirme les
-  opérations sensibles : découvert, annulation, suppression de compte, retrait
-  des statuts blacklist) ; basculez de campus pour modifier celui de l'autre site. À
-  la première exécution, `ADMIN_PASSWORD` initialise les deux campus, et un ancien
-  réglage unique (`admin_password_hash`) est repris sur les deux.
+  administrateur. Ce mot de passe est **propre à chaque campus actif** (il confirme
+  les opérations sensibles : découvert, annulation, suppression de compte, retrait
+  des statuts blacklist). En production mono-campus, il n'y a qu'un seul secret. À
+  la première exécution, `ADMIN_PASSWORD` initialise les campus actifs, et un ancien
+  réglage unique (`admin_password_hash`) est repris sur ceux-ci ; un campus
+  désactivé conserve son éventuel hash sans être réinitialisé.
 - Les paramètres (découvert, consigne, thèmes, durées de conservation…) se règlent dans
   **Administrateur → Module développement**, sans redéploiement.
 
 ## 6. Bascule nocturne : migration des anciennes bases
 
-Le module `migration/` ingère, transforme et injecte les anciennes bases des deux
-campus dans la plateforme unifiée, en une transaction PostgreSQL unique avec
-audit comptable systématique.
+Le module `migration/` ingère, transforme et injecte les anciennes bases dans la
+plateforme, en une transaction PostgreSQL unique avec audit comptable systématique.
+
+> **Paris est gelé.** L'import Paris (étape E5 du plan de bascule) n'a jamais été
+> exécuté et ne doit plus l'être tant que le campus est inactif. Le code ETL reste
+> conservé pour un éventuel retour, mais `FOYZ_ACTIVE_CAMPUSES=brest` rend le
+> campus inopérationnel dans l'application.
 
 ### Déroulé opérationnel
 
@@ -649,7 +667,9 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
   équipe, soirées) restent communs aux trois vues et sont conservés dans l'URL.
 - Périodes rapides : 7 jours, 30 jours, mois courant, mois dernier, 6 mois,
   12 mois, année civile, **tout l'historique**, dernier événement, personnalisé.
-  Le campus de session est sélectionné par défaut ; « Les deux campus » est explicite.
+  Le campus de session est sélectionné par défaut ; avec plusieurs campus actifs,
+  « Tous les campus » est explicite. En production mono-campus, le sélecteur est
+  masqué et les agrégats ne portent que sur Brest.
   *Tout l'historique* démarre à la première transaction conservée en base et ignore
   le plafond d'accès `max_history_days` : c'est la vue de bilan complet, à réserver
   aux usages qui en ont besoin.

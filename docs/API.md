@@ -11,11 +11,13 @@ caisse de la plateforme reste le seul point de vente.
 - Un jeton est créé et géré uniquement depuis **Administrateur → API**, par le
   compte `admin` (super administrateur). Les membres de l'équipe n'y ont pas
   accès.
-- Un jeton est limité à **un campus**, à une **fenêtre de lecture** et à une
-  **sélection précise** d'articles standards, d'articles d'événement et de
+- Un jeton est limité à **un campus actif**, à une **fenêtre de lecture** et à
+  une **sélection précise** d'articles standards, d'articles d'événement et de
   fûts. Un fût donne accès à ses trois tailles : demi, pinte et pot. Un fût
   **non monté** peut être sélectionné s'il a des prix sur le campus ; ses prix
   s'appliquent lorsqu'il est installé sur une tireuse.
+- Un jeton rattaché à un campus désactivé est refusé (`401`), même s'il n'a pas
+  été révoqué. Les jetons de Paris doivent être révoqués lors de la bascule.
 - La sélection, les bornes et l'expiration peuvent être modifiées à tout
   moment ; le changement est immédiat, sans régénérer le jeton.
 - Le jeton en clair n'est affiché **qu'une seule fois**, à la création. Seule

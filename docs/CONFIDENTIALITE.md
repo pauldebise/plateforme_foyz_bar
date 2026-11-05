@@ -6,8 +6,11 @@ les données réellement traitées par la plateforme.
 
 ## Responsable du traitement
 
-L'association Foy'z & Bar de l'ENSTA (Brest et Paris), représentée par son
-bureau. Contact : _(adresse e-mail à compléter)_.
+L'association Foy'z & Bar de l'ENSTA Bretagne, représentée par son bureau.
+Contact : _(adresse e-mail à compléter)_.
+
+Le campus de Paris dispose de sa propre plateforme et de sa propre politique de
+confidentialité ; il n'est plus traité par cette instance.
 
 ## Données traitées
 
@@ -32,8 +35,11 @@ Les données de l'ancienne plateforme (sauvegardes de migration) sont conservée
   quittent pas le serveur de l'association. Les sauvegardes peuvent être
   chiffrées de bout en bout (GnuPG AES-256, voir README §7.1) et le stockage
   (base, téléversements) repose sur un volume chiffré.
-- Chaque membre accède aux données de son campus ; l'administrateur peut agir
-  sur les deux campus.
+- Chaque membre accède aux données de son campus actif ; l'administrateur peut
+  agir sur les campus actifs. Les données du campus désactivé restent en base
+  pour la comptabilité mais ne sont plus exposées dans l'interface.
+- Les sauvegardes antérieures à la désactivation peuvent encore contenir des
+  données Paris jusqu'à expiration de la rétention (7 jours + 4 semaines).
 - Les jetons d'API sont créés uniquement par le compte d'administration, pour
   un campus et une durée déterminés. L'API externe ne reçoit **aucune donnée
   nominative** : uniquement des quantités, recettes et volumes agrégés sur les
