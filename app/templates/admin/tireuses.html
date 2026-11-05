@@ -3,16 +3,18 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
   <h1 class="h3 mb-0"><i class="bi bi-cup-straw"></i> Bières pression &amp; tireuses</h1>
+  {% if CAMPUSSES|length > 1 %}
   <div class="btn-group">
     {% for key, label in CAMPUSSES.items() %}
     <a class="btn {% if campus == key %}btn-primary{% else %}btn-outline-primary{% endif %}"
        href="{{ url_for('admin.tireuses', campus=key) }}">{{ label }}</a>
     {% endfor %}
   </div>
+  {% endif %}
 </div>
 
 <div class="card mb-4">
-  <div class="card-header">Tireuses — {{ CAMPUSSES[campus] }}</div>
+  <div class="card-header">Tireuses — {{ CAMPUS_LABELS[campus] }}</div>
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead class="table-light"><tr><th>Tireuse</th><th>Fût monté</th>{% if writable %}<th>Assigner un fût</th>{% endif %}<th></th></tr></thead>
@@ -103,7 +105,8 @@
           <td><strong>{{ k.name }}</strong></td>
           <td>{{ '%.1f'|format(k.alcohol_degree) }}°</td>
           <td>{{ '%.0f'|format(k.volume_l) }} L</td>
-          <td>{% if k.taps|length %}{% for t in k.taps %}<span class="badge bg-primary">{{ t.display_name }} ({{ CAMPUSSES[t.campus] }})</span> {% endfor %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          {% set active_taps = k.taps|selectattr('campus', 'in', CAMPUSSES)|list %}
+          <td>{% if active_taps %}{% for t in active_taps %}<span class="badge bg-primary">{{ t.display_name }} ({{ CAMPUS_LABELS.get(t.campus, t.campus) }})</span> {% endfor %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
           <td class="text-end text-nowrap">
             {% if writable %}
             <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.keg', keg_id=k.id) }}">Modifier</a>
@@ -139,7 +142,7 @@
         <div class="col-md-6"><label class="form-label">Nom du fût</label><input class="form-control" name="name" required></div>
         <div class="col-md-2"><label class="form-label">Degré (°)</label><input class="form-control" name="alcohol_degree" type="number" step="0.1" value="5.0"></div>
         <div class="col-md-2"><label class="form-label">Volume (L)</label><input class="form-control" name="volume_l" type="number" step="0.5" value="30"></div>
-        {% for c, label in [('brest','Brest'), ('paris','Paris')] %}
+        {% for c, label in CAMPUSSES.items() %}
         <div class="col-12"><strong>{{ label }}</strong></div>
         {% for size, slabel in [('half','Demi'), ('pint','Pinte'), ('pot','Pot')] %}
         <div class="col-md-3"><label class="form-label small">{{ slabel }} standard (€)</label><input class="form-control form-control-sm" name="{{ c }}_{{ size }}_std" placeholder="0.00" required></div>

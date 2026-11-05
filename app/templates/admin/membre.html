@@ -10,7 +10,7 @@
       <dt class="col-sm-4">Statut équipe</dt>
       <dd class="col-sm-8">{% if u.team_status %}<span class="badge bg-{{ 'success' if u.team_status == 'mandat' else 'secondary' }}">{{ u.team_status }}</span>{% else %}<span class="text-muted">Pas d'accès équipe</span>{% endif %}</dd>
       <dt class="col-sm-4">Campus</dt>
-      <dd class="col-sm-8">{{ CAMPUSSES.get(u.team_campus, '—') }}</dd>
+      <dd class="col-sm-8">{{ CAMPUS_LABELS.get(u.team_campus, '—') }}{% if u.team_campus and u.team_campus not in CAMPUSSES %} <span class="badge bg-secondary">campus désactivé</span>{% endif %}</dd>
       <dt class="col-sm-4">Mot de passe</dt>
       <dd class="col-sm-8">{% if u.password_hash %}défini{% else %}<span class="text-muted">non défini</span>{% endif %}</dd>
     </dl>
@@ -41,8 +41,11 @@
               <option value="{{ value }}" {% if (u.team_campus or own_campus) == value %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
+            {% if u.team_campus and u.team_campus not in CAMPUSSES %}
+            <div class="form-text text-warning">Campus actuel « {{ CAMPUS_LABELS.get(u.team_campus, u.team_campus) }} » désactivé : choisissez un campus actif pour réactiver cet accès.</div>
+            {% endif %}
             {% else %}
-            <input class="form-control" value="{{ CAMPUSSES[u.team_campus or own_campus] }}" disabled>
+            <input class="form-control" value="{{ CAMPUS_LABELS.get(u.team_campus or own_campus, '—') }}" disabled>
             {% endif %}
           </div>
           <button class="btn btn-primary">Enregistrer</button>

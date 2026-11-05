@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Règlement intérieur — {{ site_name }}{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4"><i class="bi bi-journal-text"></i> Règlements intérieurs</h1>
+<h1 class="h3 mb-4"><i class="bi bi-journal-text"></i> Règlement intérieur</h1>
 <div class="row g-4">
-  {% for key, label in [("brest", "Brest"), ("paris", "Paris")] %}
-  <div class="col-md-6">
+  {% for key, label in pdfs.items() %}
+  <div class="{{ 'col-12' if pdfs|length == 1 else 'col-md-6' }}">
     <div class="card h-100">
       <div class="card-header">{{ label }}</div>
       <div class="card-body">

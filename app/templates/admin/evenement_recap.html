@@ -6,7 +6,7 @@
   <div>
     <h1 class="h3 mb-1"><i class="bi bi-clipboard-data"></i> Récap — {{ ev.name }}</h1>
     <p class="text-muted small mb-0">
-      {{ CAMPUSSES[ev.campus] }} · {{ ev.starts_at|dt }} → {{ ev.ends_at|dt }}
+      {{ CAMPUS_LABELS.get(ev.campus, ev.campus) }} · {{ ev.starts_at|dt }} → {{ ev.ends_at|dt }}
       · {% if ev.closed %}clôturé{% else %}terminé{% endif %}
     </p>
   </div>

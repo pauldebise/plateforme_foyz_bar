@@ -14,7 +14,7 @@
         {% for ev in events %}
         <tr data-href="{{ url_for('admin.evenement', event_id=ev.id) }}">
           <td><strong>{{ ev.name }}</strong></td>
-          <td>{{ CAMPUSSES[ev.campus] }}</td>
+          <td>{{ CAMPUS_LABELS.get(ev.campus, ev.campus) }}</td>
           <td class="small">{{ ev.starts_at|dt }} → {{ ev.ends_at|dt }}</td>
           <td>{{ article_counts[ev.id] }}</td>
           <td>
@@ -52,7 +52,7 @@
         <div class="mb-3">
           <label class="form-label">Campus</label>
           <input type="hidden" name="campus" value="{{ own_campus }}">
-          <input class="form-control" value="{{ CAMPUSSES[own_campus] }}" disabled>
+          <input class="form-control" value="{{ CAMPUS_LABELS.get(own_campus, '—') }}" disabled>
         </div>
         <div class="row g-2 mb-3">
           <div class="col-6"><label class="form-label">Début</label><input class="form-control" type="datetime-local" name="starts_at" required></div>

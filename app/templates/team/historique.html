@@ -18,6 +18,7 @@
         {% endfor %}
       </select>
     </div>
+    {% if CAMPUSSES|length > 1 %}
     <div class="col-md-2">
       <label class="form-label small">Campus</label>
       <select class="form-select form-select-sm" name="campus">
@@ -27,6 +28,7 @@
         {% endfor %}
       </select>
     </div>
+    {% endif %}
     <div class="col-md-3">
       <label class="form-label small">Étudiant</label>
       <input class="form-control form-control-sm" name="user" value="{{ filters.get('user','') }}" placeholder="Nom…">
@@ -86,7 +88,7 @@
             {% endif %}
             {% if t.event_id %}<span class="badge bg-dark">Événement</span>{% endif %}
           </td>
-          <td>{{ CAMPUSSES[t.campus] }}</td>
+          <td>{{ CAMPUS_LABELS.get(t.campus, t.campus) }}</td>
           <td class="text-end fw-bold">{{ t.total|eur }}</td>
           <td class="small text-muted">{{ operators.get(t.operator_label, t.operator_label) }}</td>
           <td class="text-end">
@@ -95,7 +97,7 @@
             {% elif t.campus == own_campus %}
               <button class="btn btn-outline-danger btn-sm" data-bs-toggle="modal" data-bs-target="#cancel-modal" data-tid="{{ t.id }}" data-total="{{ t.total|eur }}">Annuler</button>
             {% else %}
-              <span class="small text-muted" title="Transaction de {{ CAMPUSSES[t.campus] }}">campus {{ CAMPUSSES[t.campus] }}</span>
+              <span class="small text-muted" title="Transaction de {{ CAMPUS_LABELS.get(t.campus, t.campus) }}">campus {{ CAMPUS_LABELS.get(t.campus, t.campus) }}</span>
             {% endif %}
           </td>
         </tr>

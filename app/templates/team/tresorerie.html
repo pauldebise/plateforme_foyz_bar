@@ -2,12 +2,14 @@
 {% block title %}Suivi trésorerie{% endblock %}
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-  <h1 class="h3 mb-0"><i class="bi bi-cash-stack"></i> Suivi trésorerie — {{ CAMPUSSES[campus] }}</h1>
+  <h1 class="h3 mb-0"><i class="bi bi-cash-stack"></i> Suivi trésorerie — {{ CAMPUS_LABELS.get(campus, campus) }}</h1>
+  {% if CAMPUSSES|length > 1 %}
   <div class="btn-group">
     {% for key, label in CAMPUSSES.items() %}
     <a class="btn {% if campus == key %}btn-primary{% else %}btn-outline-primary{% endif %}" href="{{ url_for('team.tresorerie', campus=key) }}">{{ label }}</a>
     {% endfor %}
   </div>
+  {% endif %}
 </div>
 
 <div class="card mb-4">

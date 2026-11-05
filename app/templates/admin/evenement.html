@@ -26,7 +26,7 @@
           <div class="mb-3"><label class="form-label">Nom</label><input class="form-control" name="name" value="{{ ev.name }}"></div>
           <div class="mb-3">
             <label class="form-label">Campus</label>
-            <input class="form-control" value="{{ CAMPUSSES[ev.campus] }}" disabled>
+            <input class="form-control" value="{{ CAMPUS_LABELS.get(ev.campus, ev.campus) }}" disabled>
           </div>
           <div class="row g-2 mb-3">
             <div class="col-6"><label class="form-label">Début</label><input class="form-control" type="datetime-local" name="starts_at" value="{{ ev.starts_at|dt('%Y-%m-%dT%H:%M') }}"></div>
@@ -52,7 +52,7 @@
         {% else %}
         <dl class="row mb-0">
           <dt class="col-sm-3">Nom</dt><dd class="col-sm-9">{{ ev.name }}</dd>
-          <dt class="col-sm-3">Campus</dt><dd class="col-sm-9">{{ CAMPUSSES[ev.campus] }}</dd>
+          <dt class="col-sm-3">Campus</dt><dd class="col-sm-9">{{ CAMPUS_LABELS.get(ev.campus, ev.campus) }}</dd>
           <dt class="col-sm-3">Début</dt><dd class="col-sm-9">{{ ev.starts_at|dt }}</dd>
           <dt class="col-sm-3">Fin</dt><dd class="col-sm-9">{{ ev.ends_at|dt }}</dd>
           <dt class="col-sm-3">Articles standards</dt><dd class="col-sm-9">{{ 'autorisés' if ev.allow_standard_articles else 'refusés' }} sur la passerelle</dd>

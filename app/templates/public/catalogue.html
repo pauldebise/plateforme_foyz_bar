@@ -3,12 +3,14 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
   <h1 class="h3 mb-0"><i class="bi bi-tags"></i> Prix</h1>
+  {% if CAMPUSSES|length > 1 %}
   <div class="btn-group" role="group">
     {% for key, label in CAMPUSSES.items() %}
     <a class="btn {% if campus == key %}btn-primary{% else %}btn-outline-primary{% endif %}"
        href="{{ url_for('public.catalogue', campus=key) }}">{{ label }}</a>
     {% endfor %}
   </div>
+  {% endif %}
 </div>
 
 {% if grouped %}
@@ -52,7 +54,7 @@
       <div class="table-responsive">
         <table class="table table-sm align-middle mb-0 catalogue-table">
           <thead class="table-light">
-            <tr><th>Article</th><th>Volume</th>{% if type in degree_types %}<th>Degré</th>{% endif %}<th class="text-end">Prix — {{ CAMPUSSES[campus] }}</th></tr>
+            <tr><th>Article</th><th>Volume</th>{% if type in degree_types %}<th>Degré</th>{% endif %}<th class="text-end">Prix — {{ CAMPUS_LABELS[campus] }}</th></tr>
           </thead>
           <tbody>
             {% for a, price in items %}

@@ -11,7 +11,7 @@
       {% if last_sale %}<strong>{{ last_sale|dt }}</strong>{% else %}<strong>aucun enregistré</strong>{% endif %}
     </p>
     {% endif %}
-    {% if not writable %}<p class="alert alert-warning py-2">Cet article appartient au campus {{ CAMPUSSES[a.campus] }} : consultation en lecture seule.</p>{% endif %}
+    {% if not writable %}<p class="alert alert-warning py-2">Cet article appartient au campus {{ CAMPUS_LABELS.get(a.campus, a.campus) }} : consultation en lecture seule.</p>{% endif %}
     <form method="post">
       <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
       <div class="row g-3">
@@ -21,7 +21,7 @@
         </div>
         <div class="col-md-4">
           <label class="form-label">Campus</label>
-          <input class="form-control" value="{{ CAMPUSSES[a.campus if a else own] }}" disabled>
+          <input class="form-control" value="{{ CAMPUS_LABELS.get(a.campus if a else own, '—') }}" disabled>
         </div>
         <div class="col-md-4">
           <label class="form-label">Type d'article</label>

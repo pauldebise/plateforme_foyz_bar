@@ -21,12 +21,17 @@
         </div>
         <div class="mb-4">
           <label class="form-label d-block">Campus</label>
+          {% if CAMPUSSES|length > 1 %}
           <div class="btn-group w-100" role="group">
             {% for key, label in CAMPUSSES.items() %}
             <input type="radio" class="btn-check" name="campus" value="{{ key }}" id="c-{{ key }}" {% if campus == key %}checked{% endif %}>
             <label class="btn btn-outline-primary" for="c-{{ key }}"><i class="bi bi-geo-alt"></i> {{ label }}</label>
             {% endfor %}
           </div>
+          {% else %}
+          <input type="hidden" name="campus" value="{{ campus }}">
+          <div class="form-control-plaintext"><i class="bi bi-geo-alt"></i> {{ CAMPUS_LABELS[campus] }}</div>
+          {% endif %}
         </div>
         <button class="btn btn-primary w-100">Se connecter</button>
       </form>

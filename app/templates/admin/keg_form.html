@@ -3,8 +3,6 @@
 {% block content %}
 <h1 class="h3 mb-4"><i class="bi bi-barrel"></i> Fût « {{ keg.name }} »</h1>
 
-{% set br = keg.price_row('brest') %}
-{% set pa = keg.price_row('paris') %}
 <div class="card" style="max-width: 900px;">
   <div class="card-body">
     <form method="post">
@@ -14,21 +12,16 @@
         <div class="col-md-2"><label class="form-label">Degré (°)</label><input class="form-control" name="alcohol_degree" type="number" step="0.1" value="{{ '%.1f'|format(keg.alcohol_degree) }}"></div>
         <div class="col-md-2"><label class="form-label">Volume (L)</label><input class="form-control" name="volume_l" type="number" step="0.5" value="{{ '%.1f'|format(keg.volume_l) }}"></div>
 
-        <div class="col-12"><strong>Brest</strong></div>
-        <div class="col-md-2"><label class="form-label small">Demi std (€)</label><input class="form-control form-control-sm" name="brest_half_std" value="{{ '%.2f'|format(br.price_half_std / 100) }}" {% if own != 'brest' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Pinte std (€)</label><input class="form-control form-control-sm" name="brest_pint_std" value="{{ '%.2f'|format(br.price_pint_std / 100) }}" {% if own != 'brest' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Pot std (€)</label><input class="form-control form-control-sm" name="brest_pot_std" value="{{ '%.2f'|format(br.price_pot_std / 100) }}" {% if own != 'brest' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Demi équipe (€)</label><input class="form-control form-control-sm" name="brest_half_team" value="{{ '%.2f'|format(br.price_half_team / 100) }}" {% if own != 'brest' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Pinte équipe (€)</label><input class="form-control form-control-sm" name="brest_pint_team" value="{{ '%.2f'|format(br.price_pint_team / 100) }}" {% if own != 'brest' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Pot équipe (€)</label><input class="form-control form-control-sm" name="brest_pot_team" value="{{ '%.2f'|format(br.price_pot_team / 100) }}" {% if own != 'brest' %}disabled{% else %}required{% endif %}></div>
-
-        <div class="col-12"><strong>Paris</strong></div>
-        <div class="col-md-2"><label class="form-label small">Demi std (€)</label><input class="form-control form-control-sm" name="paris_half_std" value="{{ '%.2f'|format(pa.price_half_std / 100) }}" {% if own != 'paris' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Pinte std (€)</label><input class="form-control form-control-sm" name="paris_pint_std" value="{{ '%.2f'|format(pa.price_pint_std / 100) }}" {% if own != 'paris' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Pot std (€)</label><input class="form-control form-control-sm" name="paris_pot_std" value="{{ '%.2f'|format(pa.price_pot_std / 100) }}" {% if own != 'paris' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Demi équipe (€)</label><input class="form-control form-control-sm" name="paris_half_team" value="{{ '%.2f'|format(pa.price_half_team / 100) }}" {% if own != 'paris' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Pinte équipe (€)</label><input class="form-control form-control-sm" name="paris_pint_team" value="{{ '%.2f'|format(pa.price_pint_team / 100) }}" {% if own != 'paris' %}disabled{% else %}required{% endif %}></div>
-        <div class="col-md-2"><label class="form-label small">Pot équipe (€)</label><input class="form-control form-control-sm" name="paris_pot_team" value="{{ '%.2f'|format(pa.price_pot_team / 100) }}" {% if own != 'paris' %}disabled{% else %}required{% endif %}></div>
+        {% for c, label in CAMPUSSES.items() %}
+        {% set row = keg.price_or_none(c) %}
+        <div class="col-12"><strong>{{ label }}</strong>{% if own != c %} <span class="badge bg-secondary">lecture seule</span>{% endif %}</div>
+        <div class="col-md-2"><label class="form-label small">Demi std (€)</label><input class="form-control form-control-sm" name="{{ c }}_half_std" value="{{ '%.2f'|format((row.price_half_std if row else 0) / 100) }}" {% if own != c %}disabled{% else %}required{% endif %}></div>
+        <div class="col-md-2"><label class="form-label small">Pinte std (€)</label><input class="form-control form-control-sm" name="{{ c }}_pint_std" value="{{ '%.2f'|format((row.price_pint_std if row else 0) / 100) }}" {% if own != c %}disabled{% else %}required{% endif %}></div>
+        <div class="col-md-2"><label class="form-label small">Pot std (€)</label><input class="form-control form-control-sm" name="{{ c }}_pot_std" value="{{ '%.2f'|format((row.price_pot_std if row else 0) / 100) }}" {% if own != c %}disabled{% else %}required{% endif %}></div>
+        <div class="col-md-2"><label class="form-label small">Demi équipe (€)</label><input class="form-control form-control-sm" name="{{ c }}_half_team" value="{{ '%.2f'|format((row.price_half_team if row else 0) / 100) }}" {% if own != c %}disabled{% else %}required{% endif %}></div>
+        <div class="col-md-2"><label class="form-label small">Pinte équipe (€)</label><input class="form-control form-control-sm" name="{{ c }}_pint_team" value="{{ '%.2f'|format((row.price_pint_team if row else 0) / 100) }}" {% if own != c %}disabled{% else %}required{% endif %}></div>
+        <div class="col-md-2"><label class="form-label small">Pot équipe (€)</label><input class="form-control form-control-sm" name="{{ c }}_pot_team" value="{{ '%.2f'|format((row.price_pot_team if row else 0) / 100) }}" {% if own != c %}disabled{% else %}required{% endif %}></div>
+        {% endfor %}
 
         <div class="col-12">
           <p class="text-muted small mb-0">

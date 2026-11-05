@@ -95,14 +95,12 @@
                 <label class="form-label" for="set-theme-public">Thème de couleur — Page publique</label>
                 <input class="form-control form-control-color w-100" id="set-theme-public" type="color" name="theme_color_public" value="{{ values['theme_color_public'] }}">
               </div>
+              {% for key, label in CAMPUSSES.items() %}
               <div class="col-md-4">
-                <label class="form-label" for="set-theme-brest">Thème de couleur — Brest</label>
-                <input class="form-control form-control-color w-100" id="set-theme-brest" type="color" name="theme_color_brest" value="{{ values['theme_color_brest'] }}" {% if own_campus != 'brest' %}disabled{% endif %}>
+                <label class="form-label" for="set-theme-{{ key }}">Thème de couleur — {{ label }}</label>
+                <input class="form-control form-control-color w-100" id="set-theme-{{ key }}" type="color" name="theme_color_{{ key }}" value="{{ values['theme_color_' ~ key] }}" {% if own_campus != key %}disabled{% endif %}>
               </div>
-              <div class="col-md-4">
-                <label class="form-label" for="set-theme-paris">Thème de couleur — Paris</label>
-                <input class="form-control form-control-color w-100" id="set-theme-paris" type="color" name="theme_color_paris" value="{{ values['theme_color_paris'] }}" {% if own_campus != 'paris' %}disabled{% endif %}>
-              </div>
+              {% endfor %}
             </div>
           </section>
 
@@ -110,58 +108,34 @@
             <h2 class="settings-title">Images et documents par campus</h2>
             <p class="small text-muted mb-3">Ces fichiers ne sont modifiables que depuis le campus concerné.</p>
             <div class="row g-3">
-              <div class="col-lg-6">
+              {% for key, label in CAMPUSSES.items() %}
+              <div class="{{ 'col-lg-6' if CAMPUSSES|length > 1 else 'col-12' }}">
                 <div class="campus-panel h-100">
                   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-                    <span class="fw-semibold"><i class="bi bi-geo-alt"></i> Campus de Brest</span>
-                    {% if own_campus != 'brest' %}<span class="badge text-bg-light border">lecture seule</span>{% endif %}
+                    <span class="fw-semibold"><i class="bi bi-geo-alt"></i> Campus de {{ label }}</span>
+                    {% if own_campus != key %}<span class="badge text-bg-light border">lecture seule</span>{% endif %}
                   </div>
                   <div class="mb-3">
-                    <label class="form-label" for="set-logo-brest">Logo</label>
-                    {% if values['logo_brest'] %}<img src="/uploads/{{ values['logo_brest'] }}" class="brand-logo d-block mb-1" alt="">{% endif %}
-                    <input class="form-control" id="set-logo-brest" type="file" name="logo_brest" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'brest' %}disabled{% endif %}>
-                    {{ remove_media('logo', 'brest', 'Supprimer le logo actuel') }}
+                    <label class="form-label" for="set-logo-{{ key }}">Logo</label>
+                    {% if values['logo_' ~ key] %}<img src="/uploads/{{ values['logo_' ~ key] }}" class="brand-logo d-block mb-1" alt="">{% endif %}
+                    <input class="form-control" id="set-logo-{{ key }}" type="file" name="logo_{{ key }}" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != key %}disabled{% endif %}>
+                    {{ remove_media('logo', key, 'Supprimer le logo actuel') }}
                   </div>
                   <div class="mb-3">
-                    <label class="form-label" for="set-regulation-brest">Règlement intérieur (PDF)</label>
-                    {% if values['regulation_pdf_brest'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
-                    <input class="form-control" id="set-regulation-brest" type="file" name="regulation_pdf_brest" accept=".pdf" {% if own_campus != 'brest' %}disabled{% endif %}>
-                    {{ remove_media('regulation_pdf', 'brest', 'Supprimer le règlement publié') }}
+                    <label class="form-label" for="set-regulation-{{ key }}">Règlement intérieur (PDF)</label>
+                    {% if values['regulation_pdf_' ~ key] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
+                    <input class="form-control" id="set-regulation-{{ key }}" type="file" name="regulation_pdf_{{ key }}" accept=".pdf" {% if own_campus != key %}disabled{% endif %}>
+                    {{ remove_media('regulation_pdf', key, 'Supprimer le règlement publié') }}
                   </div>
                   <div>
-                    <label class="form-label" for="set-photo-brest">Photo déco — Encaissement</label>
-                    {% if values['payment_photo_brest'] %}<img src="/uploads/{{ values['payment_photo_brest'] }}" class="d-block mb-1 rounded img-fluid" style="max-height: 80px;" alt="">{% endif %}
-                    <input class="form-control" id="set-photo-brest" type="file" name="payment_photo_brest" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'brest' %}disabled{% endif %}>
-                    {{ remove_media('payment_photo', 'brest', 'Supprimer la photo actuelle') }}
+                    <label class="form-label" for="set-photo-{{ key }}">Photo déco — Encaissement</label>
+                    {% if values['payment_photo_' ~ key] %}<img src="/uploads/{{ values['payment_photo_' ~ key] }}" class="d-block mb-1 rounded img-fluid" style="max-height: 80px;" alt="">{% endif %}
+                    <input class="form-control" id="set-photo-{{ key }}" type="file" name="payment_photo_{{ key }}" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != key %}disabled{% endif %}>
+                    {{ remove_media('payment_photo', key, 'Supprimer la photo actuelle') }}
                   </div>
                 </div>
               </div>
-              <div class="col-lg-6">
-                <div class="campus-panel h-100">
-                  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-                    <span class="fw-semibold"><i class="bi bi-geo-alt"></i> Campus de Paris</span>
-                    {% if own_campus != 'paris' %}<span class="badge text-bg-light border">lecture seule</span>{% endif %}
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label" for="set-logo-paris">Logo</label>
-                    {% if values['logo_paris'] %}<img src="/uploads/{{ values['logo_paris'] }}" class="brand-logo d-block mb-1" alt="">{% endif %}
-                    <input class="form-control" id="set-logo-paris" type="file" name="logo_paris" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'paris' %}disabled{% endif %}>
-                    {{ remove_media('logo', 'paris', 'Supprimer le logo actuel') }}
-                  </div>
-                  <div class="mb-3">
-                    <label class="form-label" for="set-regulation-paris">Règlement intérieur (PDF)</label>
-                    {% if values['regulation_pdf_paris'] %}<div class="small text-success mb-1"><i class="bi bi-check2"></i> publié</div>{% endif %}
-                    <input class="form-control" id="set-regulation-paris" type="file" name="regulation_pdf_paris" accept=".pdf" {% if own_campus != 'paris' %}disabled{% endif %}>
-                    {{ remove_media('regulation_pdf', 'paris', 'Supprimer le règlement publié') }}
-                  </div>
-                  <div>
-                    <label class="form-label" for="set-photo-paris">Photo déco — Encaissement</label>
-                    {% if values['payment_photo_paris'] %}<img src="/uploads/{{ values['payment_photo_paris'] }}" class="d-block mb-1 rounded img-fluid" style="max-height: 80px;" alt="">{% endif %}
-                    <input class="form-control" id="set-photo-paris" type="file" name="payment_photo_paris" accept=".jpg,.jpeg,.png,.webp" {% if own_campus != 'paris' %}disabled{% endif %}>
-                    {{ remove_media('payment_photo', 'paris', 'Supprimer la photo actuelle') }}
-                  </div>
-                </div>
-              </div>
+              {% endfor %}
             </div>
           </section>
 
@@ -248,21 +222,27 @@
 
   <div class="col-lg-5">
     <div class="card mb-4">
-      <div class="card-header"><i class="bi bi-shield-lock"></i> Mot de passe administrateur — {{ CAMPUSSES[own_campus] }}</div>
+      <div class="card-header"><i class="bi bi-shield-lock"></i> Mot de passe administrateur — {{ CAMPUS_LABELS.get(own_campus, '—') }}</div>
       <div class="card-body">
         <form method="post">
           <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
           <input type="hidden" name="action" value="password">
-          <div class="mb-3"><label class="form-label">Mot de passe actuel ({{ CAMPUSSES[own_campus] }})</label><input class="form-control" type="password" name="current_password" required></div>
-          <div class="mb-3"><label class="form-label">Nouveau mot de passe ({{ CAMPUSSES[own_campus] }})</label><input class="form-control" type="password" name="new_password" required></div>
+          <div class="mb-3"><label class="form-label">Mot de passe actuel ({{ CAMPUS_LABELS.get(own_campus, '—') }})</label><input class="form-control" type="password" name="current_password" required></div>
+          <div class="mb-3"><label class="form-label">Nouveau mot de passe ({{ CAMPUS_LABELS.get(own_campus, '—') }})</label><input class="form-control" type="password" name="new_password" required></div>
           <div class="d-grid"><button class="btn btn-primary">Modifier</button></div>
         </form>
         <p class="small text-muted mt-3 mb-0">
-          Chaque campus a son propre mot de passe administrateur : il confirme les opérations
+          {% if CAMPUSSES|length > 1 %}
+          Chaque campus actif a son propre mot de passe administrateur : il confirme les opérations
           sensibles de ce campus (commandes en découvert, annulations de transactions,
-          suppression de comptes, retrait des statuts blacklist). Une blacklist ne peut être
-          retirée que par l'équipe qui l'a posée — le compte admin global reste exempté.
-          Basculez de campus pour modifier celui de l'autre site.
+          suppression de comptes, retrait des statuts blacklist). Basculez de campus pour
+          modifier celui de l'autre site.
+          {% else %}
+          Ce mot de passe confirme les opérations sensibles du campus (commandes en découvert,
+          annulations de transactions, suppression de comptes, retrait des statuts blacklist).
+          {% endif %}
+          Une blacklist ne peut être retirée que par l'équipe qui l'a posée — le compte admin
+          global reste exempté.
         </p>
       </div>
     </div>

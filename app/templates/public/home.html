@@ -1,17 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="text-center mb-5">
-  <h1 class="fw-bold">Les Foy'z &amp; Bar de l'ENSTA</h1>
+  <h1 class="fw-bold">
+    {% if CAMPUSSES|length == 1 %}Le Foy'z &amp; Bar — {{ CAMPUS_LABELS[CAMPUSSES|first] }}
+    {% else %}Les Foy'z &amp; Bar de l'ENSTA{% endif %}
+  </h1>
   <p class="text-muted mb-0">{{ homepage_text.split('\n')[0] }}</p>
 </section>
 
 <div class="row g-4 mb-5">
   {% for campus, events in events_by_campus.items() %}
-  <div class="col-lg-6">
+  <div class="col-12 {{ 'col-lg-6' if CAMPUSSES|length > 1 else '' }}">
     <div class="card h-100">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-calendar-event"></i> Événements — {{ CAMPUSSES[campus] }}</span>
-        <span class="badge" style="background: var(--primary);">{{ CAMPUSSES[campus] }}</span>
+        <span><i class="bi bi-calendar-event"></i> Événements — {{ CAMPUS_LABELS[campus] }}</span>
+        <span class="badge" style="background: var(--primary);">{{ CAMPUS_LABELS[campus] }}</span>
       </div>
       <div class="card-body">
         {% if events %}
@@ -20,7 +23,7 @@
             <div class="col-md-6">
               {% if e.poster %}<img class="event-poster" src="/uploads/{{ e.poster }}" alt="Affiche {{ e.name }}">{% else %}<div class="event-poster d-flex align-items-center justify-content-center text-muted"><i class="bi bi-image fs-1"></i></div>{% endif %}
               <h3 class="h6 mt-2 mb-0">{{ e.name }}</h3>
-              <p class="small text-muted mb-0"><i class="bi bi-geo-alt"></i> {{ CAMPUSSES[e.campus] }} · {{ e.starts_at|dt }} → {{ e.ends_at|dt }}</p>
+              <p class="small text-muted mb-0"><i class="bi bi-geo-alt"></i> {{ CAMPUS_LABELS[e.campus] }} · {{ e.starts_at|dt }} → {{ e.ends_at|dt }}</p>
             </div>
             {% endfor %}
           </div>
@@ -58,7 +61,7 @@
     <div class="card h-100">
       <div class="card-header"><i class="bi bi-cup-straw"></i> Catalogue</div>
       <div class="card-body">
-        <p>Consultez le catalogue complet et les prix de chaque campus :</p>
+        <p>Consultez le catalogue complet et les prix du bar :</p>
         <a class="btn btn-primary" href="{{ url_for('public.catalogue') }}"><i class="bi bi-tags"></i> Voir les prix</a>
       </div>
     </div>

@@ -49,7 +49,7 @@
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">
       <thead class="table-light">
-        <tr><th>Étudiant</th><th>Promo</th><th>Solde Brest</th><th>Solde Paris</th><th>Restrictions</th><th>Équipe</th></tr>
+        <tr><th>Étudiant</th><th>Promo</th>{% for key, label in CAMPUSSES.items() %}<th>Solde {{ label }}</th>{% endfor %}<th>Restrictions</th><th>Équipe</th></tr>
       </thead>
       <tbody id="comptes-rows">
         {% include "admin/_comptes_rows.html" %}
@@ -78,7 +78,7 @@
           <div class="form-text">Minuscules sans accents. Uniquement pour la connexion.</div>
         </div>
         <div class="mb-3"><label class="form-label">Promotion (année de sortie)</label><input class="form-control" name="promotion" type="number"></div>
-        <p class="form-text mb-0">Deux portefeuilles (Brest &amp; Paris) sont créés à 0,00 €.</p>
+        <p class="form-text mb-0">Un portefeuille par campus actif ({{ CAMPUSSES.values()|join(', ') }}) est créé à 0,00 €.</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>

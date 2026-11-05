@@ -35,7 +35,7 @@
         <div class="col-md-3">
           <label class="form-label">Campus</label>
           {% if token %}
-          <input class="form-control" value="{{ CAMPUSSES[token.campus] }}" disabled>
+          <input class="form-control" value="{{ CAMPUS_LABELS.get(token.campus, token.campus) }}" disabled>
           <input type="hidden" name="campus" value="{{ token.campus }}">
           {% else %}
           <select class="form-select" id="api-campus" name="campus">
@@ -123,7 +123,7 @@
                 <label class="form-check-label" for="article-{{ a.id }}">
                   {{ a.name }}
                   <span class="text-muted small">{{ a.price_std|eur }}</span>
-                  {% if a.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[a.campus] }}</span>{% endif %}
+                  {% if a.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUS_LABELS.get(a.campus, a.campus) }}</span>{% endif %}
                   {% if not a.active %}<span class="badge bg-secondary">inactif</span>{% endif %}
                 </label>
               </div>
@@ -152,7 +152,7 @@
                 <label class="form-check-label" for="article-{{ a.id }}">
                   {{ a.name }}
                   <span class="text-muted small">{{ a.price_std|eur }}</span>
-                  {% if a.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[a.campus] }}</span>{% endif %}
+                  {% if a.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUS_LABELS.get(a.campus, a.campus) }}</span>{% endif %}
                   {% if not a.active %}<span class="badge bg-secondary">inactif</span>{% endif %}
                 </label>
               </div>
@@ -182,7 +182,7 @@
                   <span class="text-muted small">
                     {% if item.taps %}tireuse(s) {{ item.taps|join(', ') }}{% else %}non monté{% endif %}
                   </span>
-                  {% if item.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUSSES[item.campus] }}</span>{% endif %}
+                  {% if item.campus != campus %}<span class="badge bg-light text-dark">{{ CAMPUS_LABELS.get(item.campus, item.campus) }}</span>{% endif %}
                 </label>
               </div>
               {% else %}

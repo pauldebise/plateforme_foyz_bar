@@ -41,15 +41,17 @@
           {% endfor %}
         </select>
       </div>
+      {% if CAMPUSSES|length > 1 %}
       <div class="col-6 col-md-3 col-xl-2">
         <label class="form-label small" for="stats-campus">Campus</label>
         <select class="form-select form-select-sm" id="stats-campus" name="campus" data-auto-submit>
           {% for key, label in CAMPUSSES.items() %}
           <option value="{{ key }}" {% if campus == key %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
-          <option value="tous" {% if campus == 'tous' %}selected{% endif %}>Les deux campus</option>
+          <option value="tous" {% if campus == 'tous' %}selected{% endif %}>Tous les campus</option>
         </select>
       </div>
+      {% endif %}
       <div class="col-6 col-md-auto">
         <button class="btn btn-outline-secondary btn-sm w-100" type="button" data-bs-toggle="collapse"
                 data-bs-target="#stats-more" aria-expanded="{{ 'true' if filters_count or preset == 'custom' else 'false' }}"

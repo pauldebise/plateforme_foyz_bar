@@ -5,7 +5,7 @@
   {% if op == 'rechargement' %}<i class="bi bi-plus-circle"></i> Recharger un compte
   {% elif op == 'retrait' %}<i class="bi bi-dash-circle"></i> Retrait (récupération d'espèces)
   {% else %}<i class="bi bi-arrow-left-right"></i> Transfert entre étudiants{% endif %}
-  <span class="badge" style="background: var(--primary);">{{ CAMPUSSES[current_campus] }}</span>
+  <span class="badge" style="background: var(--primary);">{{ CAMPUS_LABELS.get(current_campus, current_campus) }}</span>
 </h1>
 
 <div class="card" style="max-width: 640px;">

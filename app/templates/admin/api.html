@@ -46,12 +46,12 @@
       </thead>
       <tbody>
         {% for t in tokens %}
-        <tr data-href="{{ url_for('admin.api_token', token_id=t.id) }}">
+        <tr {% if t.campus in CAMPUSSES %}data-href="{{ url_for('admin.api_token', token_id=t.id) }}"{% endif %}>
           <td>
             <strong>{{ t.label }}</strong>
             <div class="small text-muted"><code>{{ t.token_prefix }}…</code></div>
           </td>
-          <td>{{ CAMPUSSES[t.campus] }}</td>
+          <td>{{ CAMPUS_LABELS.get(t.campus, t.campus) }}{% if t.campus not in CAMPUSSES %} <span class="badge bg-secondary">désactivé</span>{% endif %}</td>
           <td class="small">
             {% if t.can_read_consumption %}<span class="badge bg-info text-dark">conso</span>{% endif %}
             {% if t.can_write_prices %}<span class="badge bg-warning text-dark">prix std</span>{% endif %}
