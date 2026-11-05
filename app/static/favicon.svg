@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#41699c"/>
-  <path d="M8 5h15v3H11v6h9v3h-9v9H8z" fill="#fff" shape-rendering="crispEdges"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#f5f0fb"/>
+  <path d="M144 112h224v112H256v32h64v96h-64v48H144z" fill="#804db3" shape-rendering="crispEdges"/>
 </svg>

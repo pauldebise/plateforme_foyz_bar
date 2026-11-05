@@ -2,10 +2,9 @@
 
     python -m ops.make_icons [dossier]
 
-Dessine « F » (police bitmap 5×7) blanc sur fond violet, aux formats attendus
-par le manifeste (`app/static/icons/`). Le « B » de Paris a été retiré avec le
-passage au campus unique de Brest. À relancer si le thème change : les fichiers
-produits sont versionnés.
+Dessine le « F négatif » de Brest : F violet sur fond lavande, aux formats
+attendus par le manifeste (`app/static/icons/`). À relancer si le thème
+change : les fichiers produits sont versionnés.
 """
 
 import struct
@@ -15,13 +14,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = ROOT / "app" / "static" / "icons"
-BACKGROUND = (0x80, 0x4D, 0xB3)  # thème public par défaut
-FOREGROUND = (0xFF, 0xFF, 0xFF)
-
-GLYPHS = {
-    "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
-}
-TEXT = "F"
+BACKGROUND = (0xF5, 0xF0, 0xFB)
+FOREGROUND = (0x80, 0x4D, 0xB3)
+REFERENCE_SIZE = 512
+# Géométrie du F dans une grille 512×512, en rectangles (x, y, largeur, hauteur).
+F_RECTS = (
+    (144, 112, 224, 112),  # barre supérieure
+    (144, 224, 112, 176),  # hampe
+    (256, 256, 64, 96),  # barre médiane
+)
 
 
 def _png(width, height, rows):
@@ -45,29 +46,19 @@ def _png(width, height, rows):
 
 
 def render(size):
-    glyph_width, glyph_height, spacing = 5, 7, 1
-    columns = len(TEXT) * glyph_width + (len(TEXT) - 1) * spacing
-    # Marge de sécurité de 20 %, en largeur comme en hauteur : un glyphe seul
-    # est plus haut que large et serait rogné si l'échelle ne tenait compte
-    # que de la largeur.
-    scale = max(1, min((size * 4 // 5) // columns, (size * 4 // 5) // glyph_height))
-    text_width = columns * scale
-    text_height = glyph_height * scale
-    x0 = (size - text_width) // 2
-    y0 = (size - text_height) // 2
+    scale = size / REFERENCE_SIZE
     background = (*BACKGROUND, 255)
     foreground = (*FOREGROUND, 255)
     rows = [[background] * size for _ in range(size)]
-    for index, char in enumerate(TEXT):
-        glyph = GLYPHS[char]
-        gx = x0 + index * (glyph_width + spacing) * scale
-        for gy, line in enumerate(glyph):
-            for px, bit in enumerate(line):
-                if bit != "1":
-                    continue
-                for dy in range(scale):
-                    for dx in range(scale):
-                        rows[y0 + gy * scale + dy][gx + px * scale + dx] = foreground
+    for x, y, width, height in F_RECTS:
+        x0 = round(x * scale)
+        y0 = round(y * scale)
+        x1 = round((x + width) * scale)
+        y1 = round((y + height) * scale)
+        for py in range(y0, y1):
+            row = rows[py]
+            for px in range(x0, x1):
+                row[px] = foreground
     return _png(size, size, rows)
 
 
