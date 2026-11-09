@@ -177,32 +177,32 @@ def test_detect():
 def test_user_password_and_real_name_mapping():
     from migration.sources import map_user_row
 
-    # Ligne au format réel du dump Brest : `name`=pseudo, `real_name`,
+    # Ligne synthétique au format du dump Brest : `name`=pseudo, `real_name`,
     # `password` = hash bcrypt PHP (non réutilisable tel quel en cible)
     user, warning = map_user_row(
         {
-            "card_id": "1548963257462",
-            "name": "aime secretement massé Paul DEBISE chips vachement bete",
-            "real_name": "Paul Debise",
-            "password": "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC",
-            "balance": "-26.18",
+            "card_id": "0000000000000",
+            "name": "pseudo de test sans valeur",
+            "real_name": "Camille Test",
+            "password": "$2b$10$pLBwI9OycTk6Dx68J8yC0e9jBisVbhFaThfzSQsbgC0teMqYgteHu",
+            "balance": "12.34",
             "is_foyz": 1,
-            "promo": "CI2028",
+            "promo": "CI2029",
         },
         "brest",
         "euros",
     )
     _expect(warning is None, "ligne utilisateur valide")
-    _expect(user["name"] == "Paul Debise", f"nom réel affiché ({user['name']})")
+    _expect(user["name"] == "Camille Test", f"nom réel affiché ({user['name']})")
     _expect(
-        user["nickname"] == "aime secretement massé Paul DEBISE chips vachement bete",
+        user["nickname"] == "pseudo de test sans valeur",
         f"pseudo conservé en surnom ({user['nickname']})",
     )
     _expect(
-        user["username"] == "paul.debise",
+        user["username"] == "camille.test",
         f"identifiant de connexion = slug du nom réel ({user['username']})",
     )
-    _expect(user["promotion"] == 2028, f"promo CI2028 -> 2028 ({user['promotion']})")
+    _expect(user["promotion"] == 2029, f"promo CI2029 -> 2029 ({user['promotion']})")
     _expect(
         as_promotion("FIPA2016") == 2016
         and as_promotion(2025) == 2025
@@ -210,7 +210,7 @@ def test_user_password_and_real_name_mapping():
         and as_promotion(None) is None,
         "promotions hétérogènes -> année cible",
     )
-    _expect(user["key"] == "paul debise", "clé de réconciliation = nom réel")
+    _expect(user["key"] == "camille test", "clé de réconciliation = nom réel")
     # Entités HTML doublement encodées dans l'identité (base Brest réelle) :
     # décodées AVANT la clé et le slug, sinon username « ...l.x27.epine... »
     entity, _ = map_user_row(
@@ -233,7 +233,7 @@ def test_user_password_and_real_name_mapping():
     _expect(entity["promotion"] == 2021, f"promo CI2021 -> 2021 ({entity['promotion']})")
     _expect(user["password_hash"] is None, "bcrypt -> pas un hash werkzeug")
     _expect(
-        user["legacy_password"] == "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC",
+        user["legacy_password"] == "$2b$10$pLBwI9OycTk6Dx68J8yC0e9jBisVbhFaThfzSQsbgC0teMqYgteHu",
         "bcrypt conservé brut dans legacy_password",
     )
     # Hash werkzeug source -> réutilisé tel quel en cible, rien en legacy ;
@@ -1104,7 +1104,7 @@ def test_p5_dispose_refuses_unconsumed():
 
 
 def test_p5_safe_error_redacts_hashes():
-    bcrypt = "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC"
+    bcrypt = "$2b$10$pLBwI9OycTk6Dx68J8yC0e9jBisVbhFaThfzSQsbgC0teMqYgteHu"
     werkzeug = "pbkdf2:sha256:600000$salt$deadbeefdeadbeefdeadbeefdeadbeef"
     md5 = "5f4dcc3b5aa765d61d8327deb882cf99"
     text = _safe_error(RuntimeError(f"password_hash={bcrypt} legacy={werkzeug} hash={md5}"))
@@ -1124,7 +1124,7 @@ def test_p5_engine_hides_parameters():
     with engine.begin() as conn:
         conn.execute(text("CREATE TABLE t (x INTEGER UNIQUE)"))
         conn.execute(text("INSERT INTO t (x) VALUES (1)"))
-    secret = "$2a$10$wtlkmC9G3pGaid7Fw.vOYeek0JjVNe3eQ.RPKfOtMTEvDjLRljbjC"
+    secret = "$2b$10$pLBwI9OycTk6Dx68J8yC0e9jBisVbhFaThfzSQsbgC0teMqYgteHu"
     try:
         with engine.begin() as conn:
             conn.execute(text("INSERT INTO t (x) VALUES (:hash)"), {"hash": 1})
