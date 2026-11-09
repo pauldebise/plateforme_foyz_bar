@@ -1,8 +1,14 @@
 # Plateforme Foy'z & Bar — Brest
 
+[![CI](https://github.com/pauldebise/plateforme_foyz_bar/actions/workflows/ci.yml/badge.svg)](https://github.com/pauldebise/plateforme_foyz_bar/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/pauldebise/plateforme_foyz_bar)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue)](https://www.python.org/)
+[![Docker Compose](https://img.shields.io/badge/docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+
 Plateforme web de gestion du Foy'z/Bar de l'ENSTA Bretagne : interface publique,
 interface équipe (caisse, comptes étudiants, statistiques, trésorerie) et interface
-administrateur, conformément au cahier des charges (`docs/main.tex`).
+administrateur, conformément au cahier des charges interne.
 
 Le campus de Paris est **archivé** : ses données historiques restent en base et
 restent libellables, mais le campus n'est ni exposé ni modifiable. La liste des
@@ -20,7 +26,22 @@ prématurée.
   expiration de session par inactivité, politique de mot de
   passe, journal d'audit, mots de passe administrateur pour les opérations sensibles
 
+**Instance en production** : [foyz.fr](https://foyz.fr)
+
+**Documentation** : [API externe](docs/API.md) · [Licence](LICENSE)
+
 ---
+
+## Sommaire
+
+- [1. Arborescence du projet](#1-arborescence-du-projet)
+- [2. Démarrage rapide (développement)](#2-démarrage-rapide-développement)
+- [3. Déploiement en production](#3-déploiement-en-production)
+- [4. Sécurité](#4-sécurité)
+- [5. Maintenance](#5-maintenance)
+- [6. Bascule nocturne : migration des anciennes bases](#6-bascule-nocturne--migration-des-anciennes-bases)
+- [7. Exploitation : sauvegardes, supervision, rétention](#7-exploitation--sauvegardes-supervision-rétention)
+- [Licence](#licence)
 
 ## 1. Arborescence du projet
 
@@ -65,7 +86,7 @@ Foyz_plateforme/
 ├── ops/                       # Sauvegarde/restauration (python -m ops.backup, §7)
 ├── bdd_a_migrer/               # Dumps des anciennes bases (jamais versionnés)
 ├── tests/                     # Suites exécutables sans pytest (python -m tests.<module>)
-├── docs/                      # Cahier des charges, confidentialité, API externe
+├── docs/                      # Politique de confidentialité, API externe
 ├── uploads/                   # Fichiers téléversés (affiches, logos, PDF)
 ├── instance/                  # Base SQLite (créée à l'exécution)
 ├── run.py / wsgi.py           # Lancement dev / point d'entrée Gunicorn
@@ -131,7 +152,7 @@ dispose d'un healthcheck HTTP et ne démarre qu'une fois PostgreSQL prêt.
 
 L'application est servie sur `http://<serveur>:8000`.
 La base et les tables sont créées automatiquement au premier démarrage ; connectez-vous
-ensuite au module développement pour configurer le site (ou chargez la démo, voir §5).
+ensuite au module développement pour configurer le site.
 
 Mise à jour :
 
