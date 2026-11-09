@@ -6,6 +6,7 @@ let CATALOG = JSON.parse(document.getElementById('catalog-data').textContent);
 const CONFIG = document.getElementById('payment-config');
 const TEAM_PAYMENT_LAYOUT = document.querySelector('.payment-layout');
 const MOBILE_PAYMENT = window.matchMedia('(max-width: 991.98px)');
+const FINE_POINTER = window.matchMedia('(pointer: fine)');
 const DEPOSIT_VALUE = parseInt(CONFIG.dataset.depositValue, 10);
 const DEPOSIT_ENABLED = CONFIG.dataset.depositEnabled === '1';
 const CAMPUS = CONFIG.dataset.campus || '';
@@ -127,8 +128,12 @@ function payButtons() {
   return Array.from(document.querySelectorAll('[data-pay]'));
 }
 
+function orderComplete() {
+  return cart.size > 0 && (!!contributors.length || isDirect());
+}
+
 function updatePayButton() {
-  const disabled = cart.size === 0 || (!contributors.length && !isDirect());
+  const disabled = !orderComplete();
   payButtons().forEach((b) => { b.disabled = disabled; });
 }
 
@@ -152,6 +157,15 @@ function catalogItems() {
 
 function isMobileTeamPayment() {
   return !!TEAM_PAYMENT_LAYOUT && MOBILE_PAYMENT.matches;
+}
+
+// Encaissement au clavier réservé aux postes avec pointeur fin : une tablette
+// en paysage dépasse 992 px mais garde un clavier tactile.
+function canPayWithKeyboard() {
+  return !MOBILE_PAYMENT.matches
+    && FINE_POINTER.matches
+    && orderComplete()
+    && payButtons().some((button) => !button.disabled);
 }
 
 function setCatalogActive(i, scroll = true) {
@@ -677,7 +691,7 @@ if (els.adminModal) {
     $('admin-password-input').focus();
   });
   $('admin-password-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') e.preventDefault();
+    if (e.key === 'Enter' && !e.target.value.trim()) e.preventDefault();
   });
 }
 
@@ -733,8 +747,13 @@ if (els.catalogSearch) {
       e.preventDefault();
       const row = els.catalogSearch.value.trim() ? catalogItems()[catalogActive] : null;
       const a = row ? CATALOG.find((x) => String(x.id) === String(row.dataset.id)) : null;
-      if (a) addToCart(a);
-      else if (isMobileTeamPayment()) els.catalogSearch.blur();
+      if (a) {
+        addToCart(a);
+      } else if (els.catalogSearch.value === '' && !e.repeat && canPayWithKeyboard()) {
+        pay();
+      } else if (isMobileTeamPayment()) {
+        els.catalogSearch.blur();
+      }
     } else if (e.key === 'Escape') {
       els.catalogSearch.value = '';
       renderCatalog();
@@ -748,6 +767,7 @@ payButtons().forEach((button) => button.addEventListener('click', () => pay()));
 // consigne, mot de passe) et tant qu'une modale est ouverte.
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || modalOpen()) return;
+  if (isTypingTarget(e.target)) return;
   if (e.key === 'Escape') {
     if (cart.size || contributors.length) {
       e.preventDefault();
@@ -755,7 +775,6 @@ document.addEventListener('keydown', (e) => {
     }
     return;
   }
-  if (isTypingTarget(e.target)) return;
   if (e.key === '+' || e.key === '=') {
     e.preventDefault();
     changeLastArticleQuantity(1);

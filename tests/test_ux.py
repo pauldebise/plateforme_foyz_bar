@@ -602,6 +602,12 @@ def test_h_raccourcis_caisse():
     _expect("changeLastArticleQuantity(-1)" in payment_js, "diminuer la quantité")
     _expect("isTypingTarget(e.target)" in payment_js, "saisie texte préservée")
     _expect("modalOpen()" in payment_js, "raccourcis suspendus pendant une modale")
+    global_keydown = payment_js[payment_js.index("document.addEventListener('keydown'") :]
+    _expect(
+        global_keydown.index("isTypingTarget(e.target)")
+        < global_keydown.index("e.key === 'Escape'"),
+        "Échap ignoré pendant la saisie",
+    )
 
 
 def test_enchainement_apres_encaissement():
@@ -653,11 +659,15 @@ def test_i_modale_decouvert():
         )
     ]
     _expect("e.key === 'Enter'" in password_keydown, "Entrée détectée sur le mot de passe")
-    _expect("e.preventDefault()" in password_keydown, "Entrée ne soumet pas la commande")
+    _expect(
+        "!e.target.value.trim()" in password_keydown,
+        "Entrée ne soumet que si le mot de passe est saisi",
+    )
+    _expect("e.preventDefault()" in password_keydown, "soumission vide bloquée")
 
 
 def test_mobile_keyboard_payment():
-    """Mobile search remains visible and text-field Enter cannot trigger payment."""
+    """Mobile search remains visible and Enter cannot trigger payment on touch layouts."""
     js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
     css = (STATIC / "css" / "app.css").read_text(encoding="utf-8")
     add = js[js.index("function addToCart(") : js.index("function renderCart()")]
@@ -668,10 +678,23 @@ def test_mobile_keyboard_payment():
             "if (els.catalogSearch) {\n  els.catalogSearch.addEventListener('input'"
         ) : js.index("payButtons().forEach((button)")
     ]
-    _expect("pay(" not in search, "search Enter never sends a purchase")
+    _expect("canPayWithKeyboard()" in search, "desktop empty Enter validates the order")
+    _expect(
+        "els.catalogSearch.value === '' && !e.repeat" in search,
+        "only an empty field validates, without key repeat",
+    )
     _expect(
         "els.catalogSearch.value.trim() ? catalogItems()[catalogActive] : null" in search,
         "no duplicate on empty Enter",
+    )
+    _expect("els.catalogSearch.blur()" in search, "mobile blur preserved")
+    helper = js[js.index("function canPayWithKeyboard()") : js.index("function setCatalogActive(")]
+    _expect("!MOBILE_PAYMENT.matches" in helper, "mobile excluded from keyboard payment")
+    _expect("FINE_POINTER.matches" in helper, "touch tablets excluded from keyboard payment")
+    _expect("orderComplete()" in helper, "empty order never paid")
+    _expect(
+        "payButtons().some((button) => !button.disabled)" in helper,
+        "read-only and disabled buttons excluded",
     )
     _expect("window.visualViewport" in js and "keyboard-hidden" in js, "keyboard viewport handling")
     focusout = js[
@@ -737,6 +760,26 @@ def test_k_recherche_equipe_reactive():
         "fragment filtré",
     )
     _expect("1 membre (filtrés)" in data["footer_html"], "compteur du fragment à jour")
+
+
+def test_l_entree_encaisse_desktop():
+    """Poste desktop : Entrée sur une recherche d'articles vide encaisse."""
+    js = (STATIC / "js" / "payment.js").read_text(encoding="utf-8")
+    _expect(
+        "const FINE_POINTER = window.matchMedia('(pointer: fine)');" in js,
+        "pointeur fin détecté",
+    )
+    _expect("const disabled = !orderComplete();" in js, "même règle que le bouton")
+    helper = js[js.index("function canPayWithKeyboard()") : js.index("function setCatalogActive(")]
+    _expect("!MOBILE_PAYMENT.matches" in helper, "mobile exclu")
+    _expect("FINE_POINTER.matches" in helper, "tablette tactile exclue")
+    _expect("orderComplete()" in helper, "commande complète exigée")
+    _expect("payButtons().some((button) => !button.disabled)" in helper, "bouton actif exigé")
+    search = js[js.index("if (els.catalogSearch) {") : js.index("payButtons().forEach((button)")]
+    branch = search[search.index("els.catalogSearch.value === ''") :]
+    _expect("!e.repeat" in branch, "répétition de la touche ignorée")
+    _expect("canPayWithKeyboard()" in branch, "raccourci desktop exigé")
+    _expect("pay();" in branch, "Entrée déclenche l'encaissement")
 
 
 def main():
