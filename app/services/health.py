@@ -47,7 +47,8 @@ def schema_state():
             "unversioned": False,
         }
     # Base SQLite locale créée par create_all() : schéma complet mais sans
-    # table alembic_version — c'est le fonctionnement attendu (voir README 6.1).
+    # table alembic_version — c'est le fonctionnement attendu (voir
+    # docs/DEPLOIEMENT.md, section « Schéma versionné »).
     unversioned = bool(current is None and is_sqlite() and tables_present())
     return {
         "current": current,

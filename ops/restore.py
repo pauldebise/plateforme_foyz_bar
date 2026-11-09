@@ -10,7 +10,8 @@
 
 La base cible doit exister (créée par `flask --app wsgi.py init-db`) : la
 restauration remplace son contenu (`pg_restore --clean --if-exists`), elle ne
-crée pas le rôle PostgreSQL. Voir la procédure complète dans README §7.
+crée pas le rôle PostgreSQL. Voir la procédure complète dans
+`docs/EXPLOITATION.md`.
 
 Garde-fou : sans `--yes`, rien n'est exécuté (une restauration écrase la
 cible). `--dry-run` affiche les commandes.
@@ -251,7 +252,7 @@ def main(argv=None):
         return 1
     restore_database(args, dump, log, args.dry_run)
     restore_uploads(args, archive, log, args.dry_run)
-    log("Restauration terminée — vérifiez les totaux (voir README §7).")
+    log("Restauration terminée — vérifiez les totaux (voir docs/EXPLOITATION.md).")
     return 0
 
 

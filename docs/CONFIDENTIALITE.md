@@ -33,7 +33,8 @@ Les données de l'ancienne plateforme (sauvegardes de migration) sont conservée
 - Seuls les membres de l'équipe du campus disposent d'un accès nominatif.
 - Les données ne sont **jamais** cédées ni transmises à des tiers ; elles ne
   quittent pas le serveur de l'association. Les sauvegardes peuvent être
-  chiffrées de bout en bout (GnuPG AES-256, voir README §7.1) et le stockage
+  chiffrées de bout en bout (GnuPG AES-256, voir
+  [EXPLOITATION.md](EXPLOITATION.md#sauvegardes-et-restauration)) et le stockage
   (base, téléversements) repose sur un volume chiffré.
 - Chaque membre accède aux données de son campus actif ; l'administrateur peut
   agir sur les campus actifs. Les données du campus désactivé restent en base

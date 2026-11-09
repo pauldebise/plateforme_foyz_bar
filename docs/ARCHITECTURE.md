@@ -1,10 +1,11 @@
 # Architecture — Plateforme Foy'z & Bar
 
 Vue d'ensemble des composants, des flux et des règles structurantes de la
-plateforme. Ce document reste volontairement au niveau global : l'installation,
-le déploiement et l'exploitation sont décrits dans le [README](../README.md),
-l'API externe dans [API.md](API.md) et la politique de confidentialité dans
-[CONFIDENTIALITE.md](CONFIDENTIALITE.md).
+plateforme. Ce document reste volontairement au niveau global : l'installation
+et le déploiement sont décrits dans [DEPLOIEMENT.md](DEPLOIEMENT.md),
+l'exploitation dans [EXPLOITATION.md](EXPLOITATION.md), la migration dans
+[MIGRATION.md](MIGRATION.md), l'API externe dans [API.md](API.md) et la
+politique de confidentialité dans [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
 
 ## Vue d'ensemble
 
@@ -113,6 +114,76 @@ Les modèles SQLAlchemy sont dans `app/models/` :
   révisions Alembic en attente.
 - `/health` sert de sonde et la page `/admin/sante` reprend les mêmes contrôles.
 - Les journaux partent sur stdout/stderr, collectés par Docker ou systemd.
+
+## Sécurité
+
+- Mots de passe hachés (`werkzeug`, scrypt par défaut) ; identifiants jamais en
+  clair.
+- Protection **CSRF** sur tous les formulaires et sur les requêtes de l'interface
+  (jeton de session). L'API externe `/api/v1` est authentifiée par un jeton
+  porteur dans l'en-tête `Authorization`, jamais par cookie : le CSRF ne s'y
+  applique pas (un navigateur n'ajoute pas cet en-tête).
+- Anti-bruteforce sur la connexion : IP réelle =
+  `CF-Connecting-IP` si `TRUSTED_PROXY=cloudflare`, sinon `remote_addr` ;
+  `X-Forwarded-For` brut n'est jamais utilisé.
+- Sessions signées, `HttpOnly`, expiration automatique configurable (module
+  développement).
+- **Politique de mot de passe** (8 caractères minimum, sans contrainte de
+  diversité, pour l'administrateur et les membres d'équipe ; refus des mots de
+  passe courants et de ceux contenant l'identifiant ou le nom) appliquée aux
+  formulaires d'administration.
+- Mot de passe **administrateur** séparé, requis pour : commandes en découvert,
+  annulations de transactions, retrait des statuts blacklist (réservé à l'équipe
+  d'origine de la blacklist, admin global excepté).
+- **Mot de passe administrateur** : un campus actif n'est jamais bloqué ; les
+  échecs **et** les succès sont journalisés (« Actions » de `/admin/journal` :
+  opérateur, opération protégée, IP). Le champ `admin_password` est refusé par la
+  passerelle. Un campus désactivé ne peut plus vérifier ni modifier ce secret.
+- **Passerelle** (lien sans compte) : quantité limitée à 20 par article et
+  montant à 150 € par transaction, tarif équipe appliqué comme en caisse (si tous
+  les payeurs sont de l'équipe), jamais d'encaissement sur un compte déjà à
+  découvert ; recherche d'au moins 3 caractères, sans identifiant de connexion
+  (le statut équipe reste visible : il détermine le tarif), avec limiteurs
+  dédiés ; validité bornée à 72 h après le début de l'événement, sans délai
+  d'inactivité (une page ouverte pendant une soirée reste utilisable) ; page
+  authentifiée servie en `Cache-Control: no-store` ; jeton masqué dans les
+  journaux (application et accès Gunicorn, `app/gunicorn_logging.py`).
+- **API externe** ([API.md](API.md)) : jetons créés uniquement par le compte
+  `admin` depuis `/admin/api`, stockés sous forme d'empreinte SHA-256, limités à
+  un campus, une fenêtre de lecture et une sélection d'articles/fûts ; une
+  requête par seconde ; aucune donnée nominative ; prix standards et/ou équipe
+  selon des droits séparés (les droits équipe sont désactivés par défaut),
+  écritures par lot et journalisées dans l'audit. Un guide texte téléchargeable
+  depuis l'onglet est fourni aux tiers.
+- Montants saisis (rechargement, retrait, transfert) : un seul parseur
+  (`app.utils.parse_amount`), de 0,01 € à 5 000 € ; types et bornes des charges
+  JSON de l'API validés (refus 400, jamais d'erreur serveur).
+- Redirections `next` : chemins internes uniquement (`app.utils.is_safe_target`).
+- Annulation de transaction : réservation atomique, un seul remboursement même en
+  cas d'annulations simultanées.
+- **Connexion** : compteur d'échecs partagé entre les workers (table
+  `login_throttle`) : 10 tentatives libres par identifiant, puis un délai
+  croissant (5 s, 10 s, 20 s… plafonné à 15 min), remis à zéro par un mot de
+  passe correct ; 30 échecs libres par adresse IP (agrégée au /64 en IPv6), seuls
+  les échecs comptant. Jamais de verrouillage définitif. Le registre des
+  connexions n'enregistre jamais la saisie brute du champ identifiant
+  (identifiant du compte, ou empreinte si inconnu).
+- **Journaux** : les durées « affichage du journal de connexion / d'audit »
+  (Module développement) filtrent l'affichage des onglets du journal ; **rien
+  n'est supprimé automatiquement**. Repasser de 1 à 365 jours fait réapparaître
+  les entrées. Réglages numériques bornés (déconnexion pour inactivité :
+  5 minutes minimum) ; une valeur invalide est refusée et l'ancienne conservée.
+- En-têtes `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+  `Content-Security-Policy` stricte (`script-src 'self'`, aucun script inline) ;
+  `Cache-Control: no-store, private` sur toutes les pages authentifiées ; HSTS
+  quand `HTTPS_ONLY=1`.
+- Téléversements restreints (type de fichier, nom sécurisé, dossier dédié) ;
+  **SVG refusé** (script exécutable sur l'origine) et fichiers servis avec
+  `Content-Security-Policy: default-src 'none'`.
+- Entrées bornées (longueurs de colonnes, `cents()` refuse `inf`/`nan` et les
+  montants hors limites) ; suppression de compte limitée au campus d'appartenance.
+- Mots de passe hérités : conversion automatique au premier login, puis audit et
+  purge — `flask --app wsgi.py legacy-passwords [--purge] [--weak-only]`.
 
 ## Règles structurantes
 

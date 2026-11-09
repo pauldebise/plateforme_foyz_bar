@@ -1,6 +1,6 @@
 """Sauvegarde automatique : PostgreSQL + téléversements, rétention et hors-site.
 
-Appelé par cron/systemd (voir README §7). Exemples :
+Appelé par cron/systemd (voir `docs/EXPLOITATION.md`). Exemples :
 
     # Docker Compose (production)
     python -m ops.backup --pg-container foyz-db-1 --pg-user foyz --pg-database foyz \

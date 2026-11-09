@@ -8,7 +8,8 @@
   bases locales jetables.
 
 Une base existante créée par `create_all()` est adoptée par
-`alembic stamp 0001_baseline` (voir README §6.1).
+`alembic stamp 0001_baseline` (voir `docs/DEPLOIEMENT.md`,
+section « Schéma versionné »).
 """
 
 from pathlib import Path

@@ -87,7 +87,8 @@ def validate_config(app):
     if not app.config.get("DEBUG") and not app.config.get("SESSION_COOKIE_SECURE"):
         app.logger.warning(
             "HTTPS_ONLY=0 en production : le cookie de session n'est pas marqué "
-            "« Secure » alors que l'URL publique est en HTTPS (voir README, §Cloudflare)."
+            "« Secure » alors que l'URL publique est en HTTPS (voir "
+            "docs/DEPLOIEMENT.md, option C)."
         )
     active = app.config.get("ACTIVE_CAMPUSES") or ()
     if not app.config.get("DEBUG") and len(active) > 1:

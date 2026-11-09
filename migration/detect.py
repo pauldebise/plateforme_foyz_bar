@@ -1,6 +1,6 @@
 """Détection automatique des fichiers sources dans bdd_a_migrer/.
 
-Convention de nommage attendue (documentée dans le README §bascule) :
+Convention de nommage attendue (documentée dans docs/MIGRATION.md) :
     brest_*.sql                 -> dump MySQL Brest
     paris_*.sql                 -> dump SQL Paris
     paris_*.json / *.jsonl      -> export JSON / JSONL Paris

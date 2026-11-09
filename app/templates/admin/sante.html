@@ -103,7 +103,7 @@
             </tr>
             {% else %}
             <tr><td colspan="4" class="text-center text-muted py-3">
-              {% if backups.exists %}Aucune sauvegarde.{% else %}Dossier absent : configurez BACKUP_DIR et la tâche cron (README §7.1).{% endif %}
+              {% if backups.exists %}Aucune sauvegarde.{% else %}Dossier absent : configurez BACKUP_DIR et la tâche cron (voir docs/EXPLOITATION.md).{% endif %}
             </td></tr>
             {% endfor %}
           </tbody>

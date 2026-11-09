@@ -2,7 +2,8 @@
 
 Cette révision crée l'intégralité du schéma tel qu'il est défini par les
 modèles SQLAlchemy. Une base existante créée par `create_all()` est adoptée
-via `alembic stamp 0001_baseline` (voir README, §6.1) ; une base vierge est
+via `alembic stamp 0001_baseline` (voir `docs/DEPLOIEMENT.md`,
+section « Schéma versionné ») ; une base vierge est
 créée par `alembic upgrade head`.
 
 Revision ID: 0001_baseline
