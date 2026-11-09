@@ -28,7 +28,7 @@ prématurée.
 
 **Instance en production** : [foyz.fr](https://foyz.fr)
 
-**Documentation** : [API externe](docs/API.md) · [Licence](LICENSE)
+**Documentation** : [Architecture](docs/ARCHITECTURE.md) · [API externe](docs/API.md) · [Licence](LICENSE)
 
 ---
 
@@ -86,7 +86,7 @@ Foyz_plateforme/
 ├── ops/                       # Sauvegarde/restauration (python -m ops.backup, §7)
 ├── bdd_a_migrer/               # Dumps des anciennes bases (jamais versionnés)
 ├── tests/                     # Suites exécutables sans pytest (python -m tests.<module>)
-├── docs/                      # Politique de confidentialité, API externe
+├── docs/                      # Architecture, confidentialité, API externe
 ├── uploads/                   # Fichiers téléversés (affiches, logos, PDF)
 ├── instance/                  # Base SQLite (créée à l'exécution)
 ├── run.py / wsgi.py           # Lancement dev / point d'entrée Gunicorn
