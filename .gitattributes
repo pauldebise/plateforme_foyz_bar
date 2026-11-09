@@ -1,0 +1,17 @@
+# Normalisation des fins de ligne : le dépôt est en LF.
+* text=auto eol=lf
+
+# Fichiers binaires : aucune conversion de fin de ligne.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Bibliothèques tierces : exclues des statistiques de langage GitHub et
+# repliées dans les diffs.
+app/static/vendor/** linguist-vendored linguist-generated=true
