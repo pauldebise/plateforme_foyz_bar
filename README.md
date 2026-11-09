@@ -718,4 +718,5 @@ Le code source de ce dépôt est distribué sous **licence MIT** — voir
 La licence couvre uniquement le code source. Le nom « Foy'z & Bar », le logo,
 les icônes de l'application et les documents (`docs/`) restent hors périmètre.
 Les bibliothèques tierces embarquées dans `app/static/vendor/` conservent leurs
-licences respectives (MIT).
+licences respectives (MIT) ; le détail figure dans
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
