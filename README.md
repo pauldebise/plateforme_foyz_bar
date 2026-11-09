@@ -688,3 +688,13 @@ Reproduire : `python -m tests.test_performance` (garde-fous de résultats) et
   recettes, volumes, catégories, graphiques, tableaux et exports. Elle est
   cochée par défaut ; une puce « Sans blagues » rappelle le filtre actif et
   permet de réafficher les blagues.
+
+## Licence
+
+Le code source de ce dépôt est distribué sous **licence MIT** — voir
+[`LICENSE`](LICENSE).
+
+La licence couvre uniquement le code source. Le nom « Foy'z & Bar », le logo,
+les icônes de l'application et les documents (`docs/`) restent hors périmètre.
+Les bibliothèques tierces embarquées dans `app/static/vendor/` conservent leurs
+licences respectives (MIT).
